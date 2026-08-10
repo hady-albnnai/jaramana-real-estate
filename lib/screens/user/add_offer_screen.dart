@@ -708,7 +708,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         controlAffinity: ListTileControlAffinity.leading,
         contentPadding: EdgeInsets.zero,
         activeColor: AppTheme.primaryGold,
-        title: const Text('بدي أرفق فيديو للعرض (عبر واتساب المكتب)', style: TextStyle(color: Colors.black87, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.bold)),
+        title: const Text('أريد إرفاق فيديو للعرض (عبر واتساب المكتب)', style: TextStyle(color: Colors.black87, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.bold)),
       ),
       if (_wantVideo) ...[
         Container(
