@@ -35,6 +35,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String _channel = ''; // مفتاح القناة المختارة
   static const int _currency = 1; // عملة موحدة: ل.س (الدفع بالعملة المحلية فقط)
   final _refCtrl = TextEditingController();
+  final _senderPhoneCtrl = TextEditingController(); // رقم هاتف المُحوِّل (Bug #35)
   XFile? _proofImage;
   bool _uploading = false;
   String _progress = '';
@@ -44,7 +45,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void dispose() {
     _refCtrl.dispose();
+    _senderPhoneCtrl.dispose();
     super.dispose();
+  }
+
+  /// هل القناة المختارة تحتاج رقم هاتف المُحوِّل؟
+  bool get _needsSenderPhone => _channel == 'balance' || _channel == 'syriatel_cash';
+
+  String _normalizePhoneToLocalFormat(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return '';
+    // 9639xxxxxxxx → 09xxxxxxxx
+    if (digits.startsWith('963') && digits.length == 12) {
+      return '0${digits.substring(3)}';
+    }
+    // 09xxxxxxxx (already local)
+    if (digits.startsWith('09') && digits.length == 10) {
+      return digits;
+    }
+    // 9xxxxxxxx (without leading 0)
+    if (digits.startsWith('9') && digits.length == 9) {
+      return '0$digits';
+    }
+    return digits;
   }
 
   /// السعر الرسمي للباقة من Config — لا يمكن للمستخدم تعديله
@@ -136,6 +159,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
+    // Bug #35: التحقق من رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
+    String senderPhone = '';
+    if (_needsSenderPhone) {
+      senderPhone = _normalizePhoneToLocalFormat(_senderPhoneCtrl.text.trim());
+      if (senderPhone.isEmpty || senderPhone.length < 9) {
+        _snack('يرجى إدخال رقم الهاتف الذي تم التحويل منه');
+        return;
+      }
+    }
+
     setState(() {
       _uploading = true;
       _progress = 'جارٍ رفع إثبات الدفع...';
@@ -168,6 +201,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ref: refNum,
       sts: 0, // قيد المراجعة
       tsCrt: DateTime.now(),
+      // Bug #35: إضافة رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
+      meta: senderPhone.isNotEmpty ? {'sender_phone': senderPhone} : const {},
     );
 
     bool ok = false;
@@ -260,6 +295,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   AppTheme.gapHeightXL,
                   _channelDetailsCard(_findChannel(channels, _channel)),
                   AppTheme.gapHeightXL,
+
+                  // Bug #35: حقل رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
+                  if (_needsSenderPhone) ...[
+                    _sectionTitle('📱 رقم هاتفك (الذي تم التحويل منه)'),
+                    TextField(
+                      controller: _senderPhoneCtrl,
+                      style: const TextStyle(color: AppTheme.textWhite),
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        hintText: 'مثلاً: 09xxxxxxxx',
+                        prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),
+                      ),
+                    ),
+                    AppTheme.gapHeightXL,
+                  ],
 
                   _sectionTitle('🔢 رقم العملية / المرجع'),
                   TextField(

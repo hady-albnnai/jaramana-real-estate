@@ -245,6 +245,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           }),
           _row('قناة الدفع', p.channelDisplayName()),
           if (p.ref.isNotEmpty) _row('المرجع', p.ref),
+          // Bug #35: عرض رقم هاتف المُحوِّل إذا موجود
+          if (p.meta['sender_phone'] != null && p.meta['sender_phone'].toString().isNotEmpty)
+            _row('📱 هاتف المُحوِّل', p.meta['sender_phone'].toString()),
           _row('التاريخ', p.tsCrt.toString().split(' ').first),
           if (p.proof.isNotEmpty)
             Padding(

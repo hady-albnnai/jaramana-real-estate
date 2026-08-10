@@ -47,6 +47,7 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
   int _weeks = 1; // المدة المختارة (1-4)
   String _channel = '';
   final _refCtrl = TextEditingController();
+  final _senderPhoneCtrl = TextEditingController(); // رقم هاتف المُحوِّل (Bug #35)
   XFile? _proofImage;
   bool _uploading = false;
   String _progress = '';
@@ -56,7 +57,26 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
   @override
   void dispose() {
     _refCtrl.dispose();
+    _senderPhoneCtrl.dispose();
     super.dispose();
+  }
+
+  /// هل القناة المختارة تحتاج رقم هاتف المُحوِّل؟
+  bool get _needsSenderPhone => _channel == 'balance' || _channel == 'syriatel_cash';
+
+  String _normalizePhoneToLocalFormat(String phone) {
+    final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.isEmpty) return '';
+    if (digits.startsWith('963') && digits.length == 12) {
+      return '0${digits.substring(3)}';
+    }
+    if (digits.startsWith('09') && digits.length == 10) {
+      return digits;
+    }
+    if (digits.startsWith('9') && digits.length == 9) {
+      return '0$digits';
+    }
+    return digits;
   }
 
   int _priceFor(int weeks, dynamic config) {
@@ -137,6 +157,17 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
       _snack('يرجى إدخال رقم العملية / المرجع');
       return;
     }
+
+    // Bug #35: التحقق من رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
+    String senderPhone = '';
+    if (_needsSenderPhone) {
+      senderPhone = _normalizePhoneToLocalFormat(_senderPhoneCtrl.text.trim());
+      if (senderPhone.isEmpty || senderPhone.length < 9) {
+        _snack('يرجى إدخال رقم الهاتف الذي تم التحويل منه');
+        return;
+      }
+    }
+
     final price = _priceFor(_weeks, config);
     if (price <= 0) {
       _snack('تعذّر تحديد السعر، حاول لاحقاً');
@@ -169,7 +200,12 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
       proof: url,
       ref: refNum,
       sts: 0, // قيد المراجعة
-      meta: {'offer_id': widget.offerId, 'weeks': _weeks},
+      // Bug #35: إضافة رقم هاتف المُحوِّل مع بيانات العرض
+      meta: {
+        'offer_id': widget.offerId,
+        'weeks': _weeks,
+        if (senderPhone.isNotEmpty) 'sender_phone': senderPhone,
+      },
       tsCrt: DateTime.now(),
     );
 
@@ -398,6 +434,28 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
               );
             }),
             AppTheme.gapHeightLarge,
+
+            // Bug #35: حقل رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
+            if (_needsSenderPhone) ...[
+              const Text('📱 رقم هاتفك (الذي تم التحويل منه):',
+                  style: TextStyle(
+                      color: AppTheme.primaryGold,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold)),
+              AppTheme.gapHeightSmall,
+              TextFormField(
+                controller: _senderPhoneCtrl,
+                keyboardType: TextInputType.phone,
+                style: const TextStyle(color: AppTheme.textWhite),
+                decoration: const InputDecoration(
+                  hintText: 'مثلاً: 09xxxxxxxx',
+                  filled: true,
+                  fillColor: AppTheme.surfaceBlack,
+                  prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),
+                ),
+              ),
+              AppTheme.gapHeightLarge,
+            ],
 
             // ─── إثبات الدفع ───
             const Text('إثبات الدفع:',
