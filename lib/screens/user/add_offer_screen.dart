@@ -148,6 +148,9 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
 
   final _storage = StorageService();
 
+  // ✅ Fix for Bug #2: Store time field controllers to prevent recreation on each build
+  final Map<String, TextEditingController> _timeControllers = {};
+
   @override
   void initState() {
     super.initState();
@@ -165,7 +168,22 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     _carPlateCtrl.dispose(); _areaCtrl.dispose(); _floorCtrl.dispose(); _legalNotesCtrl.dispose();
     _carCustomCityCtrl.dispose();
     _stepScroll.dispose();
+    
+    // ✅ Dispose all time controllers
+    for (final controller in _timeControllers.values) {
+      controller.dispose();
+    }
+    
     super.dispose();
+  }
+
+  // ✅ Helper method to get or create a persistent time controller
+  TextEditingController _getTimeController(String dayKey, int slotIndex, String field) {
+    final controllerKey = '${dayKey}_${slotIndex}_$field';
+    if (!_timeControllers.containsKey(controllerKey)) {
+      _timeControllers[controllerKey] = TextEditingController();
+    }
+    return _timeControllers[controllerKey]!;
   }
 
 
@@ -870,11 +888,11 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
                   child: Row(children: [
                     const Text('من', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
                     AppTheme.gapWidthXS,
-                    Expanded(child: _timeField(value: slot['from'] ?? '', hint: '09:00', onChanged: (v) => setState(() => _avlSlots[key]![i]['from'] = v))),
+                    Expanded(child: _timeField(dayKey: key, slotIndex: i, field: 'from', hint: '09:00')),
                     AppTheme.gapWidthSmall,
                     const Text('إلى', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
                     AppTheme.gapWidthXS,
-                    Expanded(child: _timeField(value: slot['to'] ?? '', hint: '12:00', onChanged: (v) => setState(() => _avlSlots[key]![i]['to'] = v))),
+                    Expanded(child: _timeField(dayKey: key, slotIndex: i, field: 'to', hint: '12:00')),
                     IconButton(icon: const Icon(Icons.remove_circle_outline, color: AppTheme.errorRed, size: 18), onPressed: () => setState(() => _avlSlots[key]!.removeAt(i))),
                   ]),
                 );
@@ -888,13 +906,35 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     isActive: _currentStep >= 3,
   );
 
-  Widget _timeField({required String value, required String hint, required void Function(String) onChanged}) {
+  // ✅ Fixed: Use persistent controllers to prevent focus loss on each keystroke
+  Widget _timeField({
+    required String dayKey,
+    required int slotIndex,
+    required String field,
+    required String hint,
+  }) {
+    final controller = _getTimeController(dayKey, slotIndex, field);
+    final currentValue = _avlSlots[dayKey]?[slotIndex]?[field] ?? '';
+    
+    // Update controller text if it differs from stored value
+    if (controller.text != currentValue) {
+      controller.text = currentValue;
+      controller.selection = TextSelection.collapsed(offset: currentValue.length);
+    }
+    
     return TextField(
-      controller: TextEditingController(text: value)..selection = TextSelection.collapsed(offset: value.length),
+      controller: controller,  // ✅ Persistent controller
       keyboardType: TextInputType.datetime,
       style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody),
-      decoration: InputDecoration(hintText: hint, contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5), isDense: true, border: const OutlineInputBorder()),
-      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hint,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (v) {
+        setState(() => _avlSlots[dayKey]![slotIndex][field] = v);
+      },
     );
   }
 
