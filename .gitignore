@@ -69,3 +69,5 @@ ios/Runner/GoogleService-Info.plist
 # =======================
 .env
 .env.*
+key.properties 
+*.jks 
