@@ -49,7 +49,11 @@ class _LegalConsultationBookingScreenState extends State<LegalConsultationBookin
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMyConsultations());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadMyConsultations();
+      // ✅ Fix for Bug #5: Fetch active lawyers to prevent empty list
+      context.read<LegalProvider>().fetchActiveLawyers();
+    });
   }
 
   @override
