@@ -298,19 +298,55 @@ serve(async (req) => {
       if (!verifiedUid) {
         const sessionToken = (body.staff_session_token ?? body.staffSessionToken)?.toString() ?? "";
         if (sessionToken && userUid) {
-          const { data, error } = await supabaseAdmin.rpc("validate_staff_session", {
-            p_user_uid: userUid,
-            p_token: sessionToken,
-            p_min_role: 0,
-          });
-          if (!error && data?.success === true) {
-            verifiedUid = userUid;
+          try {
+            const { data, error } = await supabaseAdmin.rpc("validate_staff_session", {
+              p_user_uid: userUid,
+              p_token: sessionToken,
+              p_min_role: 0,
+            });
+            
+            // ✅ Bug #26: تحسين معالجة الأخطاء
+            if (error) {
+              console.error("validate_staff_session error:", error);
+              return json({ 
+                success: false, 
+                error: "SESSION_VALIDATION_FAILED",
+                message: "فشل التحقق من الجلسة. يرجى تسجيل الدخول مرة أخرى."
+              }, 401);
+            }
+            
+            if (data?.success === true) {
+              verifiedUid = userUid;
+            } else {
+              // ✅ Bug #26: رسالة واضحة عندما تفشل المصادقة
+              const errorMsg = data?.error ?? "UNKNOWN_ERROR";
+              console.error("Session validation failed:", errorMsg);
+              return json({ 
+                success: false, 
+                error: "AUTH_FAILED",
+                message: `فشل المصادقة: ${errorMsg}. يرجى تسجيل الدخول مرة أخرى.`
+              }, 401);
+            }
+          } catch (e) {
+            // ✅ Bug #26: معالجة الأخطاء الاستثنائية
+            console.error("Exception in validate_staff_session:", e);
+            return json({ 
+              success: false, 
+              error: "VALIDATION_EXCEPTION",
+              message: "حدث خطأ غير متوقع أثناء التحقق من الجلسة. يرجى المحاولة مرة أخرى."
+            }, 500);
           }
         }
       }
 
+      // ✅ Bug #26: رسالة واضحة عندما لا يتم التحقق من الهوية
       if (!verifiedUid || verifiedUid !== userUid) {
-        return json({ success: false, error: "AUTH_REQUIRED" }, 401);
+        console.error("Auth failed: verifiedUid=", verifiedUid, "userUid=", userUid);
+        return json({ 
+          success: false, 
+          error: "AUTH_REQUIRED",
+          message: "يجب تسجيل الدخول أولاً. يرجى تسجيل الدخول والمحاولة مرة أخرى."
+        }, 401);
       }
 
       // التحقق من عدم وجود طلب تصوير نشط لنفس المستخدم
