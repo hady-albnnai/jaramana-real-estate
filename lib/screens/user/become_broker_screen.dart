@@ -48,10 +48,16 @@ class _BecomeBrokerScreenState extends State<BecomeBrokerScreen> {
       _snack('يرجى إدخال الاسم التجاري');
       return;
     }
-    // 🛡️ التوثيق إلزامي للوسطاء (LOGIC_SPEC §2.1)
-    if (user.sid.isEmpty || user.img.isEmpty) {
-      _snack(
-          'التوثيق إلزامي للوسطاء: يجب رفع صورة الهوية + الرقم الوطني أولاً');
+    // ✅ Fix for Bug #30: التحقق من التوثيق الرسمي بدلاً من sid/img فقط
+    // إذا كان المستخدم موثق بالفعل (vrf=2)، لا داعي لطلب الهوية مرة أخرى
+    if (!user.isVerifiedOfficial) {
+      // إذا كان المستخدم رفع هويته لكنها قيد المراجعة
+      if (user.sid.isNotEmpty && user.img.isNotEmpty) {
+        _snack('هويتك قيد المراجعة من الإدارة. سيتم إشعارك عند الموافقة.');
+        return;
+      }
+      // إذا كان المستخدم لم يرفع هويته بعد
+      _snack('التوثيق إلزامي للوسطاء: يجب رفع صورة الهوية + الرقم الوطني أولاً');
       Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) context.push('/setup-identity');
       });

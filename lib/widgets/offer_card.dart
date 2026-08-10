@@ -128,6 +128,53 @@ class _OfferCardState extends State<OfferCard> {
     );
   }
 
+  // ✅ Fix for Bug #27: عداد تنازلي للإعلان المميز
+  static Widget _countdownBadge(DateTime endDate) {
+    final now = DateTime.now();
+    final remaining = endDate.difference(now);
+    
+    String text;
+    Color color;
+    
+    if (remaining.isNegative) {
+      text = 'منتهي';
+      color = Colors.grey;
+    } else if (remaining.inDays > 0) {
+      text = '${remaining.inDays} يوم';
+      color = remaining.inDays <= 3 ? Colors.orange : AppTheme.primaryGold;
+    } else if (remaining.inHours > 0) {
+      text = '${remaining.inHours} ساعة';
+      color = Colors.orange;
+    } else if (remaining.inMinutes > 0) {
+      text = '${remaining.inMinutes} دقيقة';
+      color = Colors.red;
+    } else {
+      text = 'منتهي';
+      color = Colors.grey;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: const [
+          BoxShadow(color: Colors.black45, blurRadius: 3, offset: Offset(0, 1))
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.timer, color: Colors.white, size: 12),
+          const SizedBox(width: 2),
+          Text(text,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: AppTheme.fontSizeXS, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSpecItem(IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -235,7 +282,12 @@ class _OfferCardState extends State<OfferCard> {
                     spacing: 4,
                     children: [
                       if (offer.iPin == 1) _boostBadge('📌 مثبت', AppTheme.warningOrange),
-                      if (offer.iFms == 1) _boostBadge('⭐ مميز', AppTheme.primaryGold),
+                      if (offer.iFms == 1) ...[
+                        _boostBadge('⭐ مميز', AppTheme.primaryGold),
+                        // ✅ Fix for Bug #27: عداد تنازلي للإعلان المميز
+                        if (offer.fmsEnd != null)
+                          _countdownBadge(offer.fmsEnd!),
+                      ],
                     ],
                   ),
                 ),
