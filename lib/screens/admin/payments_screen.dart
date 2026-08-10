@@ -358,6 +358,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
         .read<AdminProvider>()
         .approvePayment(p.id, adminId)) {
       _snack('تمت الموافقة والتفعيل بنجاح');
+      // ✅ Fix for Bug #37: تحديث حالة المستخدم بعد الموافقة
+      // هذا يضمن أن المستخدم يحصل على الباقة الجديدة فوراً
+      await context.read<AuthProvider>().refreshUser();
       _load();
     }
   }

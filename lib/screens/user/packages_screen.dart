@@ -513,13 +513,22 @@ class _PackagesScreenState extends State<PackagesScreen> {
 
   VoidCallback? _btnAction(BuildContext ctx, _PackageData pkg, bool isCurrent,
       bool isFree, bool isPending, double price) {
+    // ✅ Fix for Bug #36: منع الاشتراك بنفس الباقة إذا كانت نشطة
     if (isCurrent || isFree) return null;
+    
+    // إذا كان هناك دفعة معلقة لهذه الباقة
     if (isPending) {
       return () => ctx.push('/user/my-payments');
     }
+    
+    // التحقق من أن المستخدم لا يملك بالفعل باقة أعلى أو مساوية
+    final user = ctx.read<AuthProvider>().userModel;
+    if (user != null && user.bPkg >= pkg.id && user.isPkgActive) {
+      return null; // لا يمكن الاشتراك بنفس الباقة أو باقة أقل
+    }
+    
     // السعر يأتي من Config مباشرة — لا من URL قابل للتعديل
-    return () => ctx.push(
-        '/user/payment?pkg=${pkg.id}');
+    return () => ctx.push('/user/payment?pkg=${pkg.id}');
   }
 
   Widget _badge(String label, Color color) => Container(
