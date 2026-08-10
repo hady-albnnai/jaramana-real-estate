@@ -41,8 +41,27 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
     // نعبّئ الهاتف إذا كان موجوداً (تسجيل SMS)
     final user = context.read<AuthProvider>().userModel;
     if (user != null && user.ph.isNotEmpty) {
-      _phoneController.text = user.ph;
+      _phoneController.text = _normalizePhoneToLocalFormat(user.ph);
     }
+  }
+
+  /// ✅ Fix for Bug #4: تطبيع رقم الهاتف إلى الصيغة المحلية (09xxxxxxxx)
+  /// يتعامل مع الصيغ المختلفة: +963938123456, 963938123456, 0938123456, 938123456
+  String _normalizePhoneToLocalFormat(String phone) {
+    // إزالة جميع الأحرف غير الرقمية
+    var cleaned = phone.replaceAll(RegExp(r'[^\d]'), '');
+    
+    // إزالة كود الدولة إذا كان موجوداً
+    if (cleaned.startsWith('963')) {
+      cleaned = cleaned.substring(3);
+    }
+    
+    // إضافة 0 في البداية إذا لم تكن موجودة
+    if (!cleaned.startsWith('0')) {
+      cleaned = '0$cleaned';
+    }
+    
+    return cleaned;
   }
 
   @override

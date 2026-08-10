@@ -40,10 +40,20 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     final uid = context.read<AuthProvider>().userModel?.uid;
     if (uid == null) { setState(() => _loading = false); return; }
     final prov = context.read<AppointmentProvider>();
+    final offerProv = context.read<OfferProvider>();
     final results = await Future.wait([
       prov.fetchMyAppointments(uid).then((_) => prov.myAppointments.toList()),
       prov.fetchAppointmentsForMyOffers(uid),
     ]);
+    
+    // ✅ Fix for Bug #18: جلب معلومات العروض للمواعيد
+    final offerIds = results[0].map((a) => a.offId).toSet().toList();
+    for (final offerId in offerIds) {
+      if (offerProv.getOfferById(offerId) == null) {
+        await offerProv.fetchOfferById(offerId, userId: uid);
+      }
+    }
+    
     if (mounted) {
       setState(() {
         _myAppts    = results[0];
@@ -121,6 +131,12 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
       3: 'ملغي', 4: 'مرفوض', 5: 'لم يتم الحضور',
     };
 
+    // ✅ Fix for Bug #18: جلب معلومات العرض
+    final offerProv = context.read<OfferProvider>();
+    final offer = offerProv.getOfferById(appt.offId);
+    final offerTitle = offer?.ttl ?? 'عرض';
+    final offerNumber = offer?.offerNumber?.toString() ?? appt.offId.substring(0, 8);
+
     // هل هناك وقت بديل مقترح من صاحب العرض بانتظار ردي؟
     final pendingCounter = sts == 0 &&
         appt.lastProposedBy == 'owner' &&
@@ -139,12 +155,27 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               const Icon(Icons.event, color: AppTheme.primaryGold, size: 22),
               AppTheme.gapWidthSmall,
               Expanded(
-                child: Text(
-                  'معاينة عرض #${appt.offId.length >= 8 ? appt.offId.substring(0, 8) : appt.offId}',
-                  style: const TextStyle(
-                      color: AppTheme.textWhite,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ✅ Fix for Bug #18: عرض اسم العرض ورقم العرض
+                    Text(
+                      offerTitle,
+                      style: const TextStyle(
+                          color: AppTheme.textWhite,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'عرض رقم #$offerNumber',
+                      style: const TextStyle(
+                          color: AppTheme.textGrey,
+                          fontSize: 13),
+                    ),
+                  ],
                 ),
               ),
               Container(
@@ -163,11 +194,27 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               ),
             ]),
             const Divider(color: Colors.white12, height: 20),
+            // ✅ Fix for Bug #18: عرض التاريخ والموعد بشكل واضح
             Row(children: [
-              const Icon(Icons.calendar_today, size: 15, color: AppTheme.textGrey),
+              const Icon(Icons.calendar_today, size: 15, color: AppTheme.primaryGold),
               AppTheme.gapWidthSmall,
-              Text(AppUtils.formatTimestamp(appt.dt),
-                  style: const TextStyle(color: AppTheme.textGrey)),
+              Text(
+                'التاريخ: ${AppUtils.formatDate(appt.dt)}',
+                style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontWeight: FontWeight.w600),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              const Icon(Icons.access_time, size: 15, color: AppTheme.primaryGold),
+              AppTheme.gapWidthSmall,
+              Text(
+                'الموعد: ${AppUtils.formatTime(appt.dt)}',
+                style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontWeight: FontWeight.w600),
+              ),
             ]),
 
             // وقت بديل مقترح من صاحب العرض
@@ -293,6 +340,11 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     final sts = appt.sts;
     final isPending = sts == 0;
 
+    // ✅ Fix for Bug #20: جلب معلومات العرض لتوحيد رقم العرض
+    final offerProv = context.read<OfferProvider>();
+    final offer = offerProv.getOfferById(appt.offId);
+    final offerNumber = offer?.offerNumber?.toString() ?? '0';
+
     // هل الدور الآن على صاحب العرض للرد؟
     final myTurn = isPending &&
         (appt.lastProposedBy == null || appt.lastProposedBy == 'requester');
@@ -320,7 +372,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               AppTheme.gapWidthSmall,
               Expanded(
                 child: Text(
-                  'طلب موعد على عرض #${appt.offId.length >= 8 ? appt.offId.substring(0, 8) : appt.offId}',
+                  'طلب موعد على عرض رقم #$offerNumber',
                   style: const TextStyle(
                       color: AppTheme.textWhite,
                       fontWeight: FontWeight.bold,
@@ -330,6 +382,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               _statusBadge(sts),
             ]),
             const Divider(color: Colors.white12, height: 18),
+
 
             // التاريخ
             Row(children: [

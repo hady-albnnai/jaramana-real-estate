@@ -322,7 +322,7 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            offer?.ttl ?? 'عرض #${a.offId.substring(0, 6)}',
+                            offer?.ttl ?? 'عرض رقم #${offer?.offerNumber ?? 0}',
                             style: const TextStyle(
                                 color: AppTheme.textWhite,
                                 fontWeight: FontWeight.bold,

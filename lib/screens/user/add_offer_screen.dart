@@ -244,9 +244,17 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         ? _contactPhoneCtrl.text.trim()
         : (u?.ph ?? '');
     final title = _ttlCtrl.text.trim();
+    
+    // ✅ Fix for Bug #3: استخدام اسم المستخدم (usr) إذا كان الاسم (nm) فارغاً
+    // عند تسجيل حساب جديد عبر الهاتف أو الإيميل، يكون الاسم فارغاً حتى يحدده المستخدم
+    // في هذه الحالة نستخدم اسم المستخدم (usr) الذي يتم تحديده عند إعداد الحساب
+    final advertiserName = (u?.nm != null && u!.nm.trim().isNotEmpty) 
+        ? u.nm 
+        : (u?.usr ?? 'مستخدم');
+    
     final msg = offerNum != null
-        ? '🎬 فيديو للعرض #$offerNum\nالعنوان: $title\nالمعلن: ${u?.nm ?? ''}\nالهاتف: $phone'
-        : '🎬 فيديو عرض جديد\nالعنوان: $title\nالمعلن: ${u?.nm ?? ''}\nالهاتف: $phone';
+        ? '🎬 فيديو للعرض #$offerNum\nالعنوان: $title\nالمعلن: $advertiserName\nالهاتف: $phone'
+        : '🎬 فيديو عرض جديد\nالعنوان: $title\nالمعلن: $advertiserName\nالهاتف: $phone';
     final url = _videoWhatsAppUrl(msg);
     if (url == null) return false;
     try {
@@ -712,9 +720,9 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
             border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
           ),
           child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('⚠️ إرسال الفيديو بيتم عبر تطبيق واتساب — تأكد إنو التطبيق مثبّت عندك', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall, height: 1.5)),
+            Text('⚠️ يتم إرسال الفيديو عبر تطبيق واتساب — تأكد من تثبيت التطبيق على جهازك', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall, height: 1.5)),
             SizedBox(height: 6),
-            Text('ℹ️ رح ينفتح واتساب تلقائياً بعد ما تنهي إضافة العرض، والرسالة بتكون جاهزة فيها رقم العرض الخاص بك — بس أرفق الفيديو وابعت', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall, height: 1.5)),
+            Text('ℹ️ سيفتح واتساب تلقائياً بعد الانتهاء من إضافة العرض، وستكون الرسالة جاهزة وتحتوي على رقم العرض الخاص بك — فقط أرفق الفيديو وأرسله', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall, height: 1.5)),
           ]),
         ),
       ],

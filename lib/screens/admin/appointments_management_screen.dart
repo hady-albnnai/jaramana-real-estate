@@ -216,8 +216,11 @@ class _AppointmentsManagementScreenState
                   style: const TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeCaption)),
             ),
           const Divider(color: Colors.white12, height: 18),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          // ✅ Fix for Bug #16: استخدام Wrap بدلاً من Row لتجنب overflow
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
             children: [
               if (a.sts == 0 || a.sts == 1)
                 TextButton.icon(

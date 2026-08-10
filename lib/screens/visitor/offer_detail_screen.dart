@@ -1024,7 +1024,8 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                   // Only appears on published offers if vdo exists.
                   // "Watch video" button only visible to logged-in users.
                   // Opens booking sheet with video context → enforces verified phone + auto WhatsApp after success.
-                  if (offer.vdo.isNotEmpty) ...[
+                  // ✅ Fix for Bug #8: لا تعرض قسم الفيديو للإدارة، بل اعرض معلومات المراجعة
+                  if (offer.vdo.isNotEmpty && !auth.isAdmin) ...[
                     AppTheme.gapHeightSmall,
                     Container(
                       padding: AppTheme.paddingAllLarge,
@@ -1075,22 +1076,14 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           ),
                           AppTheme.gapHeightMedium,
 
-                          // "Watch video" button — ONLY for logged-in users
+                          // ✅ Fix for Bug #10: عرض الفيديو مباشرة بدون حجز موعد
                           if (auth.isLoggedIn)
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: () => showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (context) => BookAppointmentSheet(
-                                    offer: offer,
-                                    isVideoRequest: true,
-                                  ),
-                                ),
+                                onPressed: () => _playVideo(offer.vdo),
                                 icon: const Icon(Icons.play_circle_outline),
-                                label: const Text('مشاهدة الفيديو (حجز موعد أولاً)'),
+                                label: const Text('مشاهدة الفيديو'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryGold,
                                   foregroundColor: AppTheme.deepBlack,
@@ -1100,9 +1093,95 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                             )
                           else
                             const Text(
-                              'سجّل الدخول لتتمكن من طلب الفيديو',
+                              'سجّل الدخول لتتمكن من مشاهدة الفيديو',
                               style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall),
                             ),
+                        ],
+                      ),
+                    ),
+                    AppTheme.gapHeightXL,
+                  ],
+                  
+                  // ✅ Fix for Bug #8: عرض معلومات المراجعة للإدارة فقط
+                  if (offer.vdo.isNotEmpty && auth.isAdmin) ...[
+                    AppTheme.gapHeightSmall,
+                    Container(
+                      padding: AppTheme.paddingAllLarge,
+                      decoration: BoxDecoration(
+                        color: AppTheme.infoBlue.withOpacity(0.08),
+                        borderRadius: AppTheme.radiusLarge,
+                        border: Border.all(color: AppTheme.infoBlue.withOpacity(0.35)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            const Icon(Icons.admin_panel_settings, color: AppTheme.infoBlue, size: 20),
+                            AppTheme.gapWidthSmall,
+                            const Expanded(
+                              child: Text(
+                                'معلومات للمراجعة (للإدارة فقط)',
+                                style: TextStyle(
+                                    color: AppTheme.infoBlue,
+                                    fontSize: AppTheme.fontSizeSubtitle,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ]),
+                          AppTheme.gapHeightSmall,
+                          Row(
+                            children: [
+                              const Icon(Icons.tag, color: AppTheme.infoBlue, size: 16),
+                              AppTheme.gapWidthSmall,
+                              Text(
+                                'رقم العرض: #${offer.offerNumber ?? 0}',
+                                style: const TextStyle(
+                                    color: AppTheme.textWhite,
+                                    fontSize: AppTheme.fontSizeBody,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                          AppTheme.gapHeightSmall,
+                          Row(
+                            children: [
+                              const Icon(Icons.person, color: AppTheme.infoBlue, size: 16),
+                              AppTheme.gapWidthSmall,
+                              Expanded(
+                                child: Text(
+                                  'المعلن: ${_owner?.nm ?? _owner?.usr ?? 'غير معروف'}',
+                                  style: const TextStyle(
+                                      color: AppTheme.textWhite,
+                                      fontSize: AppTheme.fontSizeBody,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_owner?.ph != null && _owner!.ph.isNotEmpty) ...[
+                            AppTheme.gapHeightSmall,
+                            Row(
+                              children: [
+                                const Icon(Icons.phone, color: AppTheme.infoBlue, size: 16),
+                                AppTheme.gapWidthSmall,
+                                Text(
+                                  'هاتف المعلن: ${_owner!.ph}',
+                                  style: const TextStyle(
+                                      color: AppTheme.textWhite,
+                                      fontSize: AppTheme.fontSizeBody,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ],
+                          AppTheme.gapHeightSmall,
+                          const Text(
+                            'يمكنك مراجعة هذا العرض في مجموعة الواتساب قبل التأكيد.',
+                            style: TextStyle(
+                                color: AppTheme.textGrey,
+                                fontSize: AppTheme.fontSizeSmall,
+                                height: 1.4),
+                          ),
                         ],
                       ),
                     ),
@@ -1581,6 +1660,14 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
   void _openImageViewer(List<String> images, int initialIndex) {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => _FullScreenImageViewer(images: images, initialIndex: initialIndex),
+    ));
+  }
+
+  // ✅ Fix for Bug #10: تشغيل الفيديو مباشرة بدون حجز موعد
+  void _playVideo(String videoUrl) {
+    if (videoUrl.isEmpty) return;
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => VideoPlayerWidget(videoUrl: videoUrl),
     ));
   }
 

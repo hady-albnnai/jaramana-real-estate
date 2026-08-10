@@ -603,10 +603,25 @@ class AccountInfoScreen extends StatelessWidget {
         ),
       );
       if (goComplete == true && context.mounted) {
-        await context.push('/setup-identity');
+        // ✅ Fix for Bug #12: بعد العودة من setup-identity، نرسل طلب التوثيق تلقائياً
+        final result = await context.push('/setup-identity');
+        if (result == true && context.mounted) {
+          // تم حفظ البيانات بنجاح، نرسل طلب التوثيق تلقائياً
+          await _sendVerificationRequest(context);
+        }
       }
       return;
     }
+
+    // ✅ Fix for Bug #12: إرسال طلب التوثيق مباشرة
+    await _sendVerificationRequest(context);
+  }
+
+  // ✅ Fix for Bug #12: فصل منطق إرسال طلب التوثيق ليتم استدعاؤه تلقائياً
+  Future<void> _sendVerificationRequest(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    final user = auth.userModel;
+    if (user == null) return;
 
     final confirmed = await showDialog<bool>(
       context: context,

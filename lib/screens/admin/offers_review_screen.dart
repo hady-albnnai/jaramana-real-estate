@@ -698,7 +698,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                       child: Text(
                         (owner?.nm.isNotEmpty == true
                                 ? owner!.nm[0]
-                                : '؟')
+                                : (owner?.usr.isNotEmpty == true ? owner!.usr[0] : '؟'))
                             .toUpperCase(),
                         style: const TextStyle(
                             color: Colors.black,
@@ -713,7 +713,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                           Text(
                             owner?.nm.isNotEmpty == true
                                 ? owner!.nm
-                                : 'مستخدم بدون اسم',
+                                : (owner?.usr.isNotEmpty == true ? owner!.usr : 'مستخدم بدون اسم'),
                             style: const TextStyle(
                                 color: AppTheme.textWhite,
                                 fontWeight: FontWeight.bold,
@@ -795,29 +795,29 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => _reject(o),
-                          icon: const Icon(Icons.cancel, color: AppTheme.errorRed),
+                          icon: const Icon(Icons.close_rounded, color: AppTheme.errorRed, size: 22),
                           label: const Text('رفض',
-                              style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.bold)),
+                              style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.bold, fontSize: 15)),
                         ),
                       ),
-                      Container(width: 1, height: 36, color: AppTheme.deepBlack),
+                      Container(width: 1, height: 40, color: AppTheme.deepBlack),
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => context.push('/offer/${o.id}'),
-                          icon: const Icon(Icons.preview, color: AppTheme.textWhite),
+                          icon: const Icon(Icons.visibility_rounded, color: AppTheme.textWhite, size: 22),
                           label: const Text('معاينة',
-                              style: TextStyle(color: AppTheme.textWhite)),
+                              style: TextStyle(color: AppTheme.textWhite, fontSize: 15)),
                         ),
                       ),
-                      Container(width: 1, height: 36, color: AppTheme.deepBlack),
+                      Container(width: 1, height: 40, color: AppTheme.deepBlack),
                       Expanded(child: _videoFlagBtn(o)),
-                      Container(width: 1, height: 36, color: AppTheme.deepBlack),
+                      Container(width: 1, height: 40, color: AppTheme.deepBlack),
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => _approve(o),
-                          icon: const Icon(Icons.check_circle, color: AppTheme.successGreen),
+                          icon: const Icon(Icons.check_circle_rounded, color: AppTheme.successGreen, size: 22),
                           label: const Text('قبول',
-                              style: TextStyle(color: AppTheme.successGreen, fontWeight: FontWeight.bold)),
+                              style: TextStyle(color: AppTheme.successGreen, fontWeight: FontWeight.bold, fontSize: 15)),
                         ),
                       ),
                     ],
