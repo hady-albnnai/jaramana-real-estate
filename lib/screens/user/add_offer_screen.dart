@@ -723,55 +723,13 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     isActive: _currentStep >= 2,
   );
 
-  /// 📸 الخطوة الثالثة بوضع التصوير: صور أولية (اختيارية) + زر إرسال طلب التصوير
+  /// 📸 الخطوة الثالثة بوضع التصوير: مراجعة وإرسال طلب التصوير (بدون صور أولية - Bug #25)
   /// بلا سند/عمولة/إقرار/سوشيال/فيديو — هذه كلها تُحدد لاحقاً عند نشر العرض.
   Step _step3Photo() => Step(
-    title: const Text('الصور وإرسال الطلب', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
+    title: const Text('مراجعة وإرسال الطلب', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
     content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // ── صور أولية (اختيارية — المصوّر سيلتقط صوراً احترافية) ──
-      Container(
-        padding: AppTheme.paddingAllMedium,
-        decoration: BoxDecoration(
-          color: AppTheme.primaryGold.withOpacity(0.08),
-          borderRadius: AppTheme.radiusMedium,
-          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
-        ),
-        child: const Row(children: [
-          Icon(Icons.photo_camera, color: AppTheme.primaryGold, size: 20),
-          AppTheme.gapWidthSmall,
-          Expanded(
-            child: Text(
-              'يمكنك إضافة صور أولية الآن، أو انتظار المصوّر المحترف الذي سيلتقط صوراً عالية الجودة.',
-              style: TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeSmall, height: 1.5),
-            ),
-          ),
-        ]),
-      ),
-      AppTheme.gapHeightMedium,
-      ElevatedButton.icon(
-        onPressed: _pickImages,
-        icon: const Icon(Icons.add_a_photo),
-        label: Text('إضافة صور أولية (${_pickedImages.length}/${StorageService.maxImages})'),
-      ),
-      AppTheme.gapHeightSmall,
-      if (_pickedImages.isNotEmpty)
-        Wrap(
-          spacing: 8,
-          children: _pickedImages.asMap().entries.map((e) => Stack(children: [
-            ClipRRect(
-              borderRadius: AppTheme.radiusSmall,
-              child: _thumb(e.value),
-            ),
-            Positioned(
-              top: -5, left: -5,
-              child: IconButton(
-                icon: const Icon(Icons.cancel, color: AppTheme.errorRed),
-                onPressed: () => setState(() => _pickedImages.removeAt(e.key)),
-              ),
-            ),
-          ])).toList(),
-        ),
-      AppTheme.gapHeightXL,
+      // ✅ Bug #25: إزالة حقل الصور الأولية تماماً من طلب التصوير
+      // المصوّر المحترف هو من يلتقط الصور، ليس المستخدم
 
       // ── ملخص الطلب ──
       Container(
@@ -795,7 +753,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
             _summaryRow('السعر', '${_priceCtrl.text} ${_cur == 0 ? 'دولار' : 'ل.س'}'),
           if (_pickedLocation != null)
             _summaryRow('الموقع', '📍 ${_pickedLocation!.latitude.toStringAsFixed(5)}, ${_pickedLocation!.longitude.toStringAsFixed(5)}'),
-          _summaryRow('الصور', _pickedImages.isEmpty ? 'بدون (المصوّر سيلتقطها)' : '${_pickedImages.length} صورة أولية'),
+          _summaryRow('الصور', 'المصوّر المحترف سيلتقطها'),
         ]),
       ),
 
