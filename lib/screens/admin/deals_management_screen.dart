@@ -6,6 +6,7 @@ import '../../models/deal_model.dart';
 import '../../models/offer_model.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import 'complete_deal_screen.dart';
 
 /// 🤝 إدارة الصفقات — عرض + إتمام + تسجيل العمولة
 class DealsManagementScreen extends StatefulWidget {
@@ -205,7 +206,7 @@ class _DealsManagementScreenState extends State<DealsManagementScreen> {
               child: Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: ElevatedButton.icon(
-                  onPressed: () => _completeDialog(d),
+                  onPressed: () => _openCompleteDealScreen(d),
                   icon: const Icon(Icons.check_circle, size: 18),
                   label: const Text('إتمام الصفقة'),
                 ),
@@ -216,51 +217,18 @@ class _DealsManagementScreenState extends State<DealsManagementScreen> {
     );
   }
 
-  Future<void> _completeDialog(DealModel d) async {
-    final comCtrl = TextEditingController(text: d.comVal.toStringAsFixed(0));
-    final noteCtrl = TextEditingController(text: d.comNote ?? '');
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.surfaceBlack,
-        title: const Text('إتمام الصفقة',
-            style: TextStyle(color: AppTheme.primaryGold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: comCtrl,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: AppTheme.textWhite),
-              decoration: const InputDecoration(labelText: 'قيمة العمولة (\$)'),
-            ),
-            AppTheme.gapHeightMedium,
-            TextField(
-              controller: noteCtrl,
-              style: const TextStyle(color: AppTheme.textWhite),
-              decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('إلغاء', style: TextStyle(color: AppTheme.textGrey))),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('تأكيد')),
-        ],
+  /// ✅ فتح صفحة إتمام المعاملة الكاملة (Bug #21)
+  Future<void> _openCompleteDealScreen(DealModel d) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CompleteDealScreen(deal: d),
       ),
     );
-
-    if (ok == true && mounted) {
-      final adminId = context.read<AuthProvider>().userModel?.uid ?? '';
-      final com = double.tryParse(comCtrl.text.trim()) ?? d.comVal;
-      if (await context.read<AdminProvider>().completeDeal(d.id, adminId,
-          commission: com, note: noteCtrl.text.trim())) {
-        _snack('تم إتمام الصفقة');
-        _load();
-      }
+    
+    if (result == true && mounted) {
+      _snack('✅ تم إتمام الصفقة بنجاح');
+      _load();
     }
   }
 
