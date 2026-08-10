@@ -36,14 +36,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
   }
 
   void _parseAndFillOtp(String smsMessage) {
-    final regExp = RegExp(r'[أبتثجحخدرذ](?:\s*[أبتثجحخدرذ]){5}');
+    // ✅ Fix for Bug #11: Parse numeric OTP instead of Arabic letters
+    final regExp = RegExp(r'(\d{6})');
     final match = regExp.firstMatch(smsMessage);
     if (match != null) {
-      final otpText = match.group(0)!;
-      final cleanOtp = otpText.replaceAll(RegExp(r'\s+'), '');
-      if (cleanOtp.length == 6) {
+      final otpText = match.group(1)!;
+      if (otpText.length == 6) {
         for (int i = 0; i < 6; i++) {
-          _ctrls[i].text = cleanOtp[i];
+          _ctrls[i].text = otpText[i];
         }
         _verify();
       }
@@ -129,7 +129,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
             const Text('تحقق من الرمز', style: TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeXL, fontWeight: FontWeight.bold)),
             AppTheme.gapHeightMedium,
             Text(
-              'أدخل الرمز المكون من 6 أحرف المرسل عبر رسالة نصية SMS إلى\n${auth.currentPhone ?? ''}',
+              'أدخل الرمز المكون من 6 أرقام المرسل عبر رسالة نصية SMS إلى\n${auth.currentPhone ?? ''}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeMedium, height: 1.5),
             ),
@@ -142,7 +142,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
                   width: 48,
                   child: TextField(
                     controller: _ctrls[i], focusNode: _nodes[i], textAlign: TextAlign.center,
-                    keyboardType: TextInputType.text,
+                    keyboardType: TextInputType.number,  // ✅ Fix for Bug #11: Use number keyboard
                     maxLength: 1,
                     style: const TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeLarge, fontWeight: FontWeight.bold),
                     decoration: InputDecoration(counterText: '', filled: true, fillColor: AppTheme.surfaceBlack, enabledBorder: OutlineInputBorder(borderRadius: AppTheme.radiusLarge, borderSide: const BorderSide(color: Colors.white10)), focusedBorder: OutlineInputBorder(borderRadius: AppTheme.radiusLarge, borderSide: const BorderSide(color: AppTheme.primaryGold, width: 2))),

@@ -67,14 +67,14 @@ serve(async (req) => {
       )
     }
 
-    const maskedOtp = encodeOtp(otp);
+    // ✅ Fix for Bug #11: Send numeric OTP instead of Arabic letters
     const APP_SIGNATURE_HASH = Deno.env.get('APP_SIGNATURE_HASH') ?? '';
 
     const templates = [
-      `لا تهون حط هالكلمة او عطي موافقة ليتم نسخها تلقائيا: ${maskedOtp}`,
-      `بدنا نكلفك تحط هالاحرف او قلو موافق ولحالها رح تنزل: ${maskedOtp}`,
-      `حبيب القلب هاي الكلمة المطلوبة وافق بتروح لحالها: ${maskedOtp}`,
-      `يا حي الله هي كلمتك: ${maskedOtp}`
+      `رمز التحقق الخاص بك هو: ${otp}`,
+      `كود التفعيل: ${otp}`,
+      `رمز التحقق من الهوية: ${otp}`,
+      `Your verification code is: ${otp}`
     ];
 
     let randomTemplate = templates[Math.floor(Math.random() * templates.length)];
