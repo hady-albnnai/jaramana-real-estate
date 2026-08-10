@@ -179,7 +179,7 @@ class _BecomeBrokerScreenState extends State<BecomeBrokerScreen> {
                   fontWeight: FontWeight.bold)),
           SizedBox(height: 6),
           Text(
-            'احصل على عمولة من كل صفقة، صلاحيات أوسع لإدراج العروض، وأولوية بالظهور.',
+            'صلاحيات أوسع لإدراج العروض، أولوية بالظهور، ولوحة تحكم خاصة بإدارتك.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.black87, fontSize: AppTheme.fontSizeBody),
           ),
@@ -299,11 +299,11 @@ class _BecomeBrokerScreenState extends State<BecomeBrokerScreen> {
                 fontWeight: FontWeight.bold,
                 fontSize: 15)),
         AppTheme.gapHeightSmall,
-        _benefit('💰', 'حصة من كل صفقة عبر المكتب'),
-        _benefit('📊', 'حصة 5 عروض و 5 طلبات (مقابل 1+3 للمستخدم العادي)'),
+        _benefit('💼', 'إدراج حتى 5 عروض و 5 طلبات (مقابل 1+3 للمستخدم العادي)'),
         _benefit('🎯', 'لوحة تحكم خاصة بالعروض والمواعيد والصفقات'),
         _benefit('📈', 'إحصائيات تفصيلية لأدائك'),
         _benefit('⭐', 'أولوية ظهور بنتائج البحث'),
+        _benefit('🤝', 'شبكة عملاء أوسع عبر المكتب'),
         AppTheme.gapHeightXL,
 
         // النموذج
