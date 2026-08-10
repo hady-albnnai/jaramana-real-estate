@@ -122,6 +122,30 @@ serve(async (req) => {
       return json({ success: data === true });
     }
 
+    // ✅ Fix for Bug #9: Add send notification action
+    if (action === "send") {
+      const targetUid = (body.target_uid ?? body.targetUid)?.toString() ?? "";
+      const type = parseInt((body.type ?? "1").toString());
+      const title = (body.title ?? "").toString();
+      const notifBody = (body.body ?? "").toString();
+      const refId = (body.ref_id ?? body.refId ?? "").toString();
+      const actionType = (body.action_type ?? body.actionType ?? "").toString();
+
+      if (!targetUid) return json({ success: false, error: "TARGET_UID_REQUIRED" }, 400);
+      if (!title) return json({ success: false, error: "TITLE_REQUIRED" }, 400);
+
+      const { data, error } = await supabaseAdmin.rpc("notify_user", {
+        p_uid: targetUid,
+        p_type: type,
+        p_title: title,
+        p_body: notifBody,
+        p_ref_id: refId,
+        p_action: actionType,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, notification_id: data });
+    }
+
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     return json({ success: false, error: error instanceof Error ? error.message : String(error) }, 500);

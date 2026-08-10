@@ -82,9 +82,28 @@ class NotificationProvider with ChangeNotifier {
     String refId = '',
   }) async {
     try {
-      // Phase 8: RPC 'notify_user' is locked.
-      // await SupabaseService().client.rpc('notify_user', ...);
-      return true;
+      // ✅ Fix for Bug #9: Use Edge Function to send notification
+      final auth = await SupabaseService().client.auth.getSession();
+      final currentUserId = auth.session?.user.id ?? '';
+      
+      if (currentUserId.isEmpty) return false;
+
+      final res = await SupabaseService().invokeFunction(
+        'user-notifications',
+        body: {
+          'action': 'send',
+          'user_uid': currentUserId,
+          'target_uid': userId,
+          'type': type,
+          'title': title,
+          'body': body,
+          'ref_id': refId,
+          'action_type': action,
+        },
+      );
+      
+      final data = res.data as Map?;
+      return data?['success'] == true;
     } catch (e) {
       return false;
     }

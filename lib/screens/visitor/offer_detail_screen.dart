@@ -21,6 +21,7 @@ import '../../widgets/location_picker.dart';
 import '../../widgets/rating_dialog.dart';
 
 import '../../providers/admin_provider.dart';
+import '../../providers/notification_provider.dart';
 
 class OfferDetailScreen extends StatefulWidget {
   final String offerId;
@@ -210,6 +211,19 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                 'إعجابك انحفظ ❤️ — بس وصلت للحد اليومي (${result.limit} إعجابات)، النقاط ترجع بكرا 🌙'),
             duration: const Duration(seconds: 2),
           ));
+        }
+        
+        // ✅ Fix for Bug #9: Send notification to offer owner
+        if (_offer != null && auth.userModel != null) {
+          final notifProvider = context.read<NotificationProvider>();
+          await notifProvider.sendNotification(
+            userId: _offer!.usrId,
+            type: 2, // إعجاب
+            title: 'إعجاب جديد ❤️',
+            body: '${auth.userModel!.nm} أعجب بعرضك "${_offer!.ttl}"',
+            refId: widget.offerId,
+            action: 'offer_like',
+          );
         }
       }
     }
