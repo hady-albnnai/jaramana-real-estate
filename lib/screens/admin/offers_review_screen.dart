@@ -142,7 +142,12 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         }
       }
       _snack(msg);
-      _load();
+      // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام المراجعة
+      await _load();
+      // تحديث Provider لإشعار الشاشات الأخرى
+      if (mounted) {
+        context.read<AdminProvider>().notifyListeners();
+      }
     } else {
       _snack(result['error']?.toString() ?? 'فشل النشر: ${admin.error ?? ''}');
     }
@@ -188,7 +193,12 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     setState(() => _publishingIds.remove(o.id));
     if (ok) {
       _snack('✅ تم النشر فعلياً على فيسبوك وإنستغرام');
+      // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام النشر
       await _load();
+      // تحديث Provider لإشعار الشاشات الأخرى
+      if (mounted) {
+        context.read<AdminProvider>().notifyListeners();
+      }
     } else {
       _snack(admin.error ?? 'تعذر النشر؛ يمكنك إعادة المحاولة بأمان');
     }
@@ -242,7 +252,12 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     if (!mounted) return;
     setState(() => _bulkPublishing = false);
     _snack('📊 النتيجة: ✅ $successCount نجح • ❌ $failCount فشل/تخطي');
+    // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام النشر
     await _load();
+    // تحديث Provider لإشعار الشاشات الأخرى
+    if (mounted) {
+      context.read<AdminProvider>().notifyListeners();
+    }
   }
 
   Future<void> _reject(OfferModel o) async {
@@ -256,7 +271,12 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     final ok = result['success'] == true;
     if (ok) {
       _snack('تم رفض العرض');
-      _load();
+      // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام المراجعة
+      await _load();
+      // تحديث Provider لإشعار الشاشات الأخرى
+      if (mounted) {
+        context.read<AdminProvider>().notifyListeners();
+      }
     } else {
       _snack(result['error']?.toString() ?? 'فشل الرفض');
     }
