@@ -105,9 +105,9 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
                               crossAxisSpacing: AppTheme.spacingMedium,
                               childAspectRatio: AppTheme.responsiveValue(
                                 context,
-                                mobile: 1.8,
-                                tablet: 2.0,
-                                desktop: 2.2,
+                                mobile: 2.3,
+                                tablet: 2.4,
+                                desktop: 2.5,
                               ),
                             ),
                             itemCount: 4,
@@ -183,7 +183,7 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
     return Container(
       padding: AppTheme.responsivePadding(
         context,
-        mobile: AppTheme.paddingAllMedium,
+        mobile: const EdgeInsets.all(10),
         tablet: AppTheme.paddingAllLarge,
         desktop: AppTheme.paddingAllLarge,
       ),
@@ -195,39 +195,41 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              Text(emoji, style: TextStyle(
-                fontSize: AppTheme.responsiveFontSize(
-                  context,
-                  mobile: AppTheme.fontSizeTitle,
-                  tablet: AppTheme.fontSizeHeadline,
-                ),
-              )),
-              const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                      color: AppTheme.textGrey,
-                      fontSize: AppTheme.responsiveFontSize(
-                        context,
-                        mobile: AppTheme.fontSizeSmall,
-                        tablet: AppTheme.fontSizeBody,
-                      ))),
+              Text(emoji, style: const TextStyle(fontSize: 18)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(label,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: AppTheme.textGrey,
+                        fontSize: AppTheme.responsiveFontSize(
+                          context,
+                          mobile: AppTheme.fontSizeXS,
+                          tablet: AppTheme.fontSizeBody,
+                        ))),
+              ),
             ],
           ),
-          AppTheme.gapHeightXS,
+          const SizedBox(height: 2),
           Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                   color: AppTheme.primaryGold,
                   fontSize: AppTheme.responsiveFontSize(
                     context,
-                    mobile: AppTheme.fontSizeHeadline,
+                    mobile: AppTheme.fontSizeTitle,
                     tablet: AppTheme.fontSizeLarge,
                     desktop: AppTheme.fontSizeXL,
                   ),
                   fontWeight: FontWeight.bold)),
           Text(sub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppTheme.textGrey,
                 fontSize: AppTheme.responsiveFontSize(
