@@ -421,6 +421,13 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
               border: OutlineInputBorder(),
             ),
           ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4, right: 4),
+            child: Text(
+              '⚠️ يرجى إدخال الاسم الحقيقي الكامل (الاسم التلقائي قد يكون اسم المستخدم)',
+              style: TextStyle(color: AppTheme.warningOrange, fontSize: 11),
+            ),
+          ),
           AppTheme.gapHeightMedium,
           TextField(
             controller: _clientPhoneCtrl,

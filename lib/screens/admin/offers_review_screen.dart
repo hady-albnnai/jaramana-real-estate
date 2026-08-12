@@ -10,6 +10,7 @@ import '../../core/services/business_service.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/constants/db_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_utils.dart';
 
 /// شاشة مراجعة العروض الجديدة للإدارة
 /// تعرض الصور + معلومات المرسل + التفاصيل + كشف العروض المكررة
@@ -720,7 +721,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                                 fontSize: AppTheme.fontSizeBody),
                           ),
                           Text(
-                            owner?.ph ?? '—',
+                            AppUtils.displayPhone(owner?.ph ?? '') == '' ? '—' : AppUtils.displayPhone(owner?.ph ?? ''),
                             style: const TextStyle(
                                 color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
                           ),

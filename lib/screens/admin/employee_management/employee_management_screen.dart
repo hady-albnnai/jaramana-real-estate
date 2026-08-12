@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../providers/admin_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/app_utils.dart';
 import '../../../models/user_model.dart';
 import '../../../services/storage_service.dart';
 import 'add_employee_dialog.dart';
@@ -436,7 +437,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _detailRow(Icons.badge_outlined, 'الدور', _getRoleName(user.role)),
-              _detailRow(Icons.phone, 'الهاتف', user.ph),
+              _detailRow(Icons.phone, 'الهاتف', AppUtils.displayPhone(user.ph)),
               _detailRow(Icons.alternate_email, 'اسم المستخدم', user.usr ?? ''),
               _detailRow(Icons.email_outlined, 'الإيميل', user.eml ?? ''),
               _detailRow(Icons.credit_card, 'الرقم الوطني', user.sid),
@@ -656,7 +657,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
               children: [
                 const Icon(Icons.phone, size: 16, color: AppTheme.textGrey),
                 const SizedBox(width: 6),
-                Text(user.ph, style: const TextStyle(color: AppTheme.textGrey)),
+                Text(AppUtils.displayPhone(user.ph), style: const TextStyle(color: AppTheme.textGrey)),
               ],
             ),
             if (user.eml != null) ...[

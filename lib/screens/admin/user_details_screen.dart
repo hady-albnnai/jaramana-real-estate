@@ -288,7 +288,7 @@ class _UserDetailsScreenState extends State<UserDetailsScreen>
                           fontSize: AppTheme.fontSizeTitle,
                           fontWeight: FontWeight.bold),
                     ),
-                    Text(u.ph,
+                    Text(AppUtils.displayPhone(u.ph),
                         style: const TextStyle(
                             color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
                     if (u.eml?.isNotEmpty == true)

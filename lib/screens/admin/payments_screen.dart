@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/payment_model.dart';
 import '../../models/user_model.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_utils.dart';
 import '../../providers/config_provider.dart';
 import '../../services/storage_service.dart';
 
@@ -196,7 +197,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                   ? _usersCache[p.uid]!.nm
                   : _short(p.uid)),
           if (_usersCache[p.uid]?.ph.isNotEmpty == true)
-            _row('الهاتف', _usersCache[p.uid]!.ph),
+            _row('الهاتف', AppUtils.displayPhone(_usersCache[p.uid]!.ph)),
           _row('النوع', _typeLabel(p)),
           // السعر المدفوع مقابل المفترض
           Builder(builder: (ctx) {

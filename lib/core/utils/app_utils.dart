@@ -82,6 +82,19 @@ class AppUtils {
     }
   }
 
+  /// عرض رقم الهاتف بالتنسيق المحلي (09xxxxxxxx) — يحذف +963
+  static String displayPhone(String phone) {
+    if (phone.isEmpty) return '';
+    final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
+    if (digits.startsWith('963') && digits.length == 12) {
+      return '0${digits.substring(3)}';
+    }
+    if (phone.startsWith('+963')) {
+      return '0${phone.substring(4)}';
+    }
+    return phone;
+  }
+
   static bool isValidPhone(String phone) {
     return RegExp(r'^09\d{8}$').hasMatch(phone);
   }

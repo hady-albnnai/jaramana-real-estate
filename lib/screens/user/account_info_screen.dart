@@ -107,7 +107,7 @@ class AccountInfoScreen extends StatelessWidget {
           ),
           AppTheme.gapHeightMedium,
           _infoRow(
-              Icons.phone_android_outlined, 'الهاتف', user.ph, context),
+              Icons.phone_android_outlined, 'الهاتف', AppUtils.displayPhone(user.ph), context),
           _infoRow(Icons.person_outline_rounded, 'الاسم',
               user.nm.isEmpty ? 'غير محدد' : user.nm, context),
           if (user.usr != null && user.usr!.isNotEmpty)

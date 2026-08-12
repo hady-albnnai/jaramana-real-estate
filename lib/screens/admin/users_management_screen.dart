@@ -5,6 +5,7 @@ import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/user_model.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_utils.dart';
 
 /// 👥 إدارة المستخدمين — بحث + حظر/تجميد/تفعيل + تغيير الدور
 class UsersManagementScreen extends StatefulWidget {
@@ -137,7 +138,7 @@ class _UsersManagementScreenState extends State<UsersManagementScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AppTheme.gapHeightXS,
-            Text('${u.ph}  •  ${u.roleName}',
+            Text('${AppUtils.displayPhone(u.ph)}  •  ${u.roleName}',
                 style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
             Text('${u.badgeName}  •  ⭐ ${u.pt}',
                 style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
