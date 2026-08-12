@@ -37,6 +37,19 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
   void _prev() => setState(() { if (_currentStep > 0) _currentStep--; });
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // تعبئة تلقائية لاسم العميل ورقم هاتفه من حساب المستخدم
+      final user = context.read<AuthProvider>().userModel;
+      if (user != null) {
+        if (user.nm.isNotEmpty) _clientNameCtrl.text = user.nm;
+        if (user.ph.isNotEmpty) _clientPhoneCtrl.text = user.ph;
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _clientNameCtrl.dispose();
     _clientPhoneCtrl.dispose();

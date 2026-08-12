@@ -319,7 +319,10 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
     final u = context.read<AuthProvider>().userModel;
     if (u == null) return false;
     final ph = u.ph.trim();
-    return ph.isNotEmpty && u.vrf != 0;
+    // المستخدم اللي سجل عبر الهاتف (ph مش فاضي) = هاتفو متحقق منه تلقائياً
+    // لا حاجة لـ OTP إضافي — التسجيل نفسه كان عبر OTP
+    // vrf هو للتوثيق الرسمي (هوية + سند) وليس لتأكيد رقم الهاتف
+    return ph.isNotEmpty;
   }
 
   Future<void> _sendPhoneOtp() async {

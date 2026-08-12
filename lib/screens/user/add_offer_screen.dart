@@ -156,6 +156,11 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ConfigProvider>().loadConfig();
+      // تعبئة تلقائية لرقم الهاتف من حساب المستخدم
+      final user = context.read<AuthProvider>().userModel;
+      if (user != null && user.ph.isNotEmpty) {
+        _contactPhoneCtrl.text = user.ph;
+      }
     });
   }
 
