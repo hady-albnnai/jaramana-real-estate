@@ -120,7 +120,7 @@ class _LegalConsultationBookingScreenState extends State<LegalConsultationBookin
         final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
         await supabaseStorage.from('consultation_files').uploadBinary(
           path, bytes,
-          fileOptions: const FileOptions(cacheControl: '3600', upsert: false, contentType: 'image/jpeg'),
+          fileOptions: FileOptions(cacheControl: '3600', upsert: false, contentType: 'image/jpeg'),
         );
         urls.add(path);
       }
