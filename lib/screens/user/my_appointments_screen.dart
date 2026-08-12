@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/appointment_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/offer_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/rating_dialog.dart';

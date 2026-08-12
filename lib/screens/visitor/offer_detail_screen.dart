@@ -1667,7 +1667,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
   void _playVideo(String videoUrl) {
     if (videoUrl.isEmpty) return;
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => VideoPlayerWidget(videoUrl: videoUrl),
+      builder: (_) => OfferVideoPlayer(videoUrl: videoUrl),
     ));
   }
 

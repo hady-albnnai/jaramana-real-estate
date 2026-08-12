@@ -10,6 +10,16 @@ class AppUtils {
     return '${formatter.format(price)} $symbol';
   }
 
+  /// تنسيق التاريخ فقط (yyyy/MM/dd)
+  static String formatDate(dynamic ts) {
+    return formatTimestamp(ts, pattern: 'yyyy/MM/dd');
+  }
+
+  /// تنسيق الوقت فقط (HH:mm)
+  static String formatTime(dynamic ts) {
+    return formatTimestamp(ts, pattern: 'HH:mm');
+  }
+
   static String formatTimestamp(dynamic ts, {String pattern = 'yyyy/MM/dd'}) {
     if (ts == null) return '';
     DateTime date;

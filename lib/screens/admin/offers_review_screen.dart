@@ -698,7 +698,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                       child: Text(
                         (owner?.nm.isNotEmpty == true
                                 ? owner!.nm[0]
-                                : (owner?.usr.isNotEmpty == true ? owner!.usr[0] : '؟'))
+                                : (owner?.usr?.isNotEmpty == true ? owner!.usr![0] : '؟'))
                             .toUpperCase(),
                         style: const TextStyle(
                             color: Colors.black,
@@ -713,7 +713,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                           Text(
                             owner?.nm.isNotEmpty == true
                                 ? owner!.nm
-                                : (owner?.usr.isNotEmpty == true ? owner!.usr : 'مستخدم بدون اسم'),
+                                : (owner?.usr?.isNotEmpty == true ? owner!.usr! : 'مستخدم بدون اسم'),
                             style: const TextStyle(
                                 color: AppTheme.textWhite,
                                 fontWeight: FontWeight.bold,

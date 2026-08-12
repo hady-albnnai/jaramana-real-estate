@@ -83,8 +83,8 @@ class NotificationProvider with ChangeNotifier {
   }) async {
     try {
       // ✅ Fix for Bug #9: Use Edge Function to send notification
-      final auth = await SupabaseService().client.auth.getSession();
-      final currentUserId = auth.session?.user.id ?? '';
+      final session = SupabaseService().client.auth.currentSession;
+      final currentUserId = session?.user.id ?? '';
       
       if (currentUserId.isEmpty) return false;
 
