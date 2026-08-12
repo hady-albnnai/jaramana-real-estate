@@ -104,8 +104,8 @@ class _State extends State<LegalConsultationBookingScreen> {
       final consultRes = await SupabaseService().invokeFunction('legal-actions',
           body: {'action': 'list_my_consultations', 'user_uid': uid});
       final cData = consultRes.data as Map<String, dynamic>?;
-      final all = cData?['success'] == true
-          ? List<Map<String, dynamic>>.from(cData['consultations'] as List? ?? []) : <Map<String, dynamic>>[];
+      final all = cData != null && cData['success'] == true
+          ? List<Map<String, dynamic>>.from((cData['consultations'] as List?) ?? []) : <Map<String, dynamic>>[];
       
       Map<String, dynamic>? active;
       final previous = <Map<String, dynamic>>[];
