@@ -583,16 +583,7 @@ serve(async (req) => {
       const expectedPrice = officialPrices[serviceType] ?? 0;
       if (price !== expectedPrice) return json({ success: false, error: "INVALID_PRICE", expected: expectedPrice }, 400);
 
-      // 🔒 حد أقصى للاستشارات المعلقة (status=0 فقط) — المحادثات المفتوحة (status=1) لا تُحسب
-      const { count: activeCount } = await supabaseAdmin
-        .from("legal_consultations")
-        .select("*", { count: "exact", head: true })
-        .eq("user_uid", uid)
-        .eq("status", 0)
-        .eq("i_del", 0);
-      if ((activeCount ?? 0) >= 3) {
-        return json({ success: false, error: "MAX_PENDING_CONSULTATIONS", message: "لديك 3 طلبات معلقة — انتظر قبولها أو إلغاءها قبل حجز استشارة جديدة" }, 429);
-      }
+      // لا حد أقصى للمحادثات — المستخدم يقدر يحجز استشارات جديدة بحرية
 
       const { data, error } = await supabaseAdmin.rpc("create_legal_consultation_internal", {
         p_user_uid: uid,
@@ -877,12 +868,14 @@ serve(async (req) => {
         return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
       }
 
-      // التحقق: المحادثة مفتوحة ولم تنتهِ
+      // التحقق: المحادثة مفتوحة (لا نقفل تلقائياً — المستخدم يجدد بالدفع)
       if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
+      
+      // التحقق: المحادثة لم تتجاوز 7 أيام
       const startedAt = new Date(row.chat_started_at).getTime();
-      const durationMs = (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
-      if (Date.now() > startedAt + durationMs) {
-        return json({ success: false, error: "CHAT_EXPIRED" }, 400);
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() > startedAt + sevenDaysMs) {
+        return json({ success: false, error: "CHAT_EXPIRED_7DAYS", message: "انتهت صلاحية المحادثة (7 أيام)" }, 400);
       }
 
       // حفظ الرسالة
@@ -1108,6 +1101,102 @@ serve(async (req) => {
       }
 
       return json({ success: true, reactivate_count: newCount });
+    }
+
+    // ─── تجديد وقت المحادثة (دفع + إضافة 15 دقيقة) ───
+    if (action === "renew_chat") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, chat_started_at, chat_duration_minutes, renew_count, expires_at")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // فقط صاحب الاستشارة يجدد
+      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
+      if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
+
+      // التحقق: لم تتجاوز 7 أيام
+      const startedAt = new Date(row.chat_started_at).getTime();
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() > startedAt + sevenDaysMs) {
+        return json({ success: false, error: "CHAT_EXPIRED_7DAYS", message: "انتهت صلاحية المحادثة (7 أيام)" }, 400);
+      }
+
+      const newDuration = (Number(row.chat_duration_minutes) || 15) + 15;
+      const newRenewCount = (Number(row.renew_count) || 0) + 1;
+      await supabaseAdmin.from("legal_consultations").update({
+        chat_duration_minutes: newDuration,
+        renew_count: newRenewCount,
+      }).eq("id", consultId);
+
+      // رسالة system
+      await supabaseAdmin.from("consultation_chats").insert({
+        consultation_id: consultId, sender_id: uid,
+        message_type: "system", content: `⏱️ تم تجديد المحادثة 15 دقيقة إضافية (التجديد رقم ${newRenewCount})`,
+      });
+
+      // إشعار المحامي
+      const { data: consult } = await supabaseAdmin
+        .from("legal_consultations").select("lawyer_uid").eq("id", consultId).maybeSingle();
+      if (consult?.lawyer_uid) {
+        await supabaseAdmin.from("notifications").insert({
+          uid: consult.lawyer_uid, tp: 1, ttl: "⏱️ تم تجديد المحادثة",
+          bdy: `العميل جدد المحادثة 15 دقيقة إضافية`,
+          ref_id: consultId, act: "chat_renewed", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: consult.lawyer_uid, p_title: "⏱️ تجديد المحادثة",
+            p_body: "العميل جدد 15 دقيقة إضافية",
+            p_data: { act: "chat_renewed", ref_id: consultId },
+          });
+        } catch {}
+      }
+
+      return json({ success: true, new_duration: newDuration, renew_count: newRenewCount });
+    }
+
+    // ─── جلب المحادثات السابقة (لخيار المتابعة) ───
+    if (action === "list_previous_chats") {
+      const { data, error } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, subject, lawyer_alias, chat_started_at, chat_duration_minutes, renew_count, status, ts_crt")
+        .eq("user_uid", uid)
+        .eq("service_type", 0) // هاتفية فقط
+        .in("status", [1, 2]) // مؤكدة أو منتهية
+        .eq("i_del", 0)
+        .order("ts_crt", { ascending: false })
+        .limit(10);
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, consultations: data ?? [] });
+    }
+
+    // ─── تحويل لحضورية مع خصم ───
+    if (action === "convert_to_onsite") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, price, converted_to_onsite")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
+      if (row.converted_to_onsite) return json({ success: false, error: "ALREADY_CONVERTED" }, 400);
+
+      // الخصم = سعر الاستشارة الهاتفية المدفوع
+      const discount = Number(row.price) || 500;
+      const remainingAmount = 2000 - discount;
+
+      await supabaseAdmin.from("legal_consultations").update({
+        converted_to_onsite: true,
+        onsite_discount: discount,
+      }).eq("id", consultId);
+
+      return json({ success: true, discount, remaining_amount: remainingAmount });
     }
 
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);
