@@ -135,7 +135,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       final bytes = await (compressed ?? File(file.path)).readAsBytes();
       final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.jpg';
       await SupabaseService().storage.from('consultation_files').uploadBinary(
-        path, bytes, const FileOptions(cacheControl: '3600', upsert: false, contentType: 'image/jpeg'),
+        path, bytes,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: false, contentType: 'image/jpeg'),
       );
       await _sendMessage('image', '', fileUrl: path, fileName: file.name);
     } catch (e) {

@@ -120,7 +120,7 @@ class _LegalConsultationBookingScreenState extends State<LegalConsultationBookin
         final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
         await supabaseStorage.from('consultation_files').uploadBinary(
           path, bytes,
-          const FileOptions(cacheControl: '3600', upsert: false, contentType: 'image/jpeg'),
+          fileOptions: const FileOptions(cacheControl: '3600', upsert: false, contentType: 'image/jpeg'),
         );
         urls.add(path);
       }
@@ -329,11 +329,12 @@ class _LegalConsultationBookingScreenState extends State<LegalConsultationBookin
             // ── استشاراتي السابقة ──
             const Text('استشاراتي:', style: TextStyle(color: AppTheme.primaryGold, fontSize: 15, fontWeight: FontWeight.bold)),
             AppTheme.gapHeightSmall,
-            _loadingConsultations
-                ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
-                : _myConsultations.isEmpty
-                    ? const Text('لا توجد استشارات سابقة', style: TextStyle(color: AppTheme.textGrey))
-                    : ..._myConsultations.map(_consultationCard),
+            if (_loadingConsultations)
+              const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
+            else if (_myConsultations.isEmpty)
+              const Text('لا توجد استشارات سابقة', style: TextStyle(color: AppTheme.textGrey))
+            else
+              ..._myConsultations.map((c) => _consultationCard(c)),
           ],
         ),
       ),
