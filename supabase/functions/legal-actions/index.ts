@@ -574,7 +574,14 @@ serve(async (req) => {
       const serviceType = Number(body.service_type ?? 0);
       const subject = (body.subject ?? "").toString().trim();
       const price = Number(body.price ?? 0);
+      const attachments = Array.isArray(body.attachments) ? body.attachments.map(String) : [];
       if (!subject) return json({ success: false, error: "SUBJECT_REQUIRED" }, 400);
+      if (serviceType < 0 || serviceType > 1) return json({ success: false, error: "INVALID_SERVICE_TYPE" }, 400);
+
+      // الأسعار الرسمية: 0=هاتفية 500, 1=حضورية 2000
+      const officialPrices: Record<number, number> = { 0: 500, 1: 2000 };
+      const expectedPrice = officialPrices[serviceType] ?? 0;
+      if (price !== expectedPrice) return json({ success: false, error: "INVALID_PRICE", expected: expectedPrice }, 400);
 
       // 🔒 حد أقصى للاستشارات النشطة (status 0 أو 1)
       const { count: activeCount } = await supabaseAdmin
@@ -598,10 +605,31 @@ serve(async (req) => {
       const consultation = Array.isArray(data) ? data[0] : data;
       const consultId = consultation?.id?.toString() ?? "";
 
-      // 🔔 إشعار المحامي المُسند (إن وُجد)
+      // تحديد lawyer_alias (محامي المكتب الأول/الثاني/الثالث)
       const lawyerUid = consultation?.lawyer_uid?.toString() ?? "";
+      let lawyerAlias = "محامي المكتب";
       if (lawyerUid) {
-        const serviceNames = ["استشارة هاتفية", "جلسة مكتبية", "باقة توثيق شامل"];
+        const { count: lawyerOrder } = await supabaseAdmin
+          .from("lawyer_profiles").select("*", { count: "exact", head: true })
+          .eq("is_active", true)
+          .lte("created_at", (consultation as Record<string, unknown>)?.created_at ?? new Date().toISOString());
+        const orderNum = (lawyerOrder ?? 1);
+        const arabicOrdinals = ["", "الأول", "الثاني", "الثالث", "الرابع", "الخامس"];
+        lawyerAlias = `محامي المكتب ${arabicOrdinals[orderNum] ?? orderNum}`;
+        // حفظ alias و attachments
+        await supabaseAdmin.from("legal_consultations").update({
+          lawyer_alias: lawyerAlias,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        }).eq("id", consultId);
+      } else if (attachments.length > 0) {
+        await supabaseAdmin.from("legal_consultations").update({
+          attachments,
+        }).eq("id", consultId);
+      }
+
+      // 🔔 إشعار المحامي المُسند (إن وُجد)
+      if (lawyerUid) {
+        const serviceNames = ["استشارة هاتفية", "جلسة مكتبية"];
         const sName = serviceNames[serviceType] ?? "استشارة قانونية";
         const { data: userData } = await supabaseAdmin
           .from("users").select("nm").eq("id", uid).maybeSingle();
@@ -763,6 +791,312 @@ serve(async (req) => {
       }
 
       return json({ success: true });
+    }
+
+    // ─── فتح المحادثة (المحامي يضغط "بدء المحادثة") ───
+    if (action === "start_chat") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, status, chat_started_at")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // فقط المحامي المُسند أو الإدارة يفتح المحادثة
+      if (isLawyer(role) && row.lawyer_uid !== uid && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
+      }
+      if (Number(row.status) !== 1) return json({ success: false, error: "CONSULTATION_NOT_CONFIRMED" }, 400);
+      if (row.chat_started_at) return json({ success: false, error: "CHAT_ALREADY_STARTED" }, 400);
+
+      const now = new Date().toISOString();
+      await supabaseAdmin.from("legal_consultations").update({
+        chat_started_at: now, status: 1,
+      }).eq("id", consultId);
+
+      // رسالة system
+      await supabaseAdmin.from("consultation_chats").insert({
+        consultation_id: consultId, sender_id: uid,
+        message_type: "system", content: "بدأت المحادثة — لديك 15 دقيقة للاستشارة",
+      });
+
+      // إشعار الطالب
+      if (row.user_uid) {
+        await supabaseAdmin.from("notifications").insert({
+          uid: row.user_uid, tp: 1, ttl: "💬 المحامي فتح المحادثة",
+          bdy: "يمكنك الآن بدء الاستشارة القانونية — لديك 15 دقيقة",
+          ref_id: consultId, act: "chat_started", i_rd: 0, i_del: 0, ts_crt: now,
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: row.user_uid, p_title: "💬 المحادثة مفتوحة",
+            p_body: "ابدأ استشارتك القانونية الآن",
+            p_data: { act: "chat_started", ref_id: consultId },
+          });
+        } catch {}
+      }
+
+      return json({ success: true, chat_started_at: now });
+    }
+
+    // ─── إرسال رسالة في المحادثة ───
+    if (action === "send_chat_message") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      const messageType = (body.message_type ?? "text").toString();
+      const content = (body.content ?? "").toString().trim();
+      const fileUrl = (body.file_url ?? "").toString();
+      const fileName = (body.file_name ?? "").toString();
+      const durationSeconds = body.duration_seconds ? Number(body.duration_seconds) : null;
+
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (messageType === "text" && !content) return json({ success: false, error: "CONTENT_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, status")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // التحقق: المستخدم أو المحامي المُسند فقط
+      const isStudent = row.user_uid === uid;
+      const isAssignedLawyer = isLawyer(role) && row.lawyer_uid === uid;
+      const isAdminUser = canManageLawyerProfiles(role);
+      if (!isStudent && !isAssignedLawyer && !isAdminUser) {
+        return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+      }
+
+      // التحقق: المحادثة مفتوحة ولم تنتهِ
+      if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
+      const startedAt = new Date(row.chat_started_at).getTime();
+      const durationMs = (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+      if (Date.now() > startedAt + durationMs) {
+        return json({ success: false, error: "CHAT_EXPIRED" }, 400);
+      }
+
+      // حفظ الرسالة
+      const { data: msg, error: insertErr } = await supabaseAdmin
+        .from("consultation_chats").insert({
+          consultation_id: consultId, sender_id: uid,
+          message_type: messageType, content,
+          file_url: fileUrl || null, file_name: fileName || null,
+          duration_seconds: durationSeconds,
+        }).select().single();
+      if (insertErr) return json({ success: false, error: insertErr.message }, 400);
+
+      // إشعار الطرف الآخر
+      const recipientUid = isStudent ? row.lawyer_uid : row.user_uid;
+      if (recipientUid) {
+        const preview = messageType === "text" ? content.slice(0, 50) : messageType === "voice" ? "🎤 رسالة صوتية" : "📎 صورة";
+        await supabaseAdmin.from("notifications").insert({
+          uid: recipientUid, tp: 1, ttl: "💬 رسالة جديدة",
+          bdy: preview, ref_id: consultId, act: "chat_message", i_rd: 0, i_del: 0,
+          ts_crt: new Date().toISOString(),
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: recipientUid, p_title: "💬 رسالة جديدة",
+            p_body: preview,
+            p_data: { act: "chat_message", ref_id: consultId },
+          });
+        } catch {}
+      }
+
+      return json({ success: true, message: msg });
+    }
+
+    // ─── جلب رسائل المحادثة ───
+    if (action === "get_chat_messages") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, extended, status, lawyer_alias")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // التحقق: المشارك فقط
+      const isStudent = row.user_uid === uid;
+      const isAssignedLawyer = isLawyer(role) && row.lawyer_uid === uid;
+      const isAdminUser = canManageLawyerProfiles(role);
+      if (!isStudent && !isAssignedLawyer && !isAdminUser) {
+        return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+      }
+
+      const { data: messages, error: msgErr } = await supabaseAdmin
+        .from("consultation_chats")
+        .select("*")
+        .eq("consultation_id", consultId)
+        .eq("i_del", 0)
+        .order("ts_crt", { ascending: true });
+      if (msgErr) return json({ success: false, error: msgErr.message }, 400);
+
+      // توقيع روابط الملفات
+      const signedMessages = await Promise.all((messages ?? []).map(async (m: Record<string, unknown>) => {
+        const msg = { ...m };
+        const fileUrl = (msg.file_url ?? "").toString();
+        if (fileUrl && !fileUrl.startsWith("http")) {
+          const { data } = await supabaseAdmin.storage
+            .from("consultation_files").createSignedUrl(fileUrl, 3600);
+          if (data?.signedUrl) msg.file_signed_url = data.signedUrl;
+        }
+        return msg;
+      }));
+
+      // تحديد الرسائل غير المقروءة كمقروءة (للطرف الآخر)
+      const otherUid = isStudent ? row.lawyer_uid : row.user_uid;
+      if (otherUid) {
+        await supabaseAdmin.from("consultation_chats")
+          .update({ is_read: true })
+          .eq("consultation_id", consultId)
+          .eq("is_read", false)
+          .neq("sender_id", uid);
+      }
+
+      // حساب الوقت المتبقي
+      let remainingSeconds = 0;
+      let chatExpired = false;
+      if (row.chat_started_at) {
+        const startedAt = new Date(row.chat_started_at).getTime();
+        const durationMs = (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+        const elapsed = Date.now() - startedAt;
+        remainingSeconds = Math.max(0, Math.floor((durationMs - elapsed) / 1000));
+        chatExpired = elapsed > durationMs;
+      }
+
+      return json({
+        success: true,
+        messages: signedMessages,
+        chat_info: {
+          chat_started_at: row.chat_started_at,
+          chat_duration_minutes: row.chat_duration_minutes,
+          extended: row.extended,
+          remaining_seconds: remainingSeconds,
+          chat_expired: chatExpired,
+          lawyer_alias: row.lawyer_alias ?? "محامي المكتب",
+          status: row.status,
+        },
+      });
+    }
+
+    // ─── تمديد المحادثة (5 دقائق — مرة واحدة فقط) ───
+    if (action === "extend_chat") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, extended, chat_duration_minutes, chat_started_at")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // فقط المحامي المُسند يمدد
+      if (isLawyer(role) && row.lawyer_uid !== uid && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
+      }
+      if (row.extended) return json({ success: false, error: "ALREADY_EXTENDED" }, 400);
+      if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
+
+      const newDuration = (Number(row.chat_duration_minutes) || 15) + 5;
+      await supabaseAdmin.from("legal_consultations").update({
+        extended: true, extended_by: uid, chat_duration_minutes: newDuration,
+      }).eq("id", consultId);
+
+      // رسالة system
+      await supabaseAdmin.from("consultation_chats").insert({
+        consultation_id: consultId, sender_id: uid,
+        message_type: "system", content: "⏱️ تم تمديد المحادثة 5 دقائق إضافية",
+      });
+
+      // إشعار الطالب
+      if (row.user_uid) {
+        await supabaseAdmin.from("notifications").insert({
+          uid: row.user_uid, tp: 1, ttl: "⏱️ تم تمديد المحادثة",
+          bdy: "المحامي مدّد المحادثة 5 دقائق إضافية",
+          ref_id: consultId, act: "chat_extended", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: row.user_uid, p_title: "⏱️ تمديد المحادثة",
+            p_body: "5 دقائق إضافية",
+            p_data: { act: "chat_extended", ref_id: consultId },
+          });
+        } catch {}
+      }
+
+      return json({ success: true, new_duration: newDuration });
+    }
+
+    // ─── تقييم الاستشارة ───
+    if (action === "rate_consultation") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      const rating = Number(body.rating ?? 0);
+      const comment = (body.comment ?? "").toString().trim();
+
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (rating < 1 || rating > 5) return json({ success: false, error: "INVALID_RATING" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, rating")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // فقط صاحب الاستشارة يقيّم
+      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
+      if (row.rating) return json({ success: false, error: "ALREADY_RATED" }, 400);
+
+      await supabaseAdmin.from("legal_consultations").update({
+        rating, rating_comment: comment || null,
+      }).eq("id", consultId);
+
+      return json({ success: true });
+    }
+
+    // ─── إعادة تفعيل الاستشارة (بعد عدم رد المحامي) ───
+    if (action === "reactivate_consultation") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, status, ts_crt, reactivate_count")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
+      if (Number(row.status) !== 0) return json({ success: false, error: "NOT_PENDING" }, 400);
+
+      // التحقق: مرّت ساعة على الأقل
+      const createdAt = new Date(row.ts_crt).getTime();
+      const hoursPassed = (Date.now() - createdAt) / (1000 * 60 * 60);
+      if (hoursPassed < 1) return json({ success: false, error: "TOO_EARLY", hours_remaining: Math.ceil(1 - hoursPassed) }, 400);
+
+      const now = new Date().toISOString();
+      const newCount = (Number(row.reactivate_count) || 0) + 1;
+      await supabaseAdmin.from("legal_consultations").update({
+        reactivate_count: newCount, last_reactivate_at: now,
+      }).eq("id", consultId);
+
+      // إشعار المحامي
+      if (row.lawyer_uid) {
+        await supabaseAdmin.from("notifications").insert({
+          uid: row.lawyer_uid, tp: 1, ttl: "🔔 إعادة تفعيل استشارة",
+          bdy: `المستخدم أعاد تفعيل طلب الاستشارة (المرة ${newCount})`,
+          ref_id: consultId, act: "consultation_reactivated", i_rd: 0, i_del: 0, ts_crt: now,
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: row.lawyer_uid, p_title: "🔔 استشارة معاد تفعيلها",
+            p_body: `المرة ${newCount}`,
+            p_data: { act: "consultation_reactivated", ref_id: consultId },
+          });
+        } catch {}
+      }
+
+      return json({ success: true, reactivate_count: newCount });
     }
 
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);

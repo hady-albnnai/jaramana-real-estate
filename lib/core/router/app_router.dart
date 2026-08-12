@@ -56,6 +56,7 @@ import '../../screens/executor/execute_task_screen.dart';
 
 // === Legal & Expediter ===
 import '../../screens/legal/legal_consultation_booking_screen.dart';
+import '../../screens/legal/consultation_chat_screen.dart';
 import '../../screens/lawyer/lawyer_dashboard_screen.dart';
 import '../../screens/expediter/expediter_task_detail_screen.dart';
 import '../../screens/expediter/expediter_tasks_screen.dart';
@@ -317,6 +318,10 @@ class AppRouter {
       GoRoute(path: '/admin/analytics', builder: (context, state) => const AnalyticsScreen()),
       GoRoute(path: '/admin/completion-requests', builder: (context, state) => const CompletionRequestsScreen()),
       GoRoute(path: '/legal/consultations', builder: (context, state) => const LegalConsultationBookingScreen()),
+      GoRoute(path: '/legal/chat/:id', builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        return ConsultationChatScreen(consultationId: id);
+      }),
       GoRoute(path: '/lawyer/dashboard', builder: (context, state) => const LawyerDashboardScreen()),
       GoRoute(path: '/expediter/tasks', builder: (context, state) => const ExpediterTasksScreen()),
       GoRoute(

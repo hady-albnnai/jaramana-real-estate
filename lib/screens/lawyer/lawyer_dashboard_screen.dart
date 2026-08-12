@@ -503,12 +503,17 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
   Widget _consultationCard(Map<String, dynamic> c, LegalProvider legal) {
     final sts = c['status'] ?? 0;
     final (label, color) = _consultStatusInfo(sts);
-    final serviceNames = ['استشارة هاتفية', 'جلسة مكتبية', 'باقة توثيق شامل'];
-    final sName = serviceNames[c['service_type'] ?? 0];
+    final serviceNames = ['استشارة هاتفية', 'جلسة مكتبية'];
+    final sIdx = (c['service_type'] ?? 0) as int;
+    final sName = sIdx < serviceNames.length ? serviceNames[sIdx] : 'استشارة';
     final price = (c['price'] ?? 0) as num;
     final subject = (c['subject'] ?? '').toString();
     final clientName = c['client_nm']?.toString() ?? 'عميل';
     final tsCrt = c['ts_crt']?.toString().substring(0, 16) ?? '';
+    final chatStarted = c['chat_started_at'] != null;
+    final extended = c['extended'] == true;
+    final consultId = c['id']?.toString() ?? '';
+    final attachments = (c['attachments'] as List?) ?? [];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -526,95 +531,122 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
             AppTheme.gapWidthSmall,
             Expanded(
               child: Text(sName,
-                  style: const TextStyle(
-                      color: AppTheme.textWhite,
-                      fontWeight: FontWeight.bold,
-                      fontSize: AppTheme.fontSizeMedium)),
+                  style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: AppTheme.fontSizeMedium)),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: AppTheme.radiusSmall,
-              ),
-              child: Text(label,
-                  style: TextStyle(
-                      color: color, fontSize: AppTheme.fontSizeCaption, fontWeight: FontWeight.bold)),
+              decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: AppTheme.radiusSmall),
+              child: Text(label, style: TextStyle(color: color, fontSize: AppTheme.fontSizeCaption, fontWeight: FontWeight.bold)),
             ),
           ]),
           AppTheme.gapHeightSmall,
-          Text('العميل: $clientName',
-              style: const TextStyle(
-                  color: AppTheme.primaryGold,
-                  fontSize: AppTheme.fontSizeBody,
-                  fontWeight: FontWeight.w600)),
+          Text('العميل: $clientName', style: const TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.w600)),
           AppTheme.gapHeightXS,
-          Text(subject,
-              style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
+          Text(subject, style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
+          if (attachments.isNotEmpty) ...[
+            AppTheme.gapHeightXS,
+            Text('📎 ${attachments.length} مستند مرفق', style: const TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeCaption)),
+          ],
           const SizedBox(height: 6),
           Row(children: [
-            Text('${price.toStringAsFixed(0)} ل.س',
-                style: const TextStyle(
-                    color: AppTheme.primaryGold,
-                    fontSize: AppTheme.fontSizeBody,
-                    fontWeight: FontWeight.bold)),
+            Text('${price.toStringAsFixed(0)} ل.س', style: const TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.bold)),
             const Spacer(),
-            Text(tsCrt,
-                style:
-                    const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+            Text(tsCrt, style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
           ]),
-          // أزرار الإجراءات (فقط لبانتظار التأكيد)
+
+          // ── بانتظار التأكيد (sts=0): قبول/رفض + بدء محادثة ──
           if (sts == 0) ...[
             AppTheme.gapHeightSmall,
             Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      _updateConsultationStatus(legal, c['id'], 4, 'مرفوضة'),
-                  icon: const Icon(Icons.close, color: AppTheme.errorRed, size: 16),
-                  label: const Text('رفض',
-                      style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSmall)),
-                  style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppTheme.errorRed)),
-                ),
-              ),
+              Expanded(child: OutlinedButton.icon(
+                onPressed: () => _updateConsultationStatus(legal, c['id'], 4, 'مرفوضة'),
+                icon: const Icon(Icons.close, color: AppTheme.errorRed, size: 16),
+                label: const Text('رفض', style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSmall)),
+                style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.errorRed)),
+              )),
               AppTheme.gapWidthSmall,
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () =>
-                      _updateConsultationStatus(legal, c['id'], 1, ''),
-                  icon:
-                      const Icon(Icons.check_circle, color: Colors.black, size: 16),
-                  label: const Text('تأكيد',
-                      style: TextStyle(
-                          color: Colors.black,
-                          fontSize: AppTheme.fontSizeSmall,
-                          fontWeight: FontWeight.bold)),
-                  style:
-                      ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
-                ),
-              ),
+              Expanded(child: ElevatedButton.icon(
+                onPressed: () async {
+                  // تأكيد + بدء المحادثة فوراً
+                  await _updateConsultationStatus(legal, c['id'], 1, '');
+                  // بدء المحادثة
+                  if (mounted && consultId.isNotEmpty) {
+                    await _startChat(consultId);
+                  }
+                },
+                icon: const Icon(Icons.check_circle, color: Colors.black, size: 16),
+                label: const Text('قبول وبدء', style: TextStyle(color: Colors.black, fontSize: AppTheme.fontSizeSmall, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
+              )),
             ]),
           ],
-          // إتمام (للمؤكدة)
+
+          // ── مؤكدة (sts=1): محادثة + تمديد + إتمام ──
           if (sts == 1) ...[
             AppTheme.gapHeightSmall,
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () =>
-                    _updateConsultationStatus(legal, c['id'], 2, ''),
-                icon: const Icon(Icons.done_all, color: Colors.black),
-                label: const Text('إتمام الاستشارة',
-                    style: TextStyle(
-                        color: Colors.black, fontWeight: FontWeight.bold)),
+            // فتح المحادثة
+            SizedBox(width: double.infinity, child: ElevatedButton.icon(
+              onPressed: () => context.push('/legal/chat/$consultId'),
+              icon: const Icon(Icons.chat, color: Colors.black, size: 16),
+              label: Text(chatStarted ? 'فتح المحادثة' : 'بدء المحادثة الآن', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+            )),
+            AppTheme.gapHeightSmall,
+            Row(children: [
+              // تمديد 5 دقائق
+              if (chatStarted && !extended)
+                Expanded(child: OutlinedButton.icon(
+                  onPressed: () => _extendChat(consultId),
+                  icon: const Icon(Icons.timer, color: AppTheme.infoBlue, size: 16),
+                  label: const Text('تمديد 5 دقائق', style: TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeSmall)),
+                  style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.infoBlue)),
+                )),
+              if (chatStarted && !extended) AppTheme.gapWidthSmall,
+              // إتمام
+              Expanded(child: ElevatedButton.icon(
+                onPressed: () => _updateConsultationStatus(legal, c['id'], 2, ''),
+                icon: const Icon(Icons.done_all, color: Colors.black, size: 16),
+                label: const Text('إتمام', style: TextStyle(color: Colors.black, fontSize: AppTheme.fontSizeSmall, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-              ),
-            ),
+              )),
+            ]),
+            if (extended) ...[
+              AppTheme.gapHeightXS,
+              const Text('⏱️ تم التمديد 5 دقائق إضافية', style: TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeCaption)),
+            ],
           ],
         ],
       ),
     );
+  }
+
+  Future<void> _startChat(String consultId) async {
+    try {
+      final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+      await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'start_chat', 'user_uid': uid, 'consultation_id': consultId,
+      });
+      if (mounted) _snack('✅ بدأت المحادثة');
+    } catch (e) {
+      if (mounted) _snack('فشل بدء المحادثة', bg: AppTheme.errorRed);
+    }
+  }
+
+  Future<void> _extendChat(String consultId) async {
+    try {
+      final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'extend_chat', 'user_uid': uid, 'consultation_id': consultId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) {
+        if (mounted) _snack('✅ تم تمديد المحادثة 5 دقائق');
+      } else {
+        if (mounted) _snack(data?['error']?.toString() ?? 'فشل التمديد', bg: AppTheme.errorRed);
+      }
+    } catch (e) {
+      if (mounted) _snack('خطأ: $e', bg: AppTheme.errorRed);
+    }
   }
 
   (String, Color) _consultStatusInfo(int sts) {
