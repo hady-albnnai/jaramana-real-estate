@@ -43,7 +43,9 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
       // تعبئة تلقائية لاسم العميل ورقم هاتفه من حساب المستخدم
       final user = context.read<AuthProvider>().userModel;
       if (user != null) {
-        if (user.nm.isNotEmpty) _clientNameCtrl.text = user.nm;
+        // استخدام nm أولاً، ثم usr كـ fallback، ثم تركه فارغاً
+        final displayName = user.nm.isNotEmpty ? user.nm : (user.usr ?? '');
+        if (displayName.isNotEmpty) _clientNameCtrl.text = displayName;
         if (user.ph.isNotEmpty) _clientPhoneCtrl.text = user.ph;
       }
     });
