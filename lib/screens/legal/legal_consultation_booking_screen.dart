@@ -109,11 +109,40 @@ class _State extends State<LegalConsultationBookingScreen> {
       
       Map<String, dynamic>? active;
       final previous = <Map<String, dynamic>>[];
+      final now = DateTime.now();
       for (final c in all) {
-        if ([0, 1, 4].contains(c['status']) && active == null) active = c;
-        if (c['chat_started_at'] != null) {
-          final dt = DateTime.tryParse(c['chat_started_at'].toString());
-          if (dt != null && DateTime.now().difference(dt).inDays < 7) previous.add(c);
+        final status = c['status'] ?? 0;
+        final chatStarted = c['chat_started_at'];
+        
+        // استشارة نشطة = لم تُفتح محادثة بعد (status 0 أو 4)
+        if ((status == 0 || status == 4) && active == null) {
+          active = c;
+          continue;
+        }
+        
+        // استشارة مفتوحة المحادثة = status 1 مع chat_started
+        if (status == 1 && chatStarted != null) {
+          final dt = DateTime.tryParse(chatStarted.toString());
+          if (dt != null) {
+            final durationMin = (c['chat_duration_minutes'] ?? 15) as int;
+            final elapsed = now.difference(dt);
+            final timeUp = elapsed.inMinutes >= durationMin;
+            final within7Days = elapsed.inDays < 7;
+            
+            if (!timeUp && active == null) {
+              // الوقت لسه ما خلص = استشارة نشطة
+              active = c;
+            } else if (within7Days) {
+              // الوقت خلص بس ضمن 7 أيام = محادثة سابقة (للمتابعة)
+              previous.add(c);
+            }
+          }
+          continue;
+        }
+        
+        // استشارة مقبولة بدون محادثة = نشطة
+        if (status == 1 && chatStarted == null && active == null) {
+          active = c;
         }
       }
 
