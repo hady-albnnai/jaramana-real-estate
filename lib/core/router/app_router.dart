@@ -210,9 +210,8 @@ class AppRouter {
         return '/user/home';
       }
 
-      if (path.startsWith('/legal') && !(auth.isLawyer || auth.isSenior)) {
-        return '/user/home';
-      }
+      // ملاحظة: /legal/consultations متاح لجميع المستخدمين (حجز استشارة قانونية)
+      // لا يحتاج guard — المستخدم العادي هو من يطلب الاستشارة
 
       if (path.startsWith('/admin')) {
         if (auth.isLawyer) return '/lawyer/dashboard';
