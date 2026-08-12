@@ -4,6 +4,7 @@ import '../../providers/appointment_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/offer_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/network/supabase_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/rating_dialog.dart';
 import '../../core/utils/app_utils.dart';
@@ -22,6 +23,8 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
   List<AppointmentModel> _myAppts = [];    // مواعيد حجزتها أنا
   List<AppointmentModel> _ownerAppts = []; // مواعيد على عروضي
   bool _loading = true;
+  // cache لمعلومات المشرفين (اسم + رقم)
+  final Map<String, Map<String, String>> _supervisorsCache = {};
 
   @override
   void initState() {
@@ -53,6 +56,30 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
       if (offerProv.getOfferById(offerId) == null) {
         await offerProv.fetchOfferById(offerId, userId: uid);
       }
+    }
+    
+    // جلب معلومات المشرفين (اسم + رقم) للمواعيد المؤكدة
+    final supervisorUids = results[0]
+        .where((a) => a.supervisorUid != null && a.supervisorUid!.isNotEmpty)
+        .map((a) => a.supervisorUid!)
+        .toSet()
+        .where((uid) => !_supervisorsCache.containsKey(uid))
+        .toList();
+    
+    if (supervisorUids.isNotEmpty) {
+      try {
+        final res = await SupabaseService().client
+            .from('users')
+            .select('id, nm, ph')
+            .inFilter('id', supervisorUids);
+        for (final u in res as List) {
+          final m = Map<String, dynamic>.from(u as Map);
+          _supervisorsCache[m['id'] as String] = {
+            'name': (m['nm'] ?? '').toString(),
+            'phone': (m['ph'] ?? '').toString(),
+          };
+        }
+      } catch (_) {}
     }
     
     if (mounted) {
@@ -137,6 +164,15 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     final offer = offerProv.getOfferById(appt.offId);
     final offerTitle = offer?.ttl ?? 'عرض';
     final offerNumber = offer?.offerNumber?.toString() ?? appt.offId.substring(0, 8);
+    
+    // استخراج الموقع من العرض
+    final offerLoc = offer?.loc ?? {};
+    final city = (offerLoc['city'] ?? '').toString().trim();
+    final area = (offerLoc['d'] ?? '').toString().trim();
+    final location = [city, area].where((e) => e.isNotEmpty).join(' — ');
+    
+    // معلومات المشرف (سيتم جلبها لاحقاً إذا كان الموعد مؤكد)
+    final supervisorUid = appt.supervisorUid;
 
     // هل هناك وقت بديل مقترح من صاحب العرض بانتظار ردي؟
     final pendingCounter = sts == 0 &&
@@ -195,6 +231,22 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               ),
             ]),
             const Divider(color: Colors.white12, height: 20),
+            // عرض الموقع
+            if (location.isNotEmpty) ...[
+              Row(children: [
+                const Icon(Icons.location_on, size: 15, color: AppTheme.primaryGold),
+                AppTheme.gapWidthSmall,
+                Expanded(
+                  child: Text(
+                    'الموقع: $location',
+                    style: const TextStyle(
+                        color: AppTheme.textWhite,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6),
+            ],
             // ✅ Fix for Bug #18: عرض التاريخ والموعد بشكل واضح
             Row(children: [
               const Icon(Icons.calendar_today, size: 15, color: AppTheme.primaryGold),
@@ -217,6 +269,48 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                     fontWeight: FontWeight.w600),
               ),
             ]),
+            
+            // عرض معلومات المشرف (إذا الموعد مؤكد وعندو مشرف)
+            if (supervisorUid != null && supervisorUid.isNotEmpty && _supervisorsCache.containsKey(supervisorUid)) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGold.withOpacity(0.1),
+                  borderRadius: AppTheme.radiusSmall,
+                  border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.person, size: 14, color: AppTheme.primaryGold),
+                      AppTheme.gapWidthSmall,
+                      Text(
+                        'المشرف: ${_supervisorsCache[supervisorUid]?['name'] ?? '—'}',
+                        style: const TextStyle(
+                            color: AppTheme.textWhite,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13),
+                      ),
+                    ]),
+                    if ((_supervisorsCache[supervisorUid]?['phone'] ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(children: [
+                        const Icon(Icons.phone, size: 14, color: AppTheme.primaryGold),
+                        AppTheme.gapWidthSmall,
+                        Text(
+                          _supervisorsCache[supervisorUid]!['phone']!,
+                          style: const TextStyle(
+                              color: AppTheme.textWhite,
+                              fontSize: 13),
+                        ),
+                      ]),
+                    ],
+                  ],
+                ),
+              ),
+            ],
 
             // وقت بديل مقترح من صاحب العرض
             if (pendingCounter) ...[
