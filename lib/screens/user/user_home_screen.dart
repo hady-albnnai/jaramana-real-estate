@@ -233,7 +233,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         context,
                         icon: Icons.gavel_rounded,
                         title: 'استشارة قانونية',
-                        subtitle: '⚖️ من 50,000 ل.س',
+                        subtitle: '⚖️ من 500 ل.س',
                         route: '/legal/consultations',
                       ),
                     ),
