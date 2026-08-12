@@ -583,15 +583,15 @@ serve(async (req) => {
       const expectedPrice = officialPrices[serviceType] ?? 0;
       if (price !== expectedPrice) return json({ success: false, error: "INVALID_PRICE", expected: expectedPrice }, 400);
 
-      // 🔒 حد أقصى للاستشارات النشطة (status 0 أو 1)
+      // 🔒 حد أقصى للاستشارات المعلقة (status=0 فقط) — المحادثات المفتوحة (status=1) لا تُحسب
       const { count: activeCount } = await supabaseAdmin
         .from("legal_consultations")
         .select("*", { count: "exact", head: true })
         .eq("user_uid", uid)
-        .in("status", [0, 1])
+        .eq("status", 0)
         .eq("i_del", 0);
-      if ((activeCount ?? 0) >= 2) {
-        return json({ success: false, error: "MAX_ACTIVE_CONSULTATIONS", message: "لديك استشارتان نشطتان — انتظر إتمامهما قبل حجز استشارة جديدة" }, 429);
+      if ((activeCount ?? 0) >= 3) {
+        return json({ success: false, error: "MAX_PENDING_CONSULTATIONS", message: "لديك 3 طلبات معلقة — انتظر قبولها أو إلغاءها قبل حجز استشارة جديدة" }, 429);
       }
 
       const { data, error } = await supabaseAdmin.rpc("create_legal_consultation_internal", {
