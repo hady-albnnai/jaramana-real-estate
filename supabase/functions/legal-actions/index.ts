@@ -662,6 +662,16 @@ serve(async (req) => {
             ref_id: consultId, act: "legal_consultation_admin", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
           }))
         );
+        // Push للإدارة
+        for (const admin of admins) {
+          try {
+            await supabaseAdmin.rpc("send_push_notification", {
+              p_uid: admin.id, p_title: "⚖️ طلب استشارة جديد",
+              p_body: "بانتظار تأكيد المحامي",
+              p_data: { act: "legal_consultation_admin", ref_id: consultId },
+            });
+          } catch {}
+        }
       }
 
       // 📊 تحديث active_tasks_count للمحامي المُسند
@@ -888,16 +898,17 @@ serve(async (req) => {
       // إشعار الطرف الآخر
       const recipientUid = isStudent ? row.lawyer_uid : row.user_uid;
       if (recipientUid) {
-        const preview = messageType === "text" ? content.slice(0, 50) : messageType === "voice" ? "🎤 رسالة صوتية" : "📎 صورة";
+        // 🔒 حماية الخصوصية: لا نعرض محتوى الرسالة في Push (يظهر على شاشة القفل)
+        const inAppPreview = messageType === "text" ? content.slice(0, 50) : messageType === "voice" ? "🎤 رسالة صوتية" : "📎 صورة";
         await supabaseAdmin.from("notifications").insert({
           uid: recipientUid, tp: 1, ttl: "💬 رسالة جديدة",
-          bdy: preview, ref_id: consultId, act: "chat_message", i_rd: 0, i_del: 0,
+          bdy: inAppPreview, ref_id: consultId, act: "chat_message", i_rd: 0, i_del: 0,
           ts_crt: new Date().toISOString(),
         });
         try {
           await supabaseAdmin.rpc("send_push_notification", {
             p_uid: recipientUid, p_title: "💬 رسالة جديدة",
-            p_body: preview,
+            p_body: "لديك رسالة جديدة في الاستشارة القانونية",
             p_data: { act: "chat_message", ref_id: consultId },
           });
         } catch {}
