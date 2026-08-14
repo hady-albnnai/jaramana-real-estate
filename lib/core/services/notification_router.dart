@@ -38,6 +38,9 @@ class NotificationRouter {
     'photography_task_assigned': [UserRole.photographer],
     'photography_task_created': [UserRole.photographer],
     'photography_task_started': [UserRole.deputy, UserRole.manager, UserRole.employee],
+    // ACT-001: طلب الإتمام يراجعه موظف المكتب فأعلى (الإيدج يشترط role>=3
+    // ودالة القاعدة تمنع المنفّذ من اعتماد طلبه)
+    'completion_request': [UserRole.employee, UserRole.deputy, UserRole.manager],
     'photography_task_submitted': [UserRole.deputy, UserRole.manager, UserRole.employee],
     'legal_consultation_new': [UserRole.lawyer],
     'legal_consultation_resubmitted': [UserRole.lawyer],
@@ -149,6 +152,9 @@ class NotificationRouter {
       case 'offer':
       case 'offer_approved':
       case 'offer_rejected':
+      // ACT-001 (2026-08-14): trg_offer_status_changed كانت تكتب الإشعار بلا
+      // `act` إطلاقاً ⇒ صاحب العرض يستلم «تغيّرت حالة عرضك» ولا يفتحه بالضغط.
+      case 'offer_status':
         return refId.isEmpty
             ? const NotificationTarget('/user/my-offers')
             : NotificationTarget('/offer/$refId');
@@ -156,6 +162,14 @@ class NotificationRouter {
       // ─────────── 📅 المواعيد ───────────
       case 'appointment':
         return const NotificationTarget('/user/my-appointments');
+
+      // ─────────── ✅ طلبات الإتمام ───────────
+      // ACT-001 (2026-08-14): request_completion_by_appointment كانت تكتب
+      // الإشعار بلا `act` ⇒ الموظف يرى «طلب إتمام معاملة» ولا يستطيع فتحه
+      // فيبحث عنه يدوياً. الوجهة شاشة المراجعة لا الموعد، لأن الإجراء
+      // المطلوب هو الاعتماد أو الرفض.
+      case 'completion_request':
+        return const NotificationTarget('/admin/completion-requests');
 
       // ─────────── 📝 الطلبات ───────────
       case 'request':
