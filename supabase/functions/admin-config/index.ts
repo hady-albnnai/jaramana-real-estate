@@ -18,11 +18,138 @@ const corsHeaders = {
 };
 
 // المفاتيح النصية المسموح تعديلها داخل txts.* (قائمة بيضاء)
+//
+// ⚠️ 2026-08-14: كانت هذه القائمة تحرس مسار `update_texts` وحده، بينما مسار
+// `update_sections` كان يمرّر `txts` عبر الدمج السطحي الافتراضي
+// (`{...cur, ...v}`) **بلا أي قائمة بيضاء ولا تنظيف ولا تحقّق من الروابط** —
+// وكان القسم الوحيد المكشوف هكذا بين كل الأقسام. النتيجة: أي حساب دوره ≥ 5
+// يستطيع زرع أي مفتاح بأي نوع، وأي رابط بأي مخطط (بما فيه `javascript:`)
+// داخل «تابعنا على» التي يفتحها المستخدم بثقة أنها صفحة المكتب الرسمية.
+// الآن المساران يتشاركان نفس القائمة ونفس التحقق.
 const ALLOWED_TEXT_KEYS = new Set([
   "videoRequestWhatsApp",
   "videoRequestGroupLink",
   "appDownloadLink",
+  // نصوص الحالة المعروضة للمستخدم
+  "plg",
+  "bnRsn",
+  "frzRsn",
+  "visBlk",
+  "warnApp",
+  // صفحات التواصل الاجتماعي
+  "facebook",
+  "instagram",
+  "socialPages",
+  // نافذة «عن التطبيق» (2026-08-14) — بديل developerPhone/developerPhone2
+  "contactPhone1",
+  "contactPhone2",
+  "contactWhatsApp",
+  "aboutUs",
+  "appDescription",
+  "privacyPolicyUrl",
+  "termsUrl",
+  "referralBaseUrl",
 ]);
+
+// مفاتيح txts التي قيمتها رابط — يُشترط فيها https:// حصراً.
+const TEXT_URL_KEYS = new Set([
+  "facebook",
+  "instagram",
+  "privacyPolicyUrl",
+  "termsUrl",
+  "referralBaseUrl",
+  "appDownloadLink",
+  "videoRequestGroupLink",
+]);
+
+// مفاتيح txts التي قيمتها رقم هاتف سوري.
+const TEXT_PHONE_KEYS = new Set([
+  "contactPhone1",
+  "contactPhone2",
+  "contactWhatsApp",
+  "videoRequestWhatsApp",
+]);
+
+// الحد الأقصى لطول كل مفتاح نصي (حماية من تضخيم صف app_config).
+const TEXT_MAX_LEN: Record<string, number> = {
+  aboutUs: 1500,
+  appDescription: 300,
+};
+const TEXT_DEFAULT_MAX_LEN = 500;
+
+/// ✅ رابط آمن: `https://` حصراً.
+/// نرفض `http://` (غير مشفَّر) وكل المخططات الخطرة (`javascript:`, `data:`,
+/// `file:`) لأن القيمة تُمرَّر مباشرة إلى `launchUrl` في التطبيق.
+function isSafeHttpsUrl(raw: string): boolean {
+  const s = raw.trim();
+  if (s.length === 0 || s.length > 500) return false;
+  if (!s.startsWith("https://")) return false;
+  if (/[\s\u0000-\u001F\u007F]/.test(s)) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" && u.hostname.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/// ✅ رقم هاتف سوري: `09xxxxxxxx` أو `+9639xxxxxxxx` أو `9639xxxxxxxx`.
+function isSyrianPhone(raw: string): boolean {
+  const s = raw.trim().replace(/[\s()-]/g, "");
+  return /^(0\d{9}|\+?963\d{9})$/.test(s);
+}
+
+/// 🧹 تحقُّق وتنظيف مفتاح واحد داخل `txts`.
+/// يُرجع القيمة النظيفة، أو رسالة خطأ عربية عند الرفض.
+/// **النص الفارغ مقبول دائماً** ويعني «أخفِ هذا البند» (قرار المالك: لا قيم
+/// افتراضية مطبوخة — الفارغ يجب أن يُخفي فعلاً).
+function validateTextKey(
+  key: string,
+  raw: unknown,
+): { ok: true; value: unknown } | { ok: false; error: string } {
+  // socialPages خريطة {network: url} وليست نصاً
+  if (key === "socialPages") {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      return { ok: false, error: "SOCIAL_PAGES_MUST_BE_OBJECT" };
+    }
+    const out: Record<string, string> = {};
+    const entries = Object.entries(raw as Record<string, unknown>);
+    if (entries.length > 20) {
+      return { ok: false, error: "TOO_MANY_SOCIAL_PAGES" };
+    }
+    for (const [k, v] of entries) {
+      const nk = String(k).trim().toLowerCase().replace(/[\s_-]+/g, "");
+      if (nk.length === 0 || nk.length > 30) {
+        return { ok: false, error: `INVALID_SOCIAL_KEY:${k}` };
+      }
+      if (!/^[a-z0-9]+$/.test(nk)) {
+        return { ok: false, error: `SOCIAL_KEY_MUST_BE_LATIN:${k}` };
+      }
+      const url = cleanText(v, 501); // 501 ليرفض isSafeHttpsUrl ما تجاوز 500
+      if (url.length === 0) continue; // فارغ = محذوف
+      if (!isSafeHttpsUrl(url)) {
+        return { ok: false, error: `SOCIAL_URL_MUST_BE_HTTPS:${nk}` };
+      }
+      out[nk] = url;
+    }
+    return { ok: true, value: out };
+  }
+
+  const max = TEXT_MAX_LEN[key] ?? TEXT_DEFAULT_MAX_LEN;
+  // ننظّف بسقف أعلى من الحد ثم نرفض الزائد صراحةً — لا اقتطاع صامت.
+  const s = cleanText(raw, max + 1);
+  if (s.length === 0) return { ok: true, value: "" }; // فارغ = أخفِ البند
+  if (s.length > max) {
+    return { ok: false, error: `TEXT_TOO_LONG:${key}:${max}` };
+  }
+  if (TEXT_URL_KEYS.has(key) && !isSafeHttpsUrl(s)) {
+    return { ok: false, error: `URL_MUST_BE_HTTPS:${key}` };
+  }
+  if (TEXT_PHONE_KEYS.has(key) && !isSyrianPhone(s)) {
+    return { ok: false, error: `INVALID_PHONE:${key}` };
+  }
+  return { ok: true, value: s };
+}
 
 // كود سجل التدقيق لتغيير إعدادات txts (أكواد 101-107 مستخدمة للعروض/السوشيال)
 const ACT_UPDATE_CONFIG_TEXTS = 120;
@@ -89,8 +216,14 @@ async function validateActor(
 }
 
 // تنظيف نص إعداد: إزالة محارف التحكم (U+0000–U+001F وU+007F) + قص الطول (300 كحد أقصى)
-function cleanText(v: unknown): string {
-  return (v ?? "").toString().replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, 300);
+/// 🧹 تنظيف نص: حذف محارف التحكّم + قصّ الأطراف + سقف طول.
+///
+/// ⚠️ 2026-08-14: كان السقف ثابتاً عند 300 محرف. فقرة «من نحن» تحتاج 1500،
+/// وكانت ستُقتطع **بصمت** إلى 300 بلا أي رسالة للمدير — أي أن المدير يحفظ
+/// ويرى «تم» بينما نصفُ نصه ضاع (§13 No-Silent-Probes). الآن السقف معامل،
+/// و`validateTextKey` يرفض الزائد صراحةً بدل اقتطاعه.
+function cleanText(v: unknown, maxLen = 300): string {
+  return (v ?? "").toString().replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, maxLen);
 }
 
 serve(async (req) => {
@@ -251,6 +384,31 @@ serve(async (req) => {
           continue;
         }
 
+        // ── txts: القائمة البيضاء + التنظيف + تحقّق الروابط والأرقام ──
+        // 2026-08-14: كان هذا القسم يسقط في الدمج السطحي أدناه بلا أي حراسة.
+        if (k === "txts") {
+          if (!v || typeof v !== "object" || Array.isArray(v)) {
+            return json({ success: false, error: "SECTION_MUST_BE_OBJECT", key: k }, 400);
+          }
+          const curTxts = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))
+            ? { ...(value[k] as Record<string, unknown>) } : {};
+          const badTxts = Object.keys(v as Record<string, unknown>)
+            .filter((f) => !ALLOWED_TEXT_KEYS.has(f));
+          if (badTxts.length > 0) {
+            return json({ success: false, error: "TEXT_KEY_NOT_ALLOWED", keys: badTxts }, 403);
+          }
+          for (const [f, fv] of Object.entries(v as Record<string, unknown>)) {
+            const res = validateTextKey(f, fv);
+            if (!res.ok) return json({ success: false, error: res.error }, 400);
+            curTxts[f] = res.value;
+          }
+          // إزالة المفتاحين القديمين نهائياً بعد الترحيل إلى contactPhone1/2
+          delete curTxts["developerPhone"];
+          delete curTxts["developerPhone2"];
+          value[k] = curTxts;
+          continue;
+        }
+
         // دمج القسم مع الموجود بدل استبداله (حماية من فقدان مفاتيح)
         if (v && typeof v === "object" && !Array.isArray(v)) {
           const cur = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))
@@ -348,9 +506,15 @@ serve(async (req) => {
         ? (value.txts as Record<string, unknown>)
         : {}) };
 
+      // نفس التحقق المستخدم في update_sections — مصدر واحد للقواعد حتى لا
+      // ينحرف المساران (كان هذا المسار يكتفي بـ cleanText بلا تحقُّق روابط).
       for (const [k, v] of entries) {
-        txts[k] = cleanText(v);
+        const res = validateTextKey(k, v);
+        if (!res.ok) return json({ success: false, error: res.error }, 400);
+        txts[k] = res.value;
       }
+      delete txts["developerPhone"];
+      delete txts["developerPhone2"];
       value.txts = txts;
 
       const { error: writeErr } = await supabaseAdmin

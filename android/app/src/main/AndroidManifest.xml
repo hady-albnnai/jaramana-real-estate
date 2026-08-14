@@ -104,5 +104,13 @@
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="mailto" />
         </intent>
+        <!--
+          واتساب — مطلوب صراحةً منذ أندرويد 11 (API 30).
+          بدون هذا الإعلان يُرجع canLaunchUrl القيمة false رغم أن واتساب
+          مثبَّت فعلاً (قيود package visibility)، فيفشل زر «راسلنا على واتساب»
+          **بصمت** بلا أي رسالة خطأ. الحزمتان: العادية وWhatsApp Business.
+        -->
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 </manifest>

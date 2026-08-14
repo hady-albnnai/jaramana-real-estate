@@ -4,6 +4,7 @@ import '../../providers/config_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/social_links.dart';
 import 'payment_channels_editor_screen.dart';
 
 /// ⚙️ محرّر إعدادات التطبيق الديناميكية (app_config / key=main)
@@ -37,8 +38,20 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   // ── صفحات التواصل الاجتماعي (قابلة للتوسعة) ──
   final _facebookCtrl = TextEditingController();
   final _instagramCtrl = TextEditingController();
-  final _developerPhoneCtrl = TextEditingController();
-  final _developerPhone2Ctrl = TextEditingController();
+
+  // ── 📞 أرقام التواصل ونصوص «عن التطبيق» (2026-08-14) ──
+  // كانت تُسمّى «رقم المطور / المطور الثاني» — تسمية خاطئة توحي بأنها أرقام
+  // شركة البرمجة، وكانت قيمتاهما مطبوختين بالكود كافتراضي فلا يختفيان عند
+  // تفريغ الحقل. الآن: أرقام تواصل، افتراضها فارغ، والفارغ يُخفي البند.
+  final _contactPhone1Ctrl = TextEditingController();
+  final _contactPhone2Ctrl = TextEditingController();
+  final _contactWhatsAppCtrl = TextEditingController();
+  final _aboutUsCtrl = TextEditingController();
+  final _appDescCtrl = TextEditingController();
+  final _privacyUrlCtrl = TextEditingController();
+  final _termsUrlCtrl = TextEditingController();
+  final _referralBaseUrlCtrl = TextEditingController();
+
   final _photoPriceCtrl = TextEditingController();
   // ⚖️ أسعار الاستشارة القانونية ومدة المحادثة (legalPrice) — أُضيفت 2026-08-14
   final _legalPhoneCtrl = TextEditingController();
@@ -78,8 +91,14 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         // Social pages
         _facebookCtrl.text = c.facebookPage;
         _instagramCtrl.text = c.instagramPage;
-        _developerPhoneCtrl.text = c.developerPhone;
-        _developerPhone2Ctrl.text = c.developerPhone2;
+        _contactPhone1Ctrl.text = c.contactPhone1;
+        _contactPhone2Ctrl.text = c.contactPhone2;
+        _contactWhatsAppCtrl.text = c.contactWhatsApp;
+        _aboutUsCtrl.text = c.aboutUsText;
+        _appDescCtrl.text = c.appDescriptionText;
+        _privacyUrlCtrl.text = c.privacyPolicyUrl;
+        _termsUrlCtrl.text = c.termsUrl;
+        _referralBaseUrlCtrl.text = c.referralBaseUrl;
         _photoPriceCtrl.text = c.photographyPrice.toString();
         _legalPhoneCtrl.text = c.legalPhonePrice.toString();
         _legalOnsiteCtrl.text = c.legalOnsitePrice.toString();
@@ -117,8 +136,14 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _appLinkCtrl,
       _facebookCtrl,
       _instagramCtrl,
-      _developerPhoneCtrl,
-      _developerPhone2Ctrl,
+      _contactPhone1Ctrl,
+      _contactPhone2Ctrl,
+      _contactWhatsAppCtrl,
+      _aboutUsCtrl,
+      _appDescCtrl,
+      _privacyUrlCtrl,
+      _termsUrlCtrl,
+      _referralBaseUrlCtrl,
       _photoPriceCtrl,
       _legalPhoneCtrl,
       _legalOnsiteCtrl,
@@ -293,31 +318,6 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         ),
                       ),
                       AppTheme.gapHeightMedium,
-                      TextFormField(
-                        controller: _developerPhoneCtrl,
-                        keyboardType: TextInputType.phone,
-                        style: const TextStyle(color: AppTheme.textWhite),
-                        decoration: const InputDecoration(
-                          labelText: 'رقم هاتف المطور (للتواصل في عن التطبيق)',
-                          hintText: '0933123456',
-                          filled: true,
-                          fillColor: AppTheme.surfaceBlack,
-                          prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),
-                        ),
-                      ),
-                      AppTheme.gapHeightMedium,
-                      TextFormField(
-                        controller: _developerPhone2Ctrl,
-                        keyboardType: TextInputType.phone,
-                        style: const TextStyle(color: AppTheme.textWhite),
-                        decoration: const InputDecoration(
-                          labelText: 'رقم هاتف المطور الثاني (اتركه فارغاً لإخفائه)',
-                          hintText: '0938123456',
-                          filled: true,
-                          fillColor: AppTheme.surfaceBlack,
-                          prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),
-                        ),
-                      ),
                       AppTheme.gapHeightMedium,
                       // 📸 أجر خدمة التصوير العقاري — يظهر للمستخدم بشاشة الخدمة
                       TextFormField(
@@ -334,49 +334,112 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         ),
                       ),
                       AppTheme.gapHeightLarge,
-                      const Text('صفحات إضافية (تيك توك، إلخ — اكتب الاسم ثم الرابط):', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
+                      const Text(
+                        'صفحات تواصل إضافية — اختر الشبكة ثم الصق الرابط:',
+                        style: TextStyle(
+                            color: AppTheme.textGrey,
+                            fontSize: AppTheme.fontSizeSmall),
+                      ),
+                      AppTheme.gapHeightXXS,
+                      const Text(
+                        'الأيقونة والاسم العربي يُضافان تلقائياً حسب الشبكة المختارة.',
+                        style: TextStyle(
+                            color: AppTheme.textGrey,
+                            fontSize: AppTheme.fontSizeCaption),
+                      ),
+                      AppTheme.gapHeightSmall,
+                      // 🌐 قائمة منسدلة بدل حقل نصي حر (2026-08-14):
+                      // الحقل الحر كان ينتج مفاتيح مثل «tik tok» أو «TikTok»
+                      // فتفشل مطابقة الأيقونة وتظهر كل الصفحات بأيقونة رابط
+                      // رمادية واحدة، والاسم يظهر إنكليزياً وسط واجهة عربية.
                       ..._extraSocialCtrls.map((ctrls) {
+                        final currentKey =
+                            SocialLinks.normalizeKey(ctrls['label']!.text);
+                        final isKnown = SocialLinks.byKey(currentKey) != null;
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                flex: 2,
-                                child: TextFormField(
-                                  controller: ctrls['label']!,
-                                  style: const TextStyle(color: AppTheme.textWhite),
-                                  decoration: const InputDecoration(
-                                    hintText: 'الاسم (مثل tiktok)',
-                                    filled: true,
-                                    fillColor: AppTheme.surfaceBlack,
-                                    isDense: true,
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child:
+                                        DropdownButtonFormField<String>(
+                                      value: isKnown ? currentKey : null,
+                                      isExpanded: true,
+                                      dropdownColor: AppTheme.surfaceBlack,
+                                      style: const TextStyle(
+                                          color: AppTheme.textWhite),
+                                      decoration: const InputDecoration(
+                                        labelText: 'الشبكة',
+                                        filled: true,
+                                        fillColor: AppTheme.surfaceBlack,
+                                        isDense: true,
+                                      ),
+                                      items: SocialLinks.known
+                                          .map((n) => DropdownMenuItem(
+                                                value: n.key,
+                                                child: Row(
+                                                  children: [
+                                                    Icon(n.icon,
+                                                        size: 16,
+                                                        color: AppTheme
+                                                            .primaryGold),
+                                                    AppTheme.gapWidthSmall,
+                                                    Flexible(
+                                                        child: Text(n.label,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis)),
+                                                  ],
+                                                ),
+                                              ))
+                                          .toList(),
+                                      onChanged: (v) {
+                                        if (v == null) return;
+                                        setState(() {
+                                          ctrls['label']!.text = v;
+                                        });
+                                      },
+                                    ),
                                   ),
-                                ),
-                              ),
-                              AppTheme.gapWidthSmall,
-                              Expanded(
-                                flex: 3,
-                                child: TextFormField(
-                                  controller: ctrls['url']!,
-                                  style: const TextStyle(color: AppTheme.textWhite),
-                                  decoration: const InputDecoration(
-                                    hintText: 'الرابط الكامل',
-                                    filled: true,
-                                    fillColor: AppTheme.surfaceBlack,
-                                    isDense: true,
+                                  AppTheme.gapWidthSmall,
+                                  Expanded(
+                                    flex: 3,
+                                    child: TextFormField(
+                                      controller: ctrls['url']!,
+                                      style: const TextStyle(
+                                          color: AppTheme.textWhite),
+                                      textDirection: TextDirection.ltr,
+                                      validator: SocialLinks.validateOptionalUrl,
+                                      decoration: InputDecoration(
+                                        hintText: SocialLinks.byKey(currentKey)
+                                                ?.hint ??
+                                            'https://…',
+                                        filled: true,
+                                        fillColor: AppTheme.surfaceBlack,
+                                        isDense: true,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle, color: AppTheme.errorRed),
-                                onPressed: () {
-                                  setState(() {
-                                    _extraSocialCtrls.remove(ctrls);
-                                    if (_extraSocialCtrls.isEmpty) {
-                                      _extraSocialCtrls.add({'label': TextEditingController(), 'url': TextEditingController()});
-                                    }
-                                  });
-                                },
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle,
+                                        color: AppTheme.errorRed),
+                                    onPressed: () {
+                                      setState(() {
+                                        _extraSocialCtrls.remove(ctrls);
+                                        if (_extraSocialCtrls.isEmpty) {
+                                          _extraSocialCtrls.add({
+                                            'label': TextEditingController(),
+                                            'url': TextEditingController()
+                                          });
+                                        }
+                                      });
+                                    },
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -390,6 +453,159 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         },
                         icon: const Icon(Icons.add, color: AppTheme.primaryGold),
                         label: const Text('إضافة صفحة تواصل جديدة', style: TextStyle(color: AppTheme.primaryGold)),
+                      ),
+                      AppTheme.gapHeightXL,
+
+                      // ── ℹ️ نافذة «عن التطبيق» (أُضيف 2026-08-14) ──
+                      // كل ما يظهر بالنافذة يُحرَّر من هنا. القاعدة: **الفارغ
+                      // يُخفي البند كلياً** — لا قيمة افتراضية مطبوخة بالكود.
+                      // سابقاً كانت فقرة «من نحن» ووصف التطبيق محبوسين في
+                      // settings_screen.dart، فتعديل كلمة واحدة = إعادة بناء
+                      // كاملة (ساعة على جهاز المالك).
+                      _section('ℹ️ نافذة «عن التطبيق»'),
+                      Container(
+                        padding: AppTheme.paddingAllMedium,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceBlack,
+                          borderRadius: AppTheme.radiusMedium,
+                          border: Border.all(
+                              color: AppTheme.infoBlue.withOpacity(0.35)),
+                        ),
+                        child: const Text(
+                          'أي حقل تتركه فارغاً يختفي من النافذة تماماً.\n'
+                          'رقم الإصدار غير قابل للتعديل — يُقرأ من التطبيق نفسه.',
+                          style: TextStyle(
+                              color: AppTheme.textGrey,
+                              fontSize: AppTheme.fontSizeCaption,
+                              height: 1.5),
+                        ),
+                      ),
+                      TextFormField(
+                        controller: _aboutUsCtrl,
+                        maxLines: 5,
+                        maxLength: 1500,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'فقرة «من نحن»',
+                          alignLabelWithHint: true,
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      TextFormField(
+                        controller: _appDescCtrl,
+                        maxLines: 2,
+                        maxLength: 300,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'وصف التطبيق المختصر',
+                          alignLabelWithHint: true,
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+
+                      // 📞 أرقام التواصل — كانت تُسمّى «رقم المطور»
+                      TextFormField(
+                        controller: _contactPhone1Ctrl,
+                        keyboardType: TextInputType.phone,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalPhone,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'رقم التواصل الأول',
+                          hintText: '0933123456 — اتركه فارغاً لإخفائه',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon:
+                              Icon(Icons.phone, color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      TextFormField(
+                        controller: _contactPhone2Ctrl,
+                        keyboardType: TextInputType.phone,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalPhone,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'رقم التواصل الثاني',
+                          hintText: '0938123456 — اتركه فارغاً لإخفائه',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon:
+                              Icon(Icons.phone, color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      TextFormField(
+                        controller: _contactWhatsAppCtrl,
+                        keyboardType: TextInputType.phone,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalPhone,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'رقم واتساب التواصل',
+                          hintText: '0958750199 — يظهر كزر «راسلنا على واتساب»',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.chat_bubble_outline,
+                              color: AppTheme.successGreen),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+
+                      // ⚖️ روابط قانونية — سياسة الخصوصية شرط نشر في Google Play
+                      TextFormField(
+                        controller: _privacyUrlCtrl,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalUrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'رابط سياسة الخصوصية',
+                          hintText: 'https://… (مطلوب لنشر التطبيق على المتجر)',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.privacy_tip_outlined,
+                              color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      TextFormField(
+                        controller: _termsUrlCtrl,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalUrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'رابط شروط الاستخدام',
+                          hintText: 'https://…',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.description_outlined,
+                              color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      // 🔗 أساس رابط الإحالة — كان نطاقاً وهمياً مطبوخاً بالكود
+                      // (`sweeda-realestate.com`) لا وجود له، فكل رابط دعوة
+                      // يُشارَك ينتهي بخطأ 404. الفارغ الآن يعرض الكود وحده.
+                      TextFormField(
+                        controller: _referralBaseUrlCtrl,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalUrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'أساس رابط الإحالة',
+                          hintText:
+                              'https://example.com/invite — فارغ = يُعرض الكود وحده',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon:
+                              Icon(Icons.share_outlined, color: AppTheme.primaryGold),
+                        ),
                       ),
                       AppTheme.gapHeightXL,
 
@@ -616,13 +832,26 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     // ── حفظ صفحات التواصل الاجتماعي ──
     txts['facebook'] = _facebookCtrl.text.trim();
     txts['instagram'] = _instagramCtrl.text.trim();
-    txts['developerPhone'] = _developerPhoneCtrl.text.trim();
-    txts['developerPhone2'] = _developerPhone2Ctrl.text.trim();
 
-    // صفحات إضافية
+    // 📞 أرقام التواصل ونصوص «عن التطبيق» — الفارغ مسموح ويعني «أخفِ البند».
+    // المفتاحان القديمان developerPhone/developerPhone2 يُمسحان صراحةً حتى لا
+    // يبقيا في app_config بعد الترحيل (السيرفر يدمج ولا يستبدل).
+    txts['contactPhone1'] = _contactPhone1Ctrl.text.trim();
+    txts['contactPhone2'] = _contactPhone2Ctrl.text.trim();
+    txts['contactWhatsApp'] = _contactWhatsAppCtrl.text.trim();
+    txts['aboutUs'] = _aboutUsCtrl.text.trim();
+    txts['appDescription'] = _appDescCtrl.text.trim();
+    txts['privacyPolicyUrl'] = _privacyUrlCtrl.text.trim();
+    txts['termsUrl'] = _termsUrlCtrl.text.trim();
+    txts['referralBaseUrl'] = _referralBaseUrlCtrl.text.trim();
+    txts.remove('developerPhone');
+    txts.remove('developerPhone2');
+
+    // صفحات إضافية — المفتاح يُوحَّد عبر SocialLinks حتى تُشتقّ الأيقونة
+    // والاسم العربي تلقائياً، فلا تظهر كلها بأيقونة رابط رمادية واحدة.
     final extraSocial = <String, dynamic>{};
     for (final map in _extraSocialCtrls) {
-      final lbl = map['label']!.text.trim();
+      final lbl = SocialLinks.normalizeKey(map['label']!.text);
       final url = map['url']!.text.trim();
       if (lbl.isNotEmpty && url.isNotEmpty) {
         extraSocial[lbl] = url;
