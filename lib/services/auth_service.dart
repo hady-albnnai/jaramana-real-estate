@@ -121,10 +121,12 @@ class AuthService {
 
       if (data != null && data['exists'] == true) {
         debugPrint('👉 [PHONE_CHECK] Phone EXISTS! Blocking signup.');
+        // 🔒 BUG-021 (2026-08-14): السيرفر لم يعد يكشف `user_id` صاحب الرقم
+        // (كان يسمح بحصاد UIDs بلا مصادقة). نمرّر الإشارة المنطقية فقط.
         return {
           'success': true,
           'exists': true,
-          'user_id': data['user_id']?.toString(),
+          'owned_by_other': data['owned_by_other'] == true,
         };
       }
       debugPrint('👉 [PHONE_CHECK] Phone not found, allowing signup.');
@@ -151,6 +153,7 @@ class AuthService {
         body: {
           'action': 'check_email_exists',
           'email': email.trim().toLowerCase(),
+          'self_uid': _auth.currentUser?.id ?? '',
         },
       );
       final data = response.data is Map
@@ -158,10 +161,8 @@ class AuthService {
           : null;
 
       // إذا الإيميل موجود عند مستخدم آخر → نمنع الإرسال
-      if (data != null &&
-          data['exists'] == true &&
-          data['user_id'] != null &&
-          data['user_id'].toString() != _auth.currentUser?.id) {
+      // 🔒 BUG-021: المقارنة تتم خادمياً الآن — لا يصل المعرّف للعميل.
+      if (data != null && data['owned_by_other'] == true) {
         return {
           'success': false,
           'error': 'EMAIL_ALREADY_REGISTERED',

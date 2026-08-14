@@ -253,15 +253,22 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
 
     try {
       // فحص مبكر لمنع رسالة عامة عند استخدام رقم مسجل لحساب آخر.
+      // 🔒 BUG-021 (2026-08-14): كان السيرفر يُرجع `user_id` صاحب الرقم لأي
+      // طالب بلا مصادقة ⇒ حصاد UIDs بالجملة (أُكِّد حياً على حساب المدير
+      // الرئيسي). صار يُرجع `owned_by_other` المنطقي — وهو كل ما تحتاجه هذه
+      // الشاشة فعلاً — بلا كشف أي معرّف.
       final phoneCheckRes = await SupabaseService().invokeFunction(
         'user-account',
-        body: {'action': 'check_phone_exists', 'phone': phone},
+        body: {
+          'action': 'check_phone_exists',
+          'phone': phone,
+          'self_uid': user.uid,
+        },
       );
       final phoneCheck = phoneCheckRes.data is Map
           ? Map<String, dynamic>.from(phoneCheckRes.data)
           : null;
-      final phoneOwner = phoneCheck?['user_id']?.toString();
-      if (phoneCheck?['exists'] == true && phoneOwner != null && phoneOwner != user.uid) {
+      if (phoneCheck?['owned_by_other'] == true) {
         throw Exception('PHONE_ALREADY_EXISTS');
       }
 

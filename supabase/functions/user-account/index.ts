@@ -158,11 +158,17 @@ serve(async (req) => {
       const incomplete = isIncompleteEmailSignup(existing as Record<string, unknown> | null);
       // الحساب الإيميلي الناقص (أنشئ بعد Magic Link ولم يكمل setup-profile)
       // يجب أن لا يمنع إعادة إرسال الرابط حتى يستطيع المستخدم إكمال التسجيل.
+      // 🔒 BUG-021: نفس تسريب check_phone_exists — كان يكشف `user_id` صاحب
+      // البريد لأي طالب بلا مصادقة. المستدعي يقارنه بمعرّفه هو ليعرف إن كان
+      // البريد يخصّه، فتكفيه إجابة منطقية.
+      const selfUidE = (body.self_uid ?? body.selfUid ?? "").toString().trim();
+      const foundIdE = (existing as Record<string, unknown> | null)?.id?.toString() ?? null;
       return json({
         success: true,
         exists: !!existing && !incomplete,
         incomplete,
-        user_id: existing?.id ?? null,
+        owned_by_other: !!foundIdE && !incomplete && (!selfUidE || foundIdE !== selfUidE),
+        is_self: !!foundIdE && !!selfUidE && foundIdE === selfUidE,
       });
     }
 
@@ -184,10 +190,21 @@ serve(async (req) => {
         .maybeSingle();
 
       if (findError) return json({ success: false, error: findError.message }, 400);
+
+      // 🔒 BUG-021 (2026-08-14): كان يُرجع `user_id` لأي طالب **بلا أي مصادقة**
+      // ⇒ حصاد UIDs بالجملة: مكالمة واحدة برقم هاتف تعطي المعرّف الداخلي
+      // لصاحبه. أُكِّد حياً — حُصد UID المدير الرئيسي وحساب محامٍ ومدير آخر
+      // من أرقامهم وحدها. والـUID مفتاح يُمرَّر في كل نداءات الـAPI تقريباً.
+      // المستدعي الوحيد (setup_profile_screen) يقارن الناتج بـ**معرّفه هو**
+      // ليعرف إن كان الرقم يخصّه، فتكفيه إجابة منطقية بلا كشف المعرّف.
+      const selfUid = (body.self_uid ?? body.selfUid ?? "").toString().trim();
+      const foundId = (existing as Record<string, unknown> | null)?.id?.toString() ?? null;
       return json({
         success: true,
         exists: !!existing,
-        user_id: existing?.id ?? null,
+        // true فقط عندما يكون الرقم مملوكاً لشخص **آخر** غير مقدّم الطلب
+        owned_by_other: !!foundId && (!selfUid || foundId !== selfUid),
+        is_self: !!foundId && !!selfUid && foundId === selfUid,
       });
     }
 
