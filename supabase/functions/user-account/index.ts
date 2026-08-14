@@ -700,7 +700,63 @@ serve(async (req) => {
         result.push_allowed_by = [...fams].map((f) => `${f}-device`);
         result.push_allowed = fams.size > 0;
       } catch (_) { /* تدهور رشيق — دليل التنقل يبقى صالحاً حتى لو تغيّر الجدول */ }
+
+      // 🔧 BUG-018 (2026-08-14): قراءة القنوات المحفوظة فعلياً.
+      // كان `channels` يُرجَع فارغاً **دائماً**، والشاشة تحفظ عبر
+      // `internal_config` بمفتاح anon (يرفضه RLS بـ42501) وتنادي إيدج باسم
+      // `user-devices` **غير موجودة أصلاً** — والخطآن مبتلعان بـcatch(_){}
+      // ⇒ الشاشة تُظهر تبديل المفتاح ثم تُعيده عند أول تحديث، بلا أي رسالة.
+      try {
+        const { data: prefRow } = await supabaseAdmin
+          .from("users").select("ntf").eq("id", uid).maybeSingle();
+        const ntf = (prefRow?.ntf ?? {}) as Record<string, unknown>;
+        const chans = (ntf["chn"] ?? {}) as Record<string, unknown>;
+        const out: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(chans)) out[k] = v === true;
+        result.channels = out;
+      } catch (_) { /* الافتراضي: لا قناة محجوبة */ }
       return json(result);
+    }
+
+    // ─── BUG-018: حفظ حجب/تفعيل قناة إشعارات ───
+    // القناة المحجوبة تُخزَّن في users.ntf.chn.<id> = true.
+    // القاعدة (كما بالواجهة): لا يجوز حجب كل القنوات — يبقى واحدة على الأقل.
+    if (action === "set_push_channel") {
+      const chn = Number(body.channel ?? body.chn);
+      const blocked = body.blocked === true;
+      if (!Number.isInteger(chn) || chn < 1 || chn > 9) {
+        return json({ success: false, error: "INVALID_CHANNEL" }, 400);
+      }
+
+      const { data: row, error: readErr } = await supabaseAdmin
+        .from("users").select("ntf").eq("id", uid).maybeSingle();
+      if (readErr) return json({ success: false, error: readErr.message }, 400);
+
+      const ntf = { ...((row?.ntf ?? {}) as Record<string, unknown>) };
+      const chans = { ...((ntf["chn"] ?? {}) as Record<string, unknown>) };
+
+      if (blocked) {
+        // تحقّق خادمي: لا نسمح بحجب آخر قناة مفعّلة (الواجهة تفحص، والسيرفر يحسم)
+        const ALL = [1, 2, 3, 4];
+        const stillOn = ALL.filter((c) => c !== chn && chans[String(c)] !== true);
+        if (stillOn.length === 0) {
+          return json({
+            success: false,
+            error: "AT_LEAST_ONE_CHANNEL_REQUIRED",
+            detail: "فعّل قناة أخرى قبل إيقاف هذه — لا يمكن إيقاف كل القنوات.",
+          }, 400);
+        }
+        chans[String(chn)] = true;
+      } else {
+        delete chans[String(chn)];
+      }
+      ntf["chn"] = chans;
+
+      const { error: upErr } = await supabaseAdmin
+        .from("users").update({ ntf }).eq("id", uid);
+      if (upErr) return json({ success: false, error: upErr.message }, 400);
+
+      return json({ success: true, channels: chans });
     }
 
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);

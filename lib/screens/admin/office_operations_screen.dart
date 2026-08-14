@@ -103,7 +103,11 @@ class _OfficeOperationsScreenState extends State<OfficeOperationsScreen> {
       items.add({
         'icon': Icons.admin_panel_settings,
         'title': 'إدارة الموظفين',
-        'route': '/admin/employees',
+        // 🔧 BUG-001 (أُصلح 2026-08-14): كان '/admin/employees' — مسار **غير
+        // مسجَّل إطلاقاً** في app_router ⇒ المدير يضغط الزر فتظهر شاشة خطأ
+        // go_router. المسار الصحيح المسجَّل هو '/admin/employee-management'
+        // (وهو ما يستخدمه بند «أقسام الإدارة» السليم).
+        'route': '/admin/employee-management',
       });
     }
     

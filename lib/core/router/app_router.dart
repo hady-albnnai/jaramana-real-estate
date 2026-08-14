@@ -302,6 +302,7 @@ class AppRouter {
       GoRoute(path: '/admin/office-operations', builder: (context, state) => const OfficeOperationsScreen()),
       // ⚖️ إدارة الاستشارات القانونية (2026-08-14) — إسناد يدوي ومنح رصيد
       GoRoute(path: '/admin/legal-consultations', builder: (context, state) => const LegalConsultationsAdminScreen()),
+      // توافق خلفي: اسم بديل قديم لمركز عمليات المكتب (BUG-002 — مقصود لا ميت).
       GoRoute(path: '/admin/operations-dashboard', builder: (context, state) => const OfficeOperationsScreen()),
       GoRoute(path: '/admin/permissions', builder: (context, state) => const PermissionsManagementScreen()),
       GoRoute(path: '/admin/users', builder: (context, state) => const UsersManagementScreen()),

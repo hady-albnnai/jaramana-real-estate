@@ -144,6 +144,16 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
                           AppTheme.gapHeightMedium,
 
                           // ── بطاقات التنقل ──
+                          // 🏠 BUG-003 (أُصلح 2026-08-14): '/broker/offers'
+                          // كان مسجَّلاً بالراوتر وله صلاحية brokerOffers
+                          // **بلا أي زر يفتحه** — الوسيط لا يصل إلى عروضه
+                          // إطلاقاً من لوحته.
+                          _navTile(
+                            icon: Icons.home_work_outlined,
+                            title: 'عروضي',
+                            subtitle: 'إدارة العروض المسندة إليك',
+                            onTap: () => context.push('/broker/offers'),
+                          ),
                           _navTile(
                             icon: Icons.calendar_today_outlined,
                             title: 'طلبات المعاينة',

@@ -85,6 +85,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // قسم التطبيق
           _sectionTitle('التطبيق', Icons.phone_android_outlined),
+          // 🔔 BUG-003 (أُصلح 2026-08-14): شاشة «قنوات الإشعارات» كانت مبنية
+          // ومسجَّلة بالراوتر **بلا أي زر يفتحها** — المستخدم لا يستطيع ضبط
+          // قنواته إطلاقاً رغم أن الشاشة جاهزة.
+          _settingsTile('قنوات الإشعارات', Icons.notifications_active_outlined,
+              () => context.push('/user/push-channels')),
           _settingsTile('عن التطبيق', Icons.info, () => _showAboutDialog()),
 
           const SizedBox(height: 30),

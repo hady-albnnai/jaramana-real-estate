@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/constants/app_constants.dart';
 
 /// 📡 شاشة «إعدادات قنوات البوش» (2026-07-27 «الإشعار-بلس»)
 ///
@@ -101,19 +100,35 @@ class _PushChannelsScreenState extends State<PushChannelsScreen> {
       final stillEnabled = _labels.keys.where((c) => c != chn && _blocked[c] != true).length;
       if (stillEnabled == 0) { AppTheme.showSnackBar(context, const SnackBar(content: Text('فعّل قناة ثانية قبل ما تطفي هاي — ما بخلّي حدا يبقى بلا قنوات'))); return; }
     }
+    // 🔧 BUG-018 (أُصلح 2026-08-14): كان الحفظ يمرّ بمسارين **كلاهما معطّل**:
+    //   1. كتابة مباشرة على `internal_config` بمفتاح anon ⇒ يرفضها RLS (42501)
+    //   2. نداء إيدج باسم `user-devices` — **دالة غير موجودة إطلاقاً**
+    // وكلا الخطأين مبتلَع بـ`catch(_){}` (مخالفة §13) ⇒ المستخدم يرى المفتاح
+    // يتبدّل ثم يعود لحاله عند أول تحديث، بلا أي رسالة تشرح لماذا.
+    // الآن: مسار واحد حقيقي عبر user-account، والفشل يُعلَن ويُعاد المفتاح.
+    final prev = _blocked[chn] == true;
     setState(() { _blocked[chn] = !enable; });
     try {
-      await SupabaseService().client.from('internal_config').upsert({
-        'key': 'push_block_${SupabaseService().client.auth.currentUser?.id}.${AppConstants.appVersion}',
-        'value': { 'chn_$chn': !enable },
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'set_push_channel',
+        'channel': chn,
+        'blocked': !enable,
       });
-    } catch (_) {}
-    try {
-      await SupabaseService().invokeFunction('user-devices', body: {
-        'action': 'set_device_meta', 'client': AppConstants.appVersion, 'lang': AppConstants.appName,
-        'at': DateTime.now().toIso8601String(), 'push_block_${chn}': !enable,
-      });
-    } catch (_) {}
+      final d = (res.data as Map?)?.cast<String, dynamic>() ?? {};
+      if (d['success'] != true) {
+        if (!mounted) return;
+        setState(() { _blocked[chn] = prev; });
+        AppTheme.showSnackBar(context, SnackBar(
+          content: Text(d['detail']?.toString() ?? 'تعذّر حفظ التغيير — حاول مجدداً'),
+        ));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _blocked[chn] = prev; });
+      AppTheme.showSnackBar(context, const SnackBar(
+        content: Text('تعذّر حفظ التغيير — تحقّق من اتصالك'),
+      ));
+    }
   }
 
   Widget _famChip(String fam, List<String> enabledBy) {

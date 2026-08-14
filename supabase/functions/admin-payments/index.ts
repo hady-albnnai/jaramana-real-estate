@@ -107,6 +107,25 @@ serve(async (req) => {
       return json(result);
     }
 
+    // ─── IMP-001: عكس اعتماد دفعة (2026-08-14) ───
+    // لم يكن هناك أي مسار للتراجع: احتيال يُكتشف بعد الاعتماد كان يتطلّب
+    // تعديل SQL يدوياً على قاعدة الإنتاج — أخطر ما يمكن طلبه من مالك التطبيق.
+    // مدير فقط (role=6) + سبب إلزامي + سجل تدقيق + إشعار للمستخدم + تراجع
+    // فعلي عن الأثر (الباقة تُلغى، الإعلان المميّز يُسحب).
+    if (action === "reverse") {
+      const paymentId = (body.payment_id ?? body.paymentId)?.toString() ?? "";
+      const reason = (body.reason ?? "").toString();
+      if (!paymentId) return json({ success: false, error: "PAYMENT_ID_REQUIRED" }, 400);
+      if (!reason.trim()) return json({ success: false, error: "REVERSAL_REASON_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin.rpc("admin_reverse_payment", {
+        p_admin_uid: adminUid,
+        p_payment_id: paymentId,
+        p_reason: reason,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data && typeof data === "object" ? data as Record<string, unknown> : { success: true });
+    }
+
     if (action === "reject") {
       const paymentId = (body.payment_id ?? body.paymentId)?.toString() ?? "";
       if (!paymentId) return json({ success: false, error: "PAYMENT_ID_REQUIRED" }, 400);

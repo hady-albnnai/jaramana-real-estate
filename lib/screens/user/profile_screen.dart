@@ -518,6 +518,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             t: 'تقييماتي المستلمة',
             s: 'شاهد تقييمات العملاء لك',
             o: () => context.push('/user/my-ratings')),
+        // 🎁 BUG-003 (أُصلح 2026-08-14): شاشة الإحالة كانت **مبنية بالكامل
+        // ومسجَّلة بالراوتر بلا أي زر يفتحها** — ميزة مدفونة بالكامل.
+        // (تحقُّق: صفر مرجع لـ'/user/referral' خارج ملف الراوتر.)
+        if (!u.isInternal)
+          _buildMenuItem(
+              i: Icons.card_giftcard_outlined,
+              t: 'ادعُ أصدقاءك',
+              s: 'شارك كود الدعوة واكسب نقاطاً',
+              o: () => context.push('/user/referral')),
         // 🤝 الوسيط: لوحة التحكم أو الانضمام
         if (u.isBroker)
           _buildMenuItem(

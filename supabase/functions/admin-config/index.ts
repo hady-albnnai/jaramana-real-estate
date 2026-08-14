@@ -494,6 +494,37 @@ serve(async (req) => {
     }
 
     // ─── Action: update_texts — تحديث مفاتيح نصية ضمن txts.* ───
+    // ─── IMP-002: نسخ الإعدادات الاحتياطية (2026-08-14) ───
+    // app_config كان فيه صفّان فقط بلا أي نسخة احتياطية: خطأ واحد في المحرّر
+    // (سعر خاطئ · نص ممسوح · قناة معطّلة) = لا رجعة. وسجل التدقيق كان يسجّل
+    // اسم القسم فقط بلا القيمة القديمة، فحتى معرفة ما تغيّر مستحيلة.
+    // الآن trigger يلتقط كل تغيير (آخر 50 نسخة لكل مفتاح).
+    if (action === "list_config_history") {
+      const key = (body.config_key ?? body.key ?? "main").toString();
+      const limit = Number(body.limit ?? 20);
+      const { data, error } = await supabaseAdmin.rpc("admin_list_config_history", {
+        p_admin_uid: adminUid,
+        p_key: key,
+        p_limit: Number.isFinite(limit) ? limit : 20,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, history: data ?? [] });
+    }
+
+    // الاسترجاع: مدير فقط (role=6) — أخطر من التعديل نفسه لأنه يعيد الحالة كلها
+    if (action === "restore_config") {
+      const historyId = Number(body.history_id ?? body.historyId);
+      if (!Number.isFinite(historyId) || historyId <= 0) {
+        return json({ success: false, error: "HISTORY_ID_REQUIRED" }, 400);
+      }
+      const { data, error } = await supabaseAdmin.rpc("admin_restore_config", {
+        p_admin_uid: adminUid,
+        p_history_id: historyId,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data && typeof data === "object" ? data as Record<string, unknown> : { success: true });
+    }
+
     if (action === "update_texts") {
       const incoming = body.texts;
       if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
