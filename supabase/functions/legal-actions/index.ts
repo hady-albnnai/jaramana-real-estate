@@ -23,6 +23,23 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
+/// 📄 اسم الوثيقة العربي من الـchecklist بدل المفتاح البرمجي (2026-08-14).
+/// كانت الإشعارات تعرض `"tabo"` و`"kharita"` — رموز لا يفهمها المحامي ولا
+/// المعقّب، رغم أن `title` العربي مخزَّن في نفس البند.
+function itemTitleFromChecklist(checklist: unknown, itemKey: string): string {
+  try {
+    const arr = Array.isArray(checklist) ? checklist : [];
+    for (const it of arr) {
+      const o = it as Record<string, unknown>;
+      if (String(o?.key ?? "") === itemKey) {
+        const t = String(o?.title ?? "").trim();
+        if (t) return t;
+      }
+    }
+  } catch { /* تجاهل */ }
+  return itemKey; // سقوط آمن
+}
+
 /// ⚖️ أسعار الاستشارة ومدتها من app_config.main.legalPrice (أُضيف 2026-08-14).
 /// المصدر الوحيد للحقيقة — الواجهة تعرض والسيرفر يفرض من نفس المكان.
 /// القيم الافتراضية تطابق الأسعار التاريخية حتى لو غاب المفتاح.
@@ -301,23 +318,25 @@ serve(async (req) => {
       if (isExpediter(role)) {
         const { data: taskRow } = await supabaseAdmin
           .from("expediting_tasks")
-          .select("lawyer_uid, target_property_num")
+          .select("lawyer_uid, target_property_num, checklist")
           .eq("id", taskId)
           .maybeSingle();
         const lawyerToNotify = taskRow?.lawyer_uid?.toString() ?? "";
+        const itemTitle = itemTitleFromChecklist(taskRow?.checklist, itemKey);
         if (lawyerToNotify) {
           const statusLabels: Record<number, string> = { 0: "مطلوب", 1: "قيد الاستخراج", 2: "تم الاستخراج ✅", 3: "عائق إداري ⚠️" };
           const sLabel = statusLabels[status] ?? "تحديث";
           const ref = taskRow?.target_property_num ? ` (${taskRow.target_property_num})` : "";
           await supabaseAdmin.from("notifications").insert({
             uid: lawyerToNotify, tp: 2, ttl: "📋 تحديث على مهمة تعقيب",
-            bdy: `المعقّب حدّث بند "${itemKey}" → ${sLabel}${ref}`,
+            bdy: `المعقّب حدّث «${itemTitle}» → ${sLabel}${ref}` +
+              (notes ? ` — ${String(notes).slice(0, 120)}` : ""),
             ref_id: taskId, act: "expediting_item_updated", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
           });
           try {
             await supabaseAdmin.rpc("send_push_notification", {
               p_uid: lawyerToNotify, p_title: "📋 تحديث مهمة تعقيب",
-              p_body: `${itemKey} → ${sLabel}`,
+              p_body: `${itemTitle} → ${sLabel}`,
               p_data: { act: "expediting_item_updated", ref_id: taskId },
             });
           } catch { /* non-critical */ }
@@ -490,15 +509,16 @@ serve(async (req) => {
       // 🔔 إشعار المعقّب بطلب إعادة وثيقة
       const { data: taskRow } = await supabaseAdmin
         .from("expediting_tasks")
-        .select("expediter_uid, target_property_num")
+        .select("expediter_uid, target_property_num, checklist")
         .eq("id", taskId)
         .maybeSingle();
       const expediterToNotify = taskRow?.expediter_uid?.toString() ?? "";
+      const revItemTitle = itemTitleFromChecklist(taskRow?.checklist, itemKey);
       if (expediterToNotify) {
         const ref = taskRow?.target_property_num ? ` (${taskRow.target_property_num})` : "";
         await supabaseAdmin.from("notifications").insert({
           uid: expediterToNotify, tp: 2, ttl: "🔄 طلب إعادة وثيقة",
-          bdy: `المحامي طلب إعادة "${itemKey}"${ref} — السبب: ${revisionNotes || "يرجى المراجعة"}`,
+          bdy: `المحامي طلب إعادة «${revItemTitle}»${ref} — السبب: ${revisionNotes || "يرجى المراجعة"}`,
           ref_id: taskId, act: "expediting_revision_requested", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
         });
         try {

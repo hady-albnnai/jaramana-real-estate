@@ -16,6 +16,13 @@ class ExpediterTasksScreen extends StatefulWidget {
 }
 
 class _ExpediterTasksScreenState extends State<ExpediterTasksScreen> {
+  // 🔎 فلترة (2026-08-14): 14 مهمة مختلطة — معتمدة وجارية ومنتظرة معاً،
+  // فيبحث المعقّب عن مهام اليوم وسط المنجزة.
+  int _filter = -1; // -1 الكل · 0 جديدة · 1 جارية · 2 بانتظار المراجعة · 3 معتمدة
+
+  List<ExpeditingTaskModel> _apply(List<ExpeditingTaskModel> all) =>
+      _filter == -1 ? all : all.where((t) => t.status == _filter).toList();
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +70,42 @@ class _ExpediterTasksScreenState extends State<ExpediterTasksScreen> {
     context.go('/user/profile');
   }
 
+  Widget _filterBar(List<ExpeditingTaskModel> all) {
+    int cnt(int st) => st == -1 ? all.length : all.where((t) => t.status == st).length;
+    const chips = <(int, String)>[
+      (-1, 'الكل'), (0, 'جديدة'), (1, 'جارية'), (2, 'بانتظار المراجعة'), (3, 'معتمدة'),
+    ];
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        children: [
+          for (final c in chips)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: ChoiceChip(
+                selected: _filter == c.$1,
+                onSelected: (_) => setState(() => _filter = c.$1),
+                label: Text('${c.$2} (${cnt(c.$1)})',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _filter == c.$1 ? Colors.black : AppTheme.textGrey)),
+                selectedColor: AppTheme.primaryGold,
+                backgroundColor: AppTheme.surfaceBlack,
+                shape: RoundedRectangleBorder(
+                  borderRadius: AppTheme.radiusXL,
+                  side: BorderSide(
+                      color: _filter == c.$1 ? AppTheme.primaryGold : Colors.white12),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tasks = context.watch<LegalProvider>().expeditingTasks;
@@ -90,7 +133,31 @@ class _ExpediterTasksScreenState extends State<ExpediterTasksScreen> {
           ),
         ],
       ),
-      body: tasks.isEmpty
+      body: tasks.isEmpty && context.watch<LegalProvider>().error != null
+          ? Center(
+              child: Padding(
+                padding: AppTheme.paddingAllXL,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.cloud_off, size: 56, color: AppTheme.errorRed),
+                  AppTheme.gapHeightMedium,
+                  const Text('تعذّر جلب المهام',
+                      style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold)),
+                  AppTheme.gapHeightSmall,
+                  Text(context.read<LegalProvider>().error ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+                  AppTheme.gapHeightLarge,
+                  ElevatedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh, color: Colors.black),
+                    label: const Text('إعادة المحاولة',
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+                  ),
+                ]),
+              ),
+            )
+          : tasks.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -109,20 +176,37 @@ class _ExpediterTasksScreenState extends State<ExpediterTasksScreen> {
                 ],
               ),
             )
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView.builder(
-                padding: AppTheme.paddingAllLarge,
-                itemCount: tasks.length,
-                itemBuilder: (_, i) {
-                  final task = tasks[i];
-                  return _TaskCard(
-                    task: task,
-                    onTap: () => context.push('/expediter/task-detail', extra: task),
+          : Column(children: [
+              _filterBar(tasks),
+              Expanded(
+                child: Builder(builder: (_) {
+                  final shown = _apply(tasks);
+                  if (shown.isEmpty) {
+                    return ListView(children: const [
+                      SizedBox(height: 60),
+                      Center(
+                        child: Text('لا مهام في هذا التصنيف',
+                            style: TextStyle(color: AppTheme.textGrey, fontSize: 14)),
+                      ),
+                    ]);
+                  }
+                  return RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      itemCount: shown.length,
+                      itemBuilder: (_, i) {
+                        final task = shown[i];
+                        return _TaskCard(
+                          task: task,
+                          onTap: () => context.push('/expediter/task-detail', extra: task),
+                        );
+                      },
+                    ),
                   );
-                },
+                }),
               ),
-            ),
+            ]),
     );
   }
 }
