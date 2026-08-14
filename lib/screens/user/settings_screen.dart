@@ -81,6 +81,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _settingsTile('الباقة الحالية', Icons.card_membership,
                 () => context.push('/user/packages')),
 
+          // 🗑️ GP-001 (2026-08-14): حذف الحساب — **شرط إلزامي في Google Play**.
+          // إقرار Data Safety المرفوع لجوجل ينصّ على «حذف الحساب من داخل
+          // التطبيق»، وكانت الميزة غير موجودة إطلاقاً (لا شاشة ولا فعل).
+          // الموظفون مستثنَون: إنهاء التعيين قرار إداري لا ذاتي.
+          if (!isInternal)
+            _settingsTile('حذف الحساب', Icons.delete_forever_outlined,
+                () => _showDeleteAccountDialog(),
+                danger: true),
+
           AppTheme.gapHeightXL,
 
           // قسم التطبيق
@@ -154,14 +163,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _settingsTile(String title, IconData icon, VoidCallback onTap) {
+
+  /// 🗑️ حوار حذف الحساب — تأكيد من خطوتين (GP-001، 2026-08-14).
+  ///
+  /// شرط إلزامي في Google Play: يجب أن يستطيع المستخدم حذف حسابه من داخل
+  /// التطبيق. الحذف **لا رجعة فيه**، لذا نطلب كتابة كلمة تأكيد صريحة بدل
+  /// زر واحد — يمنع الحذف بنقرة خاطئة أو بيد طفل.
+  ///
+  /// السيرفر يرفض الحذف عند وجود التزام قائم (دفعة قيد المراجعة · صفقة
+  /// جارية · استشارة نشطة · موعد قائم) ويعيد سبباً عربياً مفصّلاً نعرضه كما هو.
+  Future<void> _showDeleteAccountDialog() async {
+    final confirmCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    const confirmWord = 'حذف';
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          backgroundColor: AppTheme.surfaceBlack,
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed),
+              AppTheme.gapWidthSmall,
+              Text('حذف الحساب نهائياً',
+                  style: TextStyle(color: AppTheme.errorRed, fontSize: 18)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: AppTheme.paddingAllMedium,
+                  decoration: BoxDecoration(
+                    color: AppTheme.deepBlack,
+                    borderRadius: AppTheme.radiusSmall,
+                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.4)),
+                  ),
+                  child: const Text(
+                    'سيتم فوراً:\n'
+                    '• حذف اسمك ورقمك وبريدك وعنوانك وصور هويتك\n'
+                    '• إخفاء كل عروضك وطلباتك\n'
+                    '• إنهاء الجلسة على كل أجهزتك\n\n'
+                    'لا يمكن التراجع عن هذه الخطوة، ولن تستطيع الدخول بهذا '
+                    'الحساب مرة أخرى.',
+                    style: TextStyle(
+                        color: AppTheme.textWhite,
+                        fontSize: AppTheme.fontSizeSmall,
+                        height: 1.6),
+                  ),
+                ),
+                AppTheme.gapHeightMedium,
+                const Text(
+                  'ملاحظة: يتعذّر الحذف إن كان لديك دفعة قيد المراجعة أو صفقة '
+                  'جارية أو استشارة نشطة أو موعد قائم.',
+                  style: TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeCaption,
+                      height: 1.5),
+                ),
+                AppTheme.gapHeightMedium,
+                TextField(
+                  controller: reasonCtrl,
+                  maxLength: 200,
+                  style: const TextStyle(color: AppTheme.textWhite),
+                  decoration: const InputDecoration(
+                    labelText: 'سبب المغادرة (اختياري)',
+                    filled: true,
+                    fillColor: AppTheme.deepBlack,
+                  ),
+                ),
+                AppTheme.gapHeightSmall,
+                const Text('للتأكيد اكتب كلمة: حذف',
+                    style: TextStyle(
+                        color: AppTheme.errorRed,
+                        fontSize: AppTheme.fontSizeSmall,
+                        fontWeight: FontWeight.bold)),
+                AppTheme.gapHeightXXS,
+                TextField(
+                  controller: confirmCtrl,
+                  onChanged: (_) => setDlg(() {}),
+                  style: const TextStyle(color: AppTheme.textWhite),
+                  decoration: const InputDecoration(
+                    hintText: 'حذف',
+                    filled: true,
+                    fillColor: AppTheme.deepBlack,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع',
+                    style: TextStyle(color: AppTheme.textGrey))),
+            TextButton(
+              onPressed: confirmCtrl.text.trim() == confirmWord
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              child: Text('حذف نهائي',
+                  style: TextStyle(
+                      color: confirmCtrl.text.trim() == confirmWord
+                          ? AppTheme.errorRed
+                          : AppTheme.textGrey)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (proceed != true || !mounted) return;
+
+    final auth = context.read<AuthProvider>();
+    final uid = auth.userModel?.uid ?? '';
+    if (uid.isEmpty) return;
+
+    try {
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'delete_my_account',
+        'user_uid': uid,
+        // كلمة التأكيد التي يتوقعها السيرفر ثابتة بالإنكليزية (بروتوكول)
+        'confirm': 'DELETE',
+        'reason': reasonCtrl.text.trim(),
+      });
+      final d = (res.data is Map)
+          ? Map<String, dynamic>.from(res.data as Map)
+          : <String, dynamic>{};
+
+      if (d['success'] == true) {
+        if (!mounted) return;
+        AppTheme.showSnackBar(context,
+            const SnackBar(content: Text('تم حذف حسابك. نأسف لمغادرتك.')));
+        await auth.logout();
+        if (!mounted) return;
+        context.go('/user/profile');
+        return;
+      }
+
+      // 🔒 §13: نعرض سبب الرفض كما أرسله السيرفر — لا رسالة عامة.
+      // ACTIVE_OBLIGATIONS يأتي مع تفصيل عربي لكل مانع.
+      if (!mounted) return;
+      final detail = (d['detail'] ?? '').toString().trim();
+      AppTheme.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(detail.isNotEmpty
+              ? detail
+              : 'تعذّر حذف الحساب — ${d['error'] ?? 'خطأ غير معروف'}'),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      AppTheme.showSnackBar(context,
+          const SnackBar(content: Text('تعذّر حذف الحساب — تحقّق من اتصالك')));
+    }
+  }
+
+  Widget _settingsTile(String title, IconData icon, VoidCallback onTap,
+      {bool danger = false}) {
+    final color = danger ? AppTheme.errorRed : AppTheme.primaryGold;
     return Card(
       color: AppTheme.surfaceBlack,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMedium),
       child: ListTile(
-        leading: Icon(icon, color: AppTheme.primaryGold),
-        title: Text(title, style: const TextStyle(color: AppTheme.textWhite)),
+        leading: Icon(icon, color: color),
+        title: Text(title,
+            style: TextStyle(
+                color: danger ? AppTheme.errorRed : AppTheme.textWhite)),
         trailing: const Icon(Icons.chevron_right, color: AppTheme.textGrey),
         onTap: onTap,
       ),
