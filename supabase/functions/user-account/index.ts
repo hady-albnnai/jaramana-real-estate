@@ -474,6 +474,33 @@ serve(async (req) => {
       return json({ success: true, profile: data });
     }
 
+    // ─── GP-001: حذف الحساب ذاتياً (شرط إلزامي في Google Play) ───
+    // إقرار Data Safety المرفوع لجوجل ينصّ على «حذف الحساب من داخل التطبيق»
+    // بينما الميزة لم تكن موجودة إطلاقاً — إقرار غير مطابق للواقع وسبب رفض
+    // شائع. الحذف ناعم مع تعمية البيانات الشخصية: الصف يبقى لسلامة المراجع
+    // (عروض · مواعيد · دفعات · صفقات تشير إليه) لكن هويته تُمحى.
+    if (action === "delete_my_account") {
+      // تأكيد صريح يمنع الحذف بنقرة خاطئة أو نداء عابر
+      const confirm = (body.confirm ?? "").toString().trim();
+      if (confirm !== "DELETE") {
+        return json({
+          success: false,
+          error: "CONFIRMATION_REQUIRED",
+          detail: "أرسل confirm=\"DELETE\" لتأكيد حذف الحساب نهائياً.",
+        }, 400);
+      }
+      const reason = (body.reason ?? "").toString();
+      const { data, error } = await supabaseAdmin.rpc("user_delete_own_account", {
+        p_user_uid: uid,
+        p_reason: reason,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const res = (data ?? {}) as Record<string, unknown>;
+      // الموانع تُعاد بحالة 409 لتميّزها الواجهة عن الأخطاء العامة
+      if (res.success !== true) return json(res, 409);
+      return json(res);
+    }
+
     if (action === "update_profile") {
       const payload = (body.payload ?? body.p_payload) as Record<string, unknown>;
       if (!payload) return json({ success: false, error: "PAYLOAD_REQUIRED" }, 400);
