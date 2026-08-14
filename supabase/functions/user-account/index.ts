@@ -340,7 +340,18 @@ serve(async (req) => {
         p_pts: ptsMap["wkL"] ?? 100, // سيرفرياً من الكونفغ — لا قيمة من العميل
       });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: data === true });
+      // 🔒 §13 No-Silent-Probes (2026-08-14): الدالة تُرجع FALSE مجرّداً حين
+      // لم تمرّ 7 أيام على آخر تسجيل — وهو **سلوك صحيح** لا خطأ. لكن الإيدج
+      // كان يمرّر `success:false` بلا سبب، فلا الواجهة ولا المستخدم يعرف
+      // هل فشل النظام أم أن المكافأة ببساطة لم تستحق بعد.
+      if (data !== true) {
+        return json({
+          success: false,
+          error: "WEEKLY_BONUS_NOT_DUE",
+          detail: "مكافأة الدخول الأسبوعي تُمنح مرة كل 7 أيام.",
+        }, 200);
+      }
+      return json({ success: true });
     }
 
     if (action === "award_points") {
