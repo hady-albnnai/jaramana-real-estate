@@ -72,6 +72,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     _taskPropertyCtrl.dispose(); _taskZoneCtrl.dispose(); _taskNotesCtrl.dispose();
     _permanentDocTitleCtrl.dispose();
     _oneTimeDocTitleCtrl.dispose();
+    _searchCtrl.dispose();
     _tabCtrl.dispose();
     super.dispose();
   }
@@ -738,6 +739,155 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
   }
 
   // ──────── تبويب الاستشارات القانونية ────────
+  // 🔎 فلترة الاستشارات (2026-08-14): كانت الجديدة والمكتملة والملغاة في
+  // قائمة واحدة مختلطة — فوضى بعد 30 قضية.
+  int _consultFilter = -1; // -1 الكل · 0 جديدة · 1 جارية · 5 بانتظار العميل · 2 مكتملة
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  List<Map<String, dynamic>> _filterConsults(List<Map<String, dynamic>> all) {
+    var out = all;
+    if (_consultFilter != -1) {
+      out = out.where((c) => (c['status'] ?? 0) == _consultFilter).toList();
+    }
+    final q = _searchQuery.trim();
+    if (q.isNotEmpty) {
+      out = out.where((c) {
+        final subj = (c['subject'] ?? '').toString();
+        final cn = c['client_nm'];
+        final nm = cn is Map ? (cn['nm'] ?? '').toString() : (cn ?? '').toString();
+        return subj.contains(q) || nm.contains(q);
+      }).toList();
+    }
+    return out;
+  }
+
+  /// 📊 بطاقة أداء المحامي — التقييم كان يُسجَّل ولا يراه إطلاقاً
+  Widget _lawyerStatsCard(List<Map<String, dynamic>> all) {
+    final done = all.where((c) => (c['status'] ?? 0) == 2).length;
+    final active = all.where((c) => [0, 1, 5].contains(c['status'] ?? 0)).length;
+    final rated = all
+        .where((c) => c['rating'] != null && (c['rating'] as num) > 0)
+        .toList();
+    final avg = rated.isEmpty
+        ? 0.0
+        : rated.map((c) => (c['rating'] as num).toDouble()).reduce((a, b) => a + b) /
+            rated.length;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: AppTheme.paddingAllMedium,
+      decoration: BoxDecoration(
+        color: AppTheme.primaryGold.withOpacity(0.07),
+        borderRadius: AppTheme.radiusMedium,
+        border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
+      ),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+          _statCell('$done', 'منجزة', AppTheme.successGreen),
+          Container(width: 1, height: 34, color: Colors.white12),
+          _statCell('$active', 'نشطة', AppTheme.primaryGold),
+          Container(width: 1, height: 34, color: Colors.white12),
+          _statCell(rated.isEmpty ? '—' : avg.toStringAsFixed(1),
+              rated.isEmpty ? 'لا تقييم' : 'تقييم (${rated.length})', AppTheme.warningOrange,
+              star: rated.isNotEmpty),
+        ]),
+        if (rated.isNotEmpty) ...[
+          const Divider(color: Colors.white12, height: 18),
+          ...rated.reversed.take(2).map((c) {
+            final cmt = (c['rating_comment'] ?? '').toString();
+            final r = (c['rating'] as num).toInt();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('★' * r,
+                    style: const TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(cmt.isEmpty ? 'بلا تعليق' : cmt,
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+                ),
+              ]),
+            );
+          }),
+        ],
+      ]),
+    );
+  }
+
+  Widget _statCell(String value, String label, Color color, {bool star = false}) =>
+      Column(children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (star) const Icon(Icons.star, color: AppTheme.warningOrange, size: 15),
+          Text(value,
+              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 18)),
+        ]),
+        Text(label,
+            style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+      ]);
+
+  Widget _filterBar(List<Map<String, dynamic>> all) {
+    int cnt(int st) => st == -1 ? all.length : all.where((c) => (c['status'] ?? 0) == st).length;
+    final chips = <(int, String)>[
+      (-1, 'الكل'), (0, 'جديدة'), (1, 'جارية'), (5, 'بانتظار العميل'), (2, 'مكتملة'),
+    ];
+    return Column(children: [
+      SizedBox(
+        height: 38,
+        child: ListView(scrollDirection: Axis.horizontal, children: [
+          for (final ch in chips)
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: ChoiceChip(
+                selected: _consultFilter == ch.$1,
+                onSelected: (_) => setState(() => _consultFilter = ch.$1),
+                label: Text('${ch.$2} (${cnt(ch.$1)})',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _consultFilter == ch.$1 ? Colors.black : AppTheme.textGrey)),
+                selectedColor: AppTheme.primaryGold,
+                backgroundColor: AppTheme.surfaceBlack,
+                shape: RoundedRectangleBorder(
+                  borderRadius: AppTheme.radiusXL,
+                  side: BorderSide(
+                      color: _consultFilter == ch.$1
+                          ? AppTheme.primaryGold
+                          : Colors.white12),
+                ),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 6),
+      TextField(
+        controller: _searchCtrl,
+        onChanged: (v) => setState(() => _searchQuery = v),
+        style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'بحث بالموضوع أو اسم العميل...',
+          hintStyle: const TextStyle(color: AppTheme.textGrey, fontSize: 12),
+          prefixIcon: const Icon(Icons.search, color: AppTheme.primaryGold, size: 18),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, color: AppTheme.textGrey, size: 16),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
+          filled: true,
+          fillColor: AppTheme.surfaceBlack,
+          border: OutlineInputBorder(borderRadius: AppTheme.radiusMedium),
+        ),
+      ),
+    ]);
+  }
+
   Widget _buildConsultationsTab(LegalProvider legal) {
     final consultations = legal.lawyerConsultations;
 
@@ -789,13 +939,34 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
         ),
       ]);
     }
+    // 📊 إحصاءات + 🔎 فلترة فوق القائمة (أُضيفتا 2026-08-14)
+    final shown = _filterConsults(consultations);
     return RefreshIndicator(
       onRefresh: () => legal.fetchLawyerConsultations(),
-      child: ListView.builder(
-        padding: AppTheme.paddingAllLarge,
-        itemCount: consultations.length,
-        itemBuilder: (_, i) => _consultationCard(consultations[i], legal),
-      ),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+          child: Column(children: [
+            _lawyerStatsCard(consultations),
+            _filterBar(consultations),
+          ]),
+        ),
+        Expanded(
+          child: shown.isEmpty
+              ? ListView(children: const [
+                  SizedBox(height: 60),
+                  Center(
+                    child: Text('لا نتائج مطابقة للفلتر',
+                        style: TextStyle(color: AppTheme.textGrey, fontSize: 14)),
+                  ),
+                ])
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  itemCount: shown.length,
+                  itemBuilder: (_, i) => _consultationCard(shown[i], legal),
+                ),
+        ),
+      ]),
     );
   }
 

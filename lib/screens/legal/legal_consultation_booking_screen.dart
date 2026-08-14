@@ -42,6 +42,7 @@ class _State extends State<LegalConsultationBookingScreen> {
   Map<String, dynamic>? _rejectedPayment;   // دفعة مرفوضة من الإدارة (sts=2)
   Map<String, dynamic>? _rejectedConsultation; // استشارة مرفوضة نهائياً (4)
   Map<String, dynamic>? _needInfoConsultation; // بانتظار استكمال بياناتك (5)
+  List<Map<String, dynamic>> _credits = []; // 🎁 أرصدة استشارة ممنوحة من الإدارة
   Map<String, dynamic>? _approvedPayment;   // دفعة مقبولة بدون استشارة
   Map<String, dynamic>? _activeConsultation; // استشارة نشطة (الأحدث)
   List<Map<String, dynamic>> _previousChats = [];
@@ -187,7 +188,11 @@ class _State extends State<LegalConsultationBookingScreen> {
         }
       }
 
+      // 🎁 رصيد ممنوح من الإدارة (بديل الاسترداد) — يسمح بطلب بلا دفع
+      final credits = await context.read<LegalProvider>().fetchMyCredits(uid);
+
       if (mounted) setState(() {
+        _credits = credits;
         _pendingPayment = pending;
         _pendingByType = pendingByType;
         _rejectedPayment = rejected;
@@ -210,6 +215,10 @@ class _State extends State<LegalConsultationBookingScreen> {
   /// دفعة `tp=2` بحالة `sts=0` تُعترض وتُحوَّل لشاشة «الدفعة قيد الانتظار» —
   /// وهي نفس شاشة ما بعد إرسال الدفع (فيها زر «العودة للرئيسية»).
   /// يمنع ذلك إرسال دفعتين متتاليتين لنفس الخدمة قبل بتّ الإدارة بالأولى.
+  /// 🎁 هل لدى المستخدم رصيد مجاني لهذا النوع؟ (يتخطّى شاشة الدفع)
+  bool _hasCredit(int serviceType) =>
+      _credits.any((c) => (c['service_type'] ?? 0) == serviceType);
+
   /// يمنع البدء **لنفس النوع فقط** (قاعدة المالك 2026-08-14):
   /// هاتفية معلّقة لا تمنع الحضورية والعكس. والدفعة المقبولة لا تمنع شيئاً.
   bool _guardPending(int serviceType) {
@@ -364,6 +373,9 @@ class _State extends State<LegalConsultationBookingScreen> {
   Widget _buildHomeContent() {
     final cards = <Widget>[];
 
+    // ⓪ رصيد مجاني ممنوح من الإدارة (بديل الاسترداد النقدي)
+    if (_credits.isNotEmpty) cards.add(_creditCard());
+
     // ① بانتظار استكمال بياناتك (الأولوية القصوى — الكرة بملعب المستخدم)
     if (_needInfoConsultation != null) cards.add(_needInfoCard(_needInfoConsultation!));
 
@@ -491,6 +503,37 @@ class _State extends State<LegalConsultationBookingScreen> {
       );
 
   String _typeName(int pkg) => pkg == 1 ? 'جلسة حضورية' : 'استشارة هاتفية';
+
+  /// 🎁 رصيد استشارة ممنوح من الإدارة — يطلب بلا دفع
+  Widget _creditCard() {
+    final phone = _credits.where((c) => (c['service_type'] ?? 0) == 0).length;
+    final onsite = _credits.where((c) => (c['service_type'] ?? 0) == 1).length;
+    final reason = (_credits.first['reason'] ?? '').toString();
+    return _statusCard(
+      icon: Icons.card_giftcard,
+      color: AppTheme.successGreen,
+      title: 'لديك رصيد استشارة مجاني',
+      children: [
+        Text(
+          [
+            if (phone > 0) '$phone استشارة هاتفية',
+            if (onsite > 0) '$onsite جلسة حضورية',
+          ].join('  ·  '),
+          style: const TextStyle(
+              color: AppTheme.textWhite, fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+        if (reason.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(reason,
+              style: const TextStyle(color: AppTheme.textGrey, fontSize: 11, height: 1.4)),
+        ],
+        const SizedBox(height: 6),
+        const Text('اطلب استشارتك من الأزرار أدناه — لن يُطلب منك أي دفع.',
+            style: TextStyle(
+                color: AppTheme.successGreen, fontSize: 12, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
 
   /// 📄 المحامي يطلب استكمال بيانات (الحالة 5) — بلا دفع جديد
   Widget _needInfoCard(Map<String, dynamic> c) {
@@ -987,9 +1030,15 @@ class _State extends State<LegalConsultationBookingScreen> {
             child: const Row(children: [Icon(Icons.nightlight_round, color: AppTheme.warningOrange, size: 18), AppTheme.gapWidthSmall, Expanded(child: Text('الوقت متأخر — قد يتأخر الرد', style: TextStyle(color: AppTheme.warningOrange, fontSize: 12)))]))],
         AppTheme.gapHeightLarge,
         SizedBox(width: double.infinity, height: 50, child: ElevatedButton.icon(
-          onPressed: () { if (_subjectCtrl.text.trim().length < 10) { _snack('اكتب وصف أطول (10 أحرف)'); return; } _goTo(5); },
+          onPressed: () {
+            if (_subjectCtrl.text.trim().length < 10) { _snack('اكتب وصف أطول (10 أحرف)'); return; }
+            // 🎁 رصيد ممنوح ⇒ لا شاشة دفع، يُرسل الطلب مباشرة
+            if (_hasCredit(_serviceType)) { _submitConsultation(); return; }
+            _goTo(5);
+          },
           icon: const Icon(Icons.arrow_back, color: Colors.black),
-          label: const Text('متابعة للدفع', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          label: Text(_hasCredit(_serviceType) ? 'إرسال الطلب (مجاناً 🎁)' : 'متابعة للدفع',
+              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
         )),
       ])));
