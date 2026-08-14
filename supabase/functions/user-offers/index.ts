@@ -96,11 +96,25 @@ serve(async (req) => {
         }
       }
 
-      const { data, error } = await supabaseAdmin.rpc("increment_offer_views_internal", {
+      // 🔒 BUG-024 (2026-08-14): العدّاد كان قابلاً للتضخيم بلا أي حد —
+      // عشرون نداءً متتالياً بلا مصادقة رفعوه من 9 إلى 29 (أُكِّد حياً).
+      // التعليق أعلاه توقّع الاستغلال في اتجاه «التقليل» وأغفل التضخيم،
+      // وهو الاتجاه المفيد فعلاً للمهاجم: صاحب عرض يجعله يبدو رائجاً،
+      // والمشاهدات مؤشّر تعتمده الإدارة في التقارير.
+      // الآن: نافذة تهدئة 30 دقيقة لكل (عرض + جهاز).
+      const viewerKey = viewerUid ||
+        (body.device_id ?? body.deviceId)?.toString() ||
+        req.headers.get("x-client-info") ||
+        req.headers.get("cf-connecting-ip") ||
+        "anon";
+
+      const { data, error } = await supabaseAdmin.rpc("increment_offer_view", {
         p_offer_id: offerId,
+        p_viewer_key: viewerKey,
       });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: data === true });
+      // counted=false تعني «ضمن نافذة التهدئة» لا فشلاً — النداء ناجح.
+      return json({ success: true, counted: data === true });
     }
 
     // الدالة check_offer_duplicate يمكن أن تكون للمستخدم أو للموظف (من شاشة الإضافة للموظف)، لكنها تحتاج توثيق
