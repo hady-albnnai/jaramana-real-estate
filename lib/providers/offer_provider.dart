@@ -114,7 +114,7 @@ class OfferProvider with ChangeNotifier {
     try {
       final response = await SupabaseService().client
           .from(DbTables.offers)
-          .select()
+          .select(kOfferPublicColumns)
           .eq('i_del', 0)
           .eq('i_pub', 1)
           .order('i_pin', ascending: false) // المثبّتة أولاً
@@ -160,7 +160,7 @@ class OfferProvider with ChangeNotifier {
       final to = from + pageSize - 1;
       final response = await SupabaseService().client
           .from(DbTables.offers)
-          .select()
+          .select(kOfferPublicColumns)
           .eq('i_del', 0)
           .eq('i_pub', 1)
           .order('i_pin', ascending: false)
@@ -297,7 +297,7 @@ class OfferProvider with ChangeNotifier {
           if (userId != null && userId.isNotEmpty) {
             final directRow = await SupabaseService().client
                 .from(DbTables.offers)
-                .select()
+                .select(kOfferPublicColumns)
                 .eq('id', offerId)
                 .maybeSingle();
             if (directRow != null) {
@@ -341,7 +341,7 @@ class OfferProvider with ChangeNotifier {
           try {
             final q = SupabaseService().client
                 .from(DbTables.offers)
-                .select()
+                .select(kOfferPublicColumns)
                 .eq('id', offerId)
                 .eq('i_del', 0);
             if (userId == null || userId.isEmpty) {
@@ -455,7 +455,7 @@ class OfferProvider with ChangeNotifier {
     _isSearching = true; // تفعيل حالة البحث
     try {
       var q = SupabaseService().client.from(DbTables.offers)
-          .select().eq('i_del', 0).eq('i_pub', 1);
+          .select(kOfferPublicColumns).eq('i_del', 0).eq('i_pub', 1);
       if (query != null && query.isNotEmpty) q = q.ilike('ttl', '%$query%');
       if (type != null) q = q.eq('typ', type);
       if (transaction != null) q = q.eq('trx', transaction);

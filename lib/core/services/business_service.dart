@@ -351,7 +351,7 @@ class BusinessService {
     try {
       var q = _sb.client
           .from(DbTables.offers)
-          .select()
+          .select(kOfferPublicColumns)
           .eq('i_del', 0)
           .eq('i_pub', 1)
           .eq('typ', elementType)

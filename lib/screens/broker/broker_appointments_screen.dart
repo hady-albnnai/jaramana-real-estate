@@ -64,7 +64,7 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
         final offData = await SupabaseService()
             .client
             .from(DbTables.offers)
-            .select()
+            .select(kOfferPublicColumns)
             .inFilter('id', offIds.toList());
         for (final o in offData as List) {
           final m = Map<String, dynamic>.from(o as Map);

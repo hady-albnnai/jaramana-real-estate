@@ -152,3 +152,10 @@ GRANT EXECUTE ON FUNCTION public.check_login_throttle(text) TO service_role;
 REVOKE ALL ON FUNCTION public.record_login_attempt(text, boolean) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.record_login_attempt(text, boolean) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_login_attempt(text, boolean) TO service_role;
+-- SEC-004 (تعديل): إعادة usr_id للقراءة.
+-- السبب: عدّاد الحصة في التطبيق يصفّي بـ`.eq('usr_id', uid)`، وPostgREST
+-- يشترط صلاحية SELECT على أي عمود يُستخدم في **التصفية** لا العرض فقط
+-- ⇒ حجبه كسر عدّ العروض (أُكِّد حياً بـ42501).
+-- المفاضلة: usr_id معرّف داخلي لا يكشف وسيلة تواصل، بينما الخطر الحقيقي
+-- كان في contact_ph و exact_loc — وهما يبقيان محجوبين.
+GRANT SELECT (usr_id) ON public.offers TO anon, authenticated;

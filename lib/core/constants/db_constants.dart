@@ -1,4 +1,23 @@
 /// أسماء الجداول في Supabase
+/// 🔒 SEC-004 (2026-08-14): أعمدة العرض المسموح قراءتها عبر REST المباشر.
+///
+/// RLS يحرس **الصفوف** لا **الأعمدة**، وكان `anon` يملك SELECT على جدول
+/// `offers` كله ⇒ مكالمة REST واحدة تستخرج رقم هاتف صاحب كل عرض
+/// (`contact_ph`) وإحداثياته الدقيقة (`exact_loc`) ومعرّفه (`usr_id`).
+/// وهذا يخالف قاعدة المالك الموثّقة: «لا معلومات تواصل لصاحب العرض أبداً».
+///
+/// الآن المنح على مستوى الأعمدة، فأي `select()` مفتوح يفشل بـ42501.
+/// استخدم هذا الثابت في كل قراءة مباشرة لجدول العروض؛ والأعمدة الحساسة
+/// تُقرأ حصراً عبر Edge Functions بمفتاح الخدمة.
+const String kOfferPublicColumns =
+    'id, offer_number, ttl, descript, typ, sub, cat, trx, '
+    'prc, cur, dsc_pct, dsc_end, '
+    'specs, imgs, vdo, loc, '
+    'sts, i_pub, i_del, i_pin, i_fms, i_bst, i_soc, soc_pub, '
+    'pin_end, fms_end, bst_end, '
+    'vws, fvs, avl, com, brk_pct, doc_tp, '
+    'ts_crt, ts_pub, ts_end, ts_ren';
+
 class DbTables {
   static const String users = 'users';
   static const String usersPublic = 'users_public';
