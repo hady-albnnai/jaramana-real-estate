@@ -11,6 +11,38 @@ class LegalProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🔴 إصلاح حرج 2026-08-14 — هوية الفاعل (actor uid)
+  //
+  // كانت 9 دوال تُرسل `'user_uid': ''` فارغاً، والإيدج يتحقق من الجلسة عبر
+  // هذا الحقل بالجسم ⇒ كلها ترتد `USER_UID_REQUIRED`، ولوحة المحامي **عمياء
+  // بالكامل**: الاستشارات/المواعيد/المهام/المعقّبون فارغة دائماً، وكل إجراء
+  // يفشل. العطل بقي مخفياً لأن الكود كان يبتلع الخطأ بـ`catch (_) { = [] }`
+  // فيتنكّر الفشل بهيئة «لا توجد بيانات» — نفس حادثة §13 (No-Silent-Probes).
+  //
+  // الحل: تُحفظ الهوية مرة واحدة عند تهيئة الشاشة وتُستخدم في كل نداء.
+  // ═══════════════════════════════════════════════════════════════
+  String _actorUid = '';
+  String get actorUid => _actorUid;
+
+  /// تُستدعى من الشاشات فور توفر المستخدم (لوحة المحامي/المعقّب).
+  void setActor(String uid) {
+    if (uid.isNotEmpty) _actorUid = uid;
+  }
+
+  /// تُستخدم في كل نداء: تفضّل الهوية الممرّرة ثم المحفوظة.
+  String _uidOr(String uid) => uid.isNotEmpty ? uid : _actorUid;
+
+  /// ⚠️ لا تبتلع الأخطاء: تُسجّل الخطأ الحقيقي بدل إرجاع قائمة فارغة صامتة.
+  bool _ok(Map<String, dynamic>? data, String fallbackMsg) {
+    if (data != null && data['success'] == true) {
+      _error = null;
+      return true;
+    }
+    _error = data?['error']?.toString() ?? fallbackMsg;
+    return false;
+  }
+
   Map<String, dynamic>? _lawyerProfile;
   bool _profileSetupComplete = false;
   bool get profileSetupComplete => _profileSetupComplete;
@@ -71,18 +103,18 @@ class LegalProvider with ChangeNotifier {
 
   Future<void> fetchAvailableExpediters() async {
     try {
-      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_available_expediters', 'user_uid': ''});
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_available_expediters', 'user_uid': _actorUid});
       final data = res.data as Map<String, dynamic>?;
-      _availableExpediters = (data != null && data['success'] == true)
-          ? ((data['expediters'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? []) : [];
-    } catch (_) { _availableExpediters = []; }
+      _availableExpediters = _ok(data, 'تعذّر جلب المعقّبين')
+          ? ((data!['expediters'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? []) : [];
+    } catch (e) { _error = e.toString(); _availableExpediters = []; }
     notifyListeners();
   }
 
   Future<bool> createExpeditingTask({required String expediterUid, required int itemType, String targetPropertyNum = '', String targetZone = '', String notes = '', List<Map<String, dynamic>> checklist = const []}) async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
-        'action': 'create_expediting_task', 'user_uid': '',
+        'action': 'create_expediting_task', 'user_uid': _actorUid,
         'expediter_uid': expediterUid, 'item_type': itemType,
         'target_property_num': targetPropertyNum, 'target_zone': targetZone,
         'lawyer_notes': notes, 'checklist': checklist,
@@ -97,6 +129,7 @@ class LegalProvider with ChangeNotifier {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'complete_expediting_task',
+        'user_uid': _actorUid,
         'task_id': taskId,
         'expediter_notes': notes,
       });
@@ -114,6 +147,7 @@ class LegalProvider with ChangeNotifier {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'approve_expediting_task',
+        'user_uid': _actorUid,
         'task_id': taskId,
       });
       final data = res.data as Map<String, dynamic>?;
@@ -128,27 +162,27 @@ class LegalProvider with ChangeNotifier {
 
   Future<void> fetchLawyerTasks() async {
     try {
-      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_lawyer_expediting_tasks', 'user_uid': ''});
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_lawyer_expediting_tasks', 'user_uid': _actorUid});
       final data = res.data as Map<String, dynamic>?;
-      _lawyerTasks = (data != null && data['success'] == true)
-          ? ((data['tasks'] as List?)?.map((e) => ExpeditingTaskModel.fromMap(Map<String, dynamic>.from(e as Map))).toList() ?? []) : [];
-    } catch (e) { _lawyerTasks = []; }
+      _lawyerTasks = _ok(data, 'تعذّر جلب المهام')
+          ? ((data!['tasks'] as List?)?.map((e) => ExpeditingTaskModel.fromMap(Map<String, dynamic>.from(e as Map))).toList() ?? []) : [];
+    } catch (e) { _error = e.toString(); _lawyerTasks = []; }
     notifyListeners();
   }
 
   Future<void> fetchLawyerAppointments() async {
     try {
-      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_lawyer_appointments', 'user_uid': ''});
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_lawyer_appointments', 'user_uid': _actorUid});
       final data = res.data as Map<String, dynamic>?;
-      _lawyerAppointments = (data != null && data['success'] == true)
-          ? ((data['appointments'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? []) : [];
-    } catch (_) { _lawyerAppointments = []; }
+      _lawyerAppointments = _ok(data, 'تعذّر جلب المواعيد')
+          ? ((data!['appointments'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? []) : [];
+    } catch (e) { _error = e.toString(); _lawyerAppointments = []; }
     notifyListeners();
   }
 
   Future<List<ExpeditingTaskModel>> getExpeditingTasks({String? userUid}) async {
     try {
-      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_my_expediting_tasks', 'user_uid': userUid ?? ''});
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_my_expediting_tasks', 'user_uid': _uidOr(userUid ?? '')});
       final data = res.data as Map<String, dynamic>?;
       _expeditingTasks = (data != null && data['success'] == true)
           ? ((data['tasks'] as List?)?.map((e) => ExpeditingTaskModel.fromMap(Map<String, dynamic>.from(e as Map))).toList() ?? []) : [];
@@ -169,6 +203,7 @@ class LegalProvider with ChangeNotifier {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'update_checklist_item',
+        'user_uid': _actorUid,
         'task_id': taskId,
         'item_key': itemKey,
         'status': status,
@@ -188,27 +223,32 @@ class LegalProvider with ChangeNotifier {
   Future<void> fetchLawyerConsultations() async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions',
-          body: {'action': 'get_lawyer_consultations', 'user_uid': ''});
+          body: {'action': 'get_lawyer_consultations', 'user_uid': _actorUid});
       final data = res.data as Map<String, dynamic>?;
-      _lawyerConsultations = (data != null && data['success'] == true)
-          ? ((data['consultations'] as List?)
-                  ?.map((e) => Map<String, dynamic>.from(e as Map))
-                  .toList() ??
-              [])
-          : [];
-    } catch (_) {
+      if (_ok(data, 'تعذّر جلب الاستشارات')) {
+        _lawyerConsultations = (data!['consultations'] as List?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            [];
+      } else {
+        _lawyerConsultations = [];
+      }
+    } catch (e) {
+      _error = e.toString();
       _lawyerConsultations = [];
     }
     notifyListeners();
   }
 
+  /// 2026-08-14: أُضيف actorUid — الإيدج يتحقق من الجلسة عبر user_uid بالجسم،
+  /// وتمريره فارغاً كان يُفشل نداء المستخدم العادي (إلغاء طلبه) بـUNAUTHORIZED.
   Future<bool> updateConsultationStatus(
-      {required String id, required int status}) async {
+      {required String id, required int status, String actorUid = ''}) async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions',
           body: {
             'action': 'update_consultation_status',
-            'user_uid': '',
+            'user_uid': _uidOr(actorUid),
             'consultation_id': id,
             'status': status,
           });
@@ -225,6 +265,203 @@ class LegalProvider with ChangeNotifier {
     }
   }
 
+  /// ⚖️ رفض المحامي مُوجَّه بالسبب (2026-08-14)
+  /// السبب يحدد الإجراء التلقائي على السيرفر:
+  /// need_info → الحالة 5 (المستخدم يستكمل) · unavailable/out_of_scope →
+  /// إعادة إسناد تلقائية · illegal → رفض نهائي + تصعيد للإدارة.
+  Future<Map<String, dynamic>?> rejectConsultation({
+    required String id,
+    required String reasonCode,
+    String reasonNote = '',
+    String actorUid = '',
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'reject_consultation',
+        'user_uid': _uidOr(actorUid),
+        'consultation_id': id,
+        'reason_code': reasonCode,
+        'reason_note': reasonNote,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) {
+        await fetchLawyerConsultations();
+        return data;
+      }
+      _error = data?['error']?.toString() ?? 'فشل الرفض';
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      return null;
+    }
+  }
+
+  /// 🟢 تبديل حالة توفر المحامي (2026-08-14)
+  /// كان is_active يُقرأ بمكانين بلا أي كاتب ⇒ مجمّد على true للجميع.
+  Future<Map<String, dynamic>?> setAvailability({
+    required String lawyerUid,
+    required bool available,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'set_lawyer_availability',
+        'user_uid': lawyerUid,
+        'available': available,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) return data;
+      _error = data?['error']?.toString() ?? 'فشل تحديث حالة التوفر';
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      return null;
+    }
+  }
+
+  /// 🔁 المستخدم يستكمل البيانات الناقصة (الحالة 5 → 0)
+  Future<bool> resubmitConsultation({
+    required String id,
+    required String userUid,
+    required String subject,
+    List<String> attachments = const [],
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'resubmit_consultation',
+        'user_uid': userUid,
+        'consultation_id': id,
+        'subject': subject,
+        'attachments': attachments,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) return true;
+      _error = data?['error']?.toString() ?? 'فشل إرسال البيانات';
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🗓️ أوقات المحامي والمواعيد (2026-08-14)
+  // قرار المالك: المحامي يضبط أوقاته سلفاً (إلزامي) والعميل لا يرى غيرها.
+  // ═══════════════════════════════════════════════════════════════
+
+  /// أوقات المحامي الحالية من ملفه ({"sun":["09:00-13:00"], ...})
+  Map<String, List<String>> get availabilitySlots {
+    final raw = _lawyerProfile?['avl'];
+    final out = <String, List<String>>{};
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is List) out[k.toString()] = v.map((e) => e.toString()).toList();
+      });
+    }
+    return out;
+  }
+
+  /// هل ضبط المحامي أوقاته؟ (بدونها لا يستطيع استخدام الشاشة)
+  bool get hasAvailability => availabilitySlots.values.any((l) => l.isNotEmpty);
+
+  Future<bool> saveAvailabilitySlots({
+    required String lawyerUid,
+    required Map<String, List<String>> avl,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'set_availability_slots',
+        'user_uid': _uidOr(lawyerUid),
+        'avl': avl,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'فشل حفظ الأوقات')) {
+        _lawyerProfile = {...?_lawyerProfile, 'avl': data!['avl']};
+        notifyListeners();
+        return true;
+      }
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// السلوتات الحرة (للعميل قبل حجز الجلسة الحضورية)
+  Future<Map<String, dynamic>> fetchFreeSlots({String lawyerUid = '', int days = 14}) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'get_free_slots',
+        'user_uid': _actorUid,
+        if (lawyerUid.isNotEmpty) 'lawyer_uid': lawyerUid,
+        'days': days,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'تعذّر جلب المواعيد المتاحة')) {
+        return {
+          'slots': (data!['slots'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+          'lawyer_alias': data['lawyer_alias']?.toString() ?? '',
+        };
+      }
+      return {'slots': <String>[], 'lawyer_alias': ''};
+    } catch (e) {
+      _error = e.toString();
+      return {'slots': <String>[], 'lawyer_alias': ''};
+    }
+  }
+
+  /// 📎 روابط موقّعة لمستندات الاستشارة (كانت تُعرض كعدد بلا إمكانية فتح)
+  Future<List<Map<String, String>>> fetchConsultationFiles(String consultationId) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'get_consultation_files',
+        'user_uid': _actorUid,
+        'consultation_id': consultationId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'تعذّر فتح المستندات')) {
+        return ((data!['files'] as List?) ?? [])
+            .map((e) => Map<String, String>.from(
+                (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      _error = e.toString();
+      return [];
+    }
+  }
+
+  /// 📅 تصرف المحامي بموعد: confirm | complete | cancel
+  Future<bool> lawyerAppointmentAction({
+    required String appointmentId,
+    required String apptAction,
+    String reason = '',
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'lawyer_appointment_action',
+        'user_uid': _actorUid,
+        'appointment_id': appointmentId,
+        'appt_action': apptAction,
+        'reason': reason,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'فشل تنفيذ الإجراء')) {
+        await fetchLawyerAppointments();
+        await fetchLawyerConsultations();
+        return true;
+      }
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> requestChecklistRevision({
     required String taskId,
     required String itemKey,
@@ -233,6 +470,7 @@ class LegalProvider with ChangeNotifier {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'request_checklist_revision',
+        'user_uid': _actorUid,
         'task_id': taskId,
         'item_key': itemKey,
         'revision_notes': notes,
