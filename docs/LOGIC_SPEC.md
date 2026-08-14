@@ -210,6 +210,19 @@
 - `admin_reject_verification_by_admin(p_admin_uid, uid, reason)` — يفرض سبب الرفض إجبارياً ويفحص الدور (`role >= 4`) ويوثق في `activity_log`.
 - `admin_review_offer_internal(p_admin_uid, p_offer_id, p_approve, p_reject_reason)` — يفحص دور الإداري (`role >= 4`) ويفرض سبب الرفض عند الرفض ويوثق في `activity_log`.
 - `approve_payment_final` و `admin_reject_payment_internal` — محصورة للرتبة العليا (`role >= 5`) وتوثق في `activity_log`.
+- **(تحديث 2026-08-14) أنواع الدفع التي تعالجها `approve_payment_final`:**
+  | `tp` | النوع | `pkg` | الأثر عند الاعتماد |
+  |---|---|---|---|
+  | 0 | اشتراك باقة | 1 فضية · 2 ذهبية | تجميع الأيام + `pkg_xoff` + `pkg_grace` |
+  | 1 | إعلان مميّز | — | `i_fms=1` + تمديد `fms_end` بـ`meta.weeks × 7` |
+  | 2 | **استشارة قانونية** | 0 هاتفية (500) · 1 حضورية (2000) | اعتماد الدفعة؛ وإن وُجد `meta.continue_chat` يُجدَّد وقت المحادثة (+15د) ويُربط `payment_id` وتُكتب رسالة `system` |
+  حراس فرع `tp=2`: `CONSULTATION_META_INVALID` (بلا `meta.service='legal_consultation'`) ·
+  `CONSULTATION_TYPE_INVALID` (`pkg` خارج 0/1) · `CONSULTATION_OWNER_MISMATCH` (محادثة ليست للدافع) ·
+  `CHAT_NOT_STARTED` · `CHAT_EXPIRED_7DAYS`.
+- **قنوات الدفع والإعدادات:** كل كتابة على `app_config` تمر عبر `admin-config` بمفتاح الخدمة
+  (الكتابة المباشرة يرفضها RLS بـ`42501`). الأقسام المسموحة: `pts, com, qta, txts,
+  socialPublishing, photoPrice, payChannels, office`. رقم المكتب (`office.phone`) هو **وجهة
+  تحويل رصيد الجوال** ويُكتب متزامناً مع `payChannels.balance.number`.
 - **(تحديث سجل الحركات 2026-07-02):** يتم تسجيل جميع القرارات والتصرفات الإدارية آلياً في جدول `activity_log` عبر الدالة الموحدة `log_admin_action` لضمان المحاسبة وتتبع الأثر (Audit Trail).
 
 ### 5.6 منع phishing notifications
