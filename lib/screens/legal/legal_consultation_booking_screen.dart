@@ -249,6 +249,12 @@ class _State extends State<LegalConsultationBookingScreen> {
     if (_attachments.isEmpty) return [];
     final urls = <String>[];
     final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+    // 🔒 §13 No-Silent-Probes (2026-08-14): كان فشل رفع أي مرفق يُبتلع
+    // بـ`catch (_) {}` ⇒ المستخدم يرفق صورة الطابو ويُرسل الطلب وهو مطمئن،
+    // بينما المحامي يستلم استشارة **بلا مستندات** فيردّها need_info، وتضيع
+    // جولة كاملة على الطرفين بلا أن يعرف أحد السبب.
+    // الآن: نحصي الإخفاقات ونُعلنها للمستخدم بعد المحاولة.
+    var failed = 0;
     for (final f in _attachments) {
       try {
         final comp = await _storage.compressImage(File(f.path));
@@ -256,7 +262,14 @@ class _State extends State<LegalConsultationBookingScreen> {
         final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.${f.path.split('.').last}';
         await SupabaseService().storage.from('consultation_files').uploadBinary(path, bytes, fileOptions: FileOptions(cacheControl: '3600', upsert: false));
         urls.add(path);
-      } catch (_) {}
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (failed > 0 && mounted) {
+      _snack(failed == _attachments.length
+          ? 'تعذّر رفع المرفقات — تحقّق من اتصالك وأعد المحاولة'
+          : 'تعذّر رفع $failed من ${_attachments.length} مرفقات');
     }
     return urls;
   }
