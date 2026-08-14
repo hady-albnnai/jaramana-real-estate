@@ -190,3 +190,92 @@ BEGIN
   ) RETURNING *;
 END;
 $function$;
+CREATE OR REPLACE FUNCTION public.admin_review_offer_internal(p_admin_uid uuid, p_offer_id uuid, p_approve boolean, p_reject_reason text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions', 'pg_temp'
+AS $function$
+DECLARE 
+  v_role INT;
+  v_owner_uid UUID;
+  v_ttl TEXT;
+  v_cur_sts INT;
+BEGIN
+  IF auth.uid() IS NOT NULL AND auth.uid() <> p_admin_uid THEN 
+    RAISE EXCEPTION 'AUTH_MISMATCH'; 
+  END IF;
+  SELECT role INTO v_role FROM users WHERE id = p_admin_uid AND i_del = 0;
+  IF v_role IS NULL OR v_role < 4 THEN 
+    RAISE EXCEPTION 'NOT_AUTHORIZED'; 
+  END IF;
+
+  -- جلب مالك العرض وعنوانه للإشعار
+  SELECT usr_id, ttl, sts INTO v_owner_uid, v_ttl, v_cur_sts
+  FROM offers WHERE id = p_offer_id AND i_del = 0;
+
+  -- 🔒 BUG-016 (2026-08-14): لم يكن هناك أي فحص وجود ⇒ مراجعة عرض **غير
+  -- موجود إطلاقاً** كانت تُرجع success:true (لأن UPDATE بلا صفوف لا يفشل)
+  -- ويظن المدير أنه اعتمد شيئاً. أُكِّد حياً بـuuid أصفار.
+  IF v_owner_uid IS NULL AND NOT EXISTS (
+    SELECT 1 FROM offers WHERE id = p_offer_id AND i_del = 0
+  ) THEN
+    RAISE EXCEPTION 'OFFER_NOT_FOUND';
+  END IF;
+
+  -- منع إعادة اعتماد عرض منشور سلفاً (يعيد النشر ويكرّر الإشعار)
+  IF p_approve AND v_cur_sts = 2 THEN
+    RAISE EXCEPTION 'OFFER_ALREADY_PUBLISHED';
+  END IF;
+
+  IF p_approve THEN
+    UPDATE offers SET sts = 2, i_pub = 1, ts_pub = NOW() 
+    WHERE id = p_offer_id AND i_del = 0;
+    
+    -- 🔔 إشعار صاحب العرض بالاعتماد (2026-07-31)
+    IF v_owner_uid IS NOT NULL THEN
+      INSERT INTO notifications (uid, tp, ttl, bdy, ref_id, act, i_rd, i_del, ts_crt)
+      VALUES (
+        v_owner_uid, 1,
+        '✅ تم اعتماد العرض الخاص بك',
+        'العرض الخاص بك «' || COALESCE(v_ttl, '') || '» تم اعتماده ونشره — يمكنك مشاهدته الآن في الصفحة الرئيسية.',
+        p_offer_id::TEXT, 'offer_approved', 0, 0, NOW()
+      );
+      PERFORM public.send_push_notification(
+        v_owner_uid,
+        '✅ تم اعتماد العرض الخاص بك',
+        COALESCE(v_ttl, 'عرض جديد'),
+        jsonb_build_object('act', 'offer_approved', 'ref_id', p_offer_id::TEXT)
+      );
+    END IF;
+    
+    PERFORM public.log_admin_action(p_admin_uid, 101, 'اعتماد العرض العقاري ونشره للعموم', p_offer_id::TEXT, 'offers');
+  ELSE
+    IF COALESCE(trim(p_reject_reason), '') = '' THEN
+      RAISE EXCEPTION 'REJECTION_REASON_REQUIRED';
+    END IF;
+    UPDATE offers SET sts = 3, rsn = trim(p_reject_reason), i_pub = 0 
+    WHERE id = p_offer_id AND i_del = 0;
+    
+    -- 🔔 إشعار صاحب العرض بالرفض + السبب (2026-07-31)
+    IF v_owner_uid IS NOT NULL THEN
+      INSERT INTO notifications (uid, tp, ttl, bdy, ref_id, act, i_rd, i_del, ts_crt)
+      VALUES (
+        v_owner_uid, 1,
+        '❌ تم رفض العرض الخاص بك',
+        'العرض الخاص بك «' || COALESCE(v_ttl, '') || '» تم رفضه — السبب: ' || trim(p_reject_reason),
+        p_offer_id::TEXT, 'offer_rejected', 0, 0, NOW()
+      );
+      PERFORM public.send_push_notification(
+        v_owner_uid,
+        '❌ تم رفض العرض الخاص بك',
+        COALESCE(v_ttl, '') || ' — ' || trim(p_reject_reason),
+        jsonb_build_object('act', 'offer_rejected', 'ref_id', p_offer_id::TEXT)
+      );
+    END IF;
+    
+    PERFORM public.log_admin_action(p_admin_uid, 102, 'رفض العرض العقاري: ' || trim(p_reject_reason), p_offer_id::TEXT, 'offers');
+  END IF;
+  RETURN FOUND;
+END;
+$function$;
