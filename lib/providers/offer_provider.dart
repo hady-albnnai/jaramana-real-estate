@@ -362,9 +362,16 @@ class OfferProvider with ChangeNotifier {
         }
   }
 
-  Future<OfferModel?> addOffer(OfferModel offer) async {
+  /// 🖼️ IMG-001 (2026-08-15): `isPhotographyRequest` يرفع الراية `photo_req`
+  /// التي يقرأها `create_offer_internal` ليستثني هذا المسار وحده من إلزام
+  /// الصورة — لأن العرض هنا يُنشأ ليأتي المصوّر ويصوّره. بوابة الاعتماد
+  /// تبقى صارمة بلا استثناء، فلا ينشر شيء بلا صورة.
+  Future<OfferModel?> addOffer(OfferModel offer,
+      {bool isPhotographyRequest = false}) async {
     try {
-      final res = await SupabaseService().invokeFunction('user-offers', body: {'action': 'create', 'user_uid': offer.usrId, 'offer': offer.toMap()}); final data = res.data as Map; final response = data['offer_id'];
+      final payload = offer.toMap();
+      if (isPhotographyRequest) payload['photo_req'] = 1;
+      final res = await SupabaseService().invokeFunction('user-offers', body: {'action': 'create', 'user_uid': offer.usrId, 'offer': payload}); final data = res.data as Map; final response = data['offer_id'];
       if (response == null || (response is! List) || response.isEmpty) return null;
       final row = Map<String, dynamic>.from(response.first as Map);
       final created = OfferModel.fromSupabase(row, row['id'] as String);

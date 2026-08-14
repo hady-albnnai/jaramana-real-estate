@@ -155,6 +155,9 @@ class NotificationRouter {
       // ACT-001 (2026-08-14): trg_offer_status_changed كانت تكتب الإشعار بلا
       // `act` إطلاقاً ⇒ صاحب العرض يستلم «تغيّرت حالة عرضك» ولا يفتحه بالضغط.
       case 'offer_status':
+      // IMG-001 (2026-08-15): عرض أُعيد للمراجعة لأنه بلا صور — الوجهة
+      // صفحة العرض نفسه ليضيف صاحبه صورة مباشرةً.
+      case 'offer_needs_image':
         return refId.isEmpty
             ? const NotificationTarget('/user/my-offers')
             : NotificationTarget('/offer/$refId');

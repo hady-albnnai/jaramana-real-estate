@@ -211,6 +211,15 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
       return;
     }
 
+    // 🖼️ IMG-001 (2026-08-15): صورة واحدة على الأقل — قرار المالك.
+    // مسار الإدارة لا يمرّ بـ`photo_req`، فالسيرفر يرفضه بلا صور. نفحص هنا
+    // لتظهر رسالة عربية فوراً بدل خطأ تقني بعد رفع السند وانتظار طويل.
+    if (_pickedImages.isEmpty &&
+        (widget.presetImages == null || widget.presetImages!.isEmpty)) {
+      _snack('يرجى إضافة صورة واحدة على الأقل للعرض');
+      return;
+    }
+
     setState(() { _submitting = true; _progressMsg = 'جارٍ رفع الصور...'; });
 
     // 📸 صور المصوّر مرفوعة مسبقاً على التخزين ⇒ تُستخدم كما هي بلا رفع ثانٍ،

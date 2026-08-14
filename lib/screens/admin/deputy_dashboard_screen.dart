@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/fit_tile.dart';
 
 /// داشبورد نائب المدير (role = 5)
 class DeputyDashboardScreen extends StatelessWidget {
@@ -254,7 +255,8 @@ class DeputyDashboardScreen extends StatelessWidget {
         borderRadius: AppTheme.radiusLarge,
         border: Border.all(color: AppTheme.primaryGold.withOpacity(0.2)),
       ),
-      child: Column(
+      child: // 🧱 UI-OVF-001: محتوى بارتفاع بكسلي ثابت داخل شبكة بنسبة أبعاد ثابتة.
+             FitTile(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -297,7 +299,7 @@ class DeputyDashboardScreen extends StatelessWidget {
                 ),
               )),
         ],
-      ),
+      )),
     );
   }
 
@@ -313,7 +315,8 @@ class DeputyDashboardScreen extends StatelessWidget {
           borderRadius: AppTheme.radiusLarge,
           border: Border.all(color: AppTheme.primaryGold.withOpacity(0.15)),
         ),
-        child: Column(
+        child: // 🧱 UI-OVF-001: محتوى بارتفاع بكسلي ثابت داخل شبكة بنسبة أبعاد ثابتة.
+               FitTile(child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: AppTheme.primaryGold, size: 30),
@@ -329,7 +332,7 @@ class DeputyDashboardScreen extends StatelessWidget {
                   ),
                 )),
           ],
-        ),
+        )),
       ),
     );
   }

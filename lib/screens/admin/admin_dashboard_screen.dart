@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
 import '../../widgets/e2e.dart';
+import '../../widgets/fit_tile.dart';
 
 /// 🛡️ لوحة الإدارة الرئيسية
 /// تعرض: إحصائيات عامة + عدّادات الإجراءات المطلوبة + شبكة تنقّل للأقسام
@@ -250,7 +251,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         borderRadius: AppTheme.radiusLarge,
         border: Border.all(color: AppTheme.primaryGold.withOpacity(0.25)),
       ),
-      child: Row(
+      child: // 🧱 UI-OVF-001: بطاقة إحصاء بارتفاع بكسلي ثابت داخل شبكة بنسبة ثابتة.
+             FitTile(child: Row(
         children: [
           Text(emoji,
               style: TextStyle(
@@ -305,7 +307,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 

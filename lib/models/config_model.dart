@@ -39,7 +39,39 @@ class ConfigModel {
   }
 
   Map<String, dynamic> get texts => _getNestedMap('txts', {});
-  int get usdToSypRate => _getNested('fx.usd_syp', 15000);
+  /// 💱 PRICE-UNIT-001 (2026-08-15): سعر صرف الدولار مقابل الليرة.
+  ///
+  /// قرار المالك: أسعار الباقات (`pkg.<id>.pr`) **بالدولار** — 10 و25 —
+  /// والتحصيل بالليرة، فالمبلغ = pr × هذا السعر. السيرفر يحسبه بنفسه في
+  /// `create_payment_internal` ويرفض أي اختلاف (SEC-003).
+  ///
+  /// ⚠️ لا قيمة افتراضية (قاعدة المالك: «بدي ما يكون شي افتراضي») — القيمة
+  /// صفر تعني أن الإعداد غائب، وعلى الواجهة أن تُظهر ذلك لا أن تخترع رقماً.
+  /// كانت هنا `15000`، ومواضع الاستدعاء كانت تكتب `?? 150` فوقها ⇒ لو غاب
+  /// الإعداد لعُرض سعر أقل بـ100 ضعف من الحقيقي.
+  int get usdToSypRate => _getNested('fx.usd_syp', 0);
+
+  /// هل سعر الصرف مضبوط فعلاً؟ تُستخدم لتعطيل أزرار الشراء بدل عرض سعر خاطئ.
+  bool get hasFxRate => usdToSypRate > 0;
+
+  /// سعر الباقة **بالليرة** (pr بالدولار × سعر الصرف)، أو null إن نقص إعداد.
+  /// مصدر الحقيقة الوحيد للواجهة — يطابق حساب السيرفر حرفاً بحرف.
+  num? packagePriceSyp(int pkgId) {
+    final pkg = packages['$pkgId'];
+    if (pkg is! Map) return null;
+    final pr = pkg['pr'];
+    if (pr is! num) return null;
+    if (!hasFxRate) return null;
+    return pr * usdToSypRate;
+  }
+
+  /// سعر الباقة بالدولار كما هو مخزَّن (للعرض التوضيحي والإدارة).
+  num? packagePriceUsd(int pkgId) {
+    final pkg = packages['$pkgId'];
+    if (pkg is! Map) return null;
+    final pr = pkg['pr'];
+    return pr is num ? pr : null;
+  }
 
   /// رقم واتساب المحادثة الخاصة بطلبات الفيديو (الأساسي - يدخله المدير أو نائبه)
   String get videoRequestWhatsApp => _getNested('txts.videoRequestWhatsApp', '');

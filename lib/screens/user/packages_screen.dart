@@ -453,12 +453,19 @@ class _PackagesScreenState extends State<PackagesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    // السعر المعروض بالليرة فقط: USD من Config × سعر الصرف
+                    // 💱 PRICE-UNIT-001 (2026-08-15): `pkg.pr` بالدولار
+                    // (قرار المالك: 10 و25) والعرض بالليرة عبر fx.usd_syp.
+                    // ⚠️ كان هنا `?? 150` — افتراضي مخالف لقاعدة «لا شيء
+                    // افتراضي»، وأقل بمئة ضعف من السعر الحقيقي (15000)
+                    // ⇒ لو غاب الإعداد لرأى المستخدم 1,500 بدل 150,000.
+                    // الآن الغياب يُعلَن نصاً ويُعطَّل زر الشراء.
                     isFree
                         ? 'مجاناً'
-                        : AppUtils.formatPrice(
-                            price * ((config?.usdToSypRate ?? 150).toDouble()),
-                            currency: 1),
+                        : (config?.packagePriceSyp(pkg.id) == null
+                            ? 'السعر غير متاح'
+                            : AppUtils.formatPrice(
+                                config!.packagePriceSyp(pkg.id)!,
+                                currency: 1)),
                     style: TextStyle(
                         color: gradient[1],
                         fontSize: 22,
@@ -527,6 +534,11 @@ class _PackagesScreenState extends State<PackagesScreen> {
       return null; // لا يمكن الاشتراك بنفس الباقة أو باقة أقل
     }
     
+    // 💱 PRICE-UNIT-001: لا نفتح شاشة الدفع وسعر الصرف غائب — المستخدم
+    // سيرفع إثباتاً ثم يُرفض خادمياً. التعطيل أوضح وأرحم (§13).
+    final cfg = ctx.read<ConfigProvider>().config;
+    if (cfg?.packagePriceSyp(pkg.id) == null) return null;
+
     // السعر يأتي من Config مباشرة — لا من URL قابل للتعديل
     return () => ctx.push('/user/payment?pkg=${pkg.id}');
   }

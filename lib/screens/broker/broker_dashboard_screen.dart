@@ -5,6 +5,7 @@ import '../../providers/broker_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/fit_tile.dart';
 
 /// 🤝 لوحة تحكم الوسيط/السمسار — الشاشة الرئيسية
 /// تعرض: ترحيب + إحصائيات سريعة + بطاقات تنقل للأقسام
@@ -202,7 +203,8 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
         borderRadius: AppTheme.radiusLarge,
         border: Border.all(color: AppTheme.primaryGold.withOpacity(0.25)),
       ),
-      child: Column(
+      child: // 🧱 UI-OVF-001: محتوى بارتفاع بكسلي ثابت داخل شبكة بنسبة أبعاد ثابتة.
+             FitTile(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
@@ -249,7 +251,7 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
                 ),
               )),
         ],
-      ),
+      )),
     );
   }
 

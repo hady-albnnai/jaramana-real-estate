@@ -293,7 +293,20 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       return;
     }
 
-    // إزالة شرط إلزامية الصورة (أصبحت اختيارية كما طلبت)
+    // ═══════════════════════════════════════════════════════════════
+    // 🖼️ IMG-001 (2026-08-15): صورة واحدة على الأقل — قرار المالك
+    // ═══════════════════════════════════════════════════════════════
+    // كان هنا سطر «إزالة شرط إلزامية الصورة (أصبحت اختيارية)». النتيجة:
+    // 4 عروض منشورة بلا أي صورة بالإنتاج. القاعدة الجديدة تفرضها خادمياً
+    // (`create_offer_internal`)، ونفرضها هنا أيضاً لتجيء الرسالة بالعربية
+    // قبل رفع أي ملف بدل خطأ تقني بعد انتظار طويل.
+    //
+    // الاستثناء الوحيد: **طلب التصوير** — العرض يُنشأ ليأتي المصوّر
+    // ويصوّره، فطلب صورة من المستخدم هنا يُلغي الخدمة من أساسها.
+    if (!widget.isPhotographyRequest && _pickedImages.isEmpty) {
+      _snack('يرجى إضافة صورة واحدة على الأقل للعرض');
+      return;
+    }
 
     final effectivePhone = InputValidators.normalizeDigits(_contactPhoneCtrl.text.trim().isNotEmpty ? _contactPhoneCtrl.text.trim() : user.ph.trim());
     if (!RegExp(r'^09[3-9]\d{7}$').hasMatch(effectivePhone)) { _snack('يرجى إدخال رقم هاتف سوري صحيح (09xxxxxxxx)'); return; }
@@ -367,7 +380,8 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     );
 
     try {
-      final created = await offerProv.addOffer(offer);
+      final created = await offerProv.addOffer(offer,
+          isPhotographyRequest: widget.isPhotographyRequest);
       if (!mounted) return;
       if (created == null) {
         setState(() => _submitting = false);

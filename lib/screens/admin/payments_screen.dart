@@ -209,20 +209,22 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
           _row('النوع', _typeLabel(p)),
           // السعر المدفوع مقابل المفترض
           Builder(builder: (ctx) {
+            // ═══════════════════════════════════════════════════════════
+            // 💱 PRICE-UNIT-001 (2026-08-15): مقارنة بوحدة واحدة
+            // ═══════════════════════════════════════════════════════════
+            // كان يعرض «المدفوع 150,000 ل.س» بجانب «المفترض $10» — وحدتان
+            // مختلفتان في سطرين متجاورين ⇒ المدير يظن أن المستخدم دفع
+            // أضعافاً مضاعفة. وشرط عدم التطابق `p.cur == 0` كان يستثني كل
+            // الدفعات الحقيقية (كلها cur=1) فلم يعمل التحذير ولا مرة.
+            // الآن: المتوقَّع يُحسب بالليرة تماماً كما يحسبه السيرفر
+            // (pr × fx.usd_syp)، والمقارنة على المساواة لا على «أقل من».
             final config = ctx.read<ConfigProvider>().config;
-            double expected = 0;
-            try {
-              final pkgMap = config?.packages ?? {};
-              final pkgData = pkgMap['${p.pkg}'];
-              if (pkgData is Map && pkgData['pr'] is num) {
-                expected = (pkgData['pr'] as num).toDouble();
-              }
-            } catch (_) {
-      // تم تجاهل الخطأ عمداً للحفاظ على التدفق الحالي.
-    }
-            final paidLabel = '${p.amt.toStringAsFixed(0)} ${p.cur == 0 ? '\$' : 'ل.س'}';
-            final expectedLabel = '\$${expected.toStringAsFixed(0)}';
-            final mismatch = expected > 0 && p.cur == 0 && p.amt < expected;
+            final num? expectedNum =
+                p.tp == 0 ? config?.packagePriceSyp(p.pkg) : null;
+            final double expected = (expectedNum ?? 0).toDouble();
+            final paidLabel = AppUtils.formatPrice(p.amt, currency: p.cur);
+            final expectedLabel = AppUtils.formatPrice(expected, currency: 1);
+            final mismatch = expectedNum != null && p.amt != expected;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -243,7 +245,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                         const SizedBox(width: 6),
                         const Icon(Icons.warning_amber,
                             color: AppTheme.errorRed, size: 14),
-                        const Text(' أقل من المطلوب',
+                        const Text(' لا يطابق السعر المعلن',
                             style: TextStyle(
                                 color: AppTheme.errorRed, fontSize: AppTheme.fontSizeCaption)),
                       ],

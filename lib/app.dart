@@ -188,8 +188,21 @@ class _MyAppState extends State<MyApp> {
                 ),
               );
             }
-            return Directionality(
-                textDirection: TextDirection.rtl, child: child!);
+            // ═══════════════════════════════════════════════════════════
+            // 🧱 UI-OVF-001 (2026-08-15) — سقف تكبير خط النظام
+            // ═══════════════════════════════════════════════════════════
+            // إعدادات إمكانية الوصول في أندرويد تسمح بتكبير الخط حتى ×2.0.
+            // كل تخطيط في التطبيق مبني على ارتفاعات بكسلية ثابتة (بطاقات
+            // الشبكات، ListTile، الشارات)، فأي معامل >1.15 يُحدث فيضاناً
+            // جماعياً على **كل** الشاشات لا على شاشة واحدة.
+            // القيد هنا يحفظ إمكانية الوصول (تكبير حتى 15%) ويمنع الانكسار،
+            // وهو الحصانة العامة؛ و`FitTile` هو الحصانة الموضعية للبطاقات.
+            return MediaQuery.withClampedTextScaling(
+              minScaleFactor: 1.0,
+              maxScaleFactor: 1.15,
+              child: Directionality(
+                  textDirection: TextDirection.rtl, child: child!),
+            );
           },
         );
       }),

@@ -6,6 +6,7 @@ import '../../core/services/permission_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/executor_provider.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/fit_tile.dart';
 
 /// الشاشة الرئيسية لموظف المكتب — تجمع عمليات المكتب اليومية
 class EmployeeHomeScreen extends StatefulWidget {
@@ -217,7 +218,8 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
           border: Border.all(color: item.color.withOpacity(0.25)),
         ),
         padding: AppTheme.paddingAllLarge,
-        child: Column(
+        child: // 🧱 UI-OVF-001: محتوى بارتفاع بكسلي ثابت داخل شبكة بنسبة أبعاد ثابتة.
+               FitTile(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -240,7 +242,7 @@ class _EmployeeHomeScreenState extends State<EmployeeHomeScreen> {
             Text(item.title,
                 style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.w600)),
           ],
-        ),
+        )),
       ),
     );
   }

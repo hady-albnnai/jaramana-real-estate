@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/permission_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/admin_provider.dart';
+import '../../widgets/fit_tile.dart';
 
 /// مركز عمليات المكتب — شاشة تشغيلية مركزة لموظف المكتب/الإدارة.
 /// تعتمد على الجداول الحالية ولا تضيف نموذج بيانات جديد.
@@ -347,12 +348,16 @@ class _OfficeOperationsScreenState extends State<OfficeOperationsScreen> {
           borderRadius: AppTheme.radiusLarge,
           border: Border.all(color: AppTheme.primaryGold.withOpacity(0.18)),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        // 🧱 UI-OVF-001: نفس الشبكة، نفس الخطر — عنوان بسطرين يفيض.
+        child: FitTile.column(
           children: [
             Icon(icon, color: AppTheme.primaryGold, size: 32),
             AppTheme.gapHeightSmall,
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.w600)),
+            Text(title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -367,13 +372,19 @@ class _OfficeOperationsScreenState extends State<OfficeOperationsScreen> {
         borderRadius: AppTheme.radiusLarge,
         border: Border.all(color: AppTheme.primaryGold.withOpacity(0.16)),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      // 🧱 UI-OVF-001: كان هنا فيضان 0.66px مؤكَّد على شاشة المالك.
+      child: FitTile.column(
         children: [
           Icon(icon, color: AppTheme.primaryGold),
           AppTheme.gapHeightSmall,
-          Text('$value', style: const TextStyle(color: AppTheme.primaryGold, fontSize: 22, fontWeight: FontWeight.bold)),
-          Text(title, style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
+          Text('$value',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AppTheme.primaryGold, fontSize: 22, fontWeight: FontWeight.bold)),
+          Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
         ],
       ),
     );

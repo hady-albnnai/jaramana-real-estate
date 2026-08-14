@@ -22,6 +22,7 @@ import '../../widgets/rating_dialog.dart';
 
 import '../../providers/admin_provider.dart';
 import '../../providers/notification_provider.dart';
+import '../../widgets/fit_tile.dart';
 
 class OfferDetailScreen extends StatefulWidget {
   final String offerId;
@@ -1678,14 +1679,15 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
           color: AppTheme.surfaceBlack,
           borderRadius: AppTheme.radiusMedium,
           border: Border.all(color: AppTheme.primaryGold.withOpacity(0.2))),
-      child: Row(children: [
+      child: // 🧱 UI-OVF-001: يُستخدم داخل شبكة بنسبة 3.0 — سطر نص أطول = فيضان.
+             FitTile(child: Row(children: [
         Icon(icon, color: AppTheme.primaryGold, size: 18),
         AppTheme.gapWidthSmall,
         Expanded(
             child: Text('$label: $value',
                 style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeMedium),
                 overflow: TextOverflow.ellipsis)),
-      ]),
+      ])),
     );
   }
 }

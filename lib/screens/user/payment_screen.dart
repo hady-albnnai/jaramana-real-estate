@@ -13,6 +13,8 @@ import '../../models/payment_model.dart';
 import '../../services/storage_service.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/validation/input_validators.dart';
+import '../../core/utils/app_utils.dart';
+import '../../models/config_model.dart';
 
 /// شاشة دفع اشتراك الباقة — Config-Driven (المرحلة 11)
 ///
@@ -70,24 +72,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return digits;
   }
 
-  /// السعر الرسمي للباقة من Config — لا يمكن للمستخدم تعديله
-  double _priceFromConfig(dynamic config) {
-    if (config == null) return 0;
-    try {
-      final pkgMap = config.packages;
-      final pkg = pkgMap['${widget.packageId}'];
-      if (pkg is Map && pkg['pr'] is num) {
-        return (pkg['pr'] as num).toDouble();
-      }
-    } catch (_) {
-      // تم تجاهل الخطأ عمداً للحفاظ على التدفق الحالي.
-    }
-    // قيم افتراضية آمنة
-    switch (widget.packageId) {
-      case 1: return 10;
-      case 2: return 25;
-      default: return 0;
-    }
+  /// 💱 PRICE-UNIT-001 (2026-08-15): السعر النهائي **بالليرة** أو `null`.
+  ///
+  /// قرار المالك: `pkg.<id>.pr` بالدولار (10 و25)، والتحصيل بالليرة عبر
+  /// `fx.usd_syp`. الحساب صار في مكان واحد (`ConfigModel.packagePriceSyp`)
+  /// يطابق `create_payment_internal` حرفاً بحرف ⇒ لا AMOUNT_MISMATCH.
+  ///
+  /// ⚠️ حُذفت الافتراضيات (`case 1: return 10`) بأمر المالك «بدي ما يكون شي
+  /// افتراضي»: كانت تعيد قيمة **بالدولار** حيث يُتوقَّع مبلغ بالليرة، فلو غاب
+  /// الإعداد لأرسلت الواجهة 10 بدل 150000 ⇒ رفض خادمي محيّر للمستخدم.
+  /// الآن الغياب يُعلَن صراحةً (§13) والزر يُعطَّل.
+  double? _priceFromConfig(ConfigModel? config) {
+    final v = config?.packagePriceSyp(widget.packageId);
+    return v?.toDouble();
   }
 
   String get _packageName {
@@ -186,14 +183,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
     setState(() => _progress = 'جارٍ تسجيل الدفعة...');
 
     final config = context.read<ConfigProvider>().config;
-    final usdToSypRate = (config?.usdToSypRate ?? 150).toDouble();
+    final priceSyp = _priceFromConfig(config);
+    if (priceSyp == null) {
+      // §13 No-Silent-Probes: نقص إعداد السعر يوقف العملية بإعلان صريح
+      // بدل إرسال مبلغ مخترَع يرفضه السيرفر برسالة تقنية غامضة.
+      setState(() => _uploading = false);
+      _snack('تعذّر تحديد سعر الباقة — يرجى المحاولة لاحقاً أو مراسلة المكتب');
+      return;
+    }
 
     final payment = PaymentModel(
       id: '',
       uid: user.uid,
       tp: 0, // 0 = اشتراك باقة
       pkg: widget.packageId,
-      amt: _priceFromConfig(config) * usdToSypRate,
+      amt: priceSyp,
       cur: _currency,
       mtd: 0, // legacy
       channel: _channel,
@@ -418,8 +422,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   String _getDisplayAmount() {
     final config = context.read<ConfigProvider>().config;
-    final rate2 = (config?.usdToSypRate ?? 150).toDouble();
-    return '${(_priceFromConfig(config) * rate2).toStringAsFixed(0)} ل.س';
+    final price = _priceFromConfig(config);
+    // §13: لا نخترع رقماً عند نقص الإعداد — نقولها للمستخدم.
+    if (price == null) return 'السعر غير متاح حالياً';
+    return AppUtils.formatPrice(price, currency: 1);
   }
 
 
