@@ -106,7 +106,34 @@ class PermissionService {
     AppPermission(key: PermissionKeys.userProfile, title: 'الملف الشخصي', group: 'المستخدم', minimumRoleForDefault: UserRole.user),
   ];
 
+  /// 🔒 قيمة حارسة تعني «لا صلاحيات إطلاقاً».
+  ///
+  /// **المشكلة التي تحلّها (2026-08-14):** كان `effectivePermissions` يقرأ
+  /// `if (user.perm.isNotEmpty) return user.perm;` — أي أن القائمة الفارغة
+  /// تعني «استخدم الافتراضي». النتيجة: **كان يستحيل تجريد موظف من كل
+  /// صلاحياته** — المدير يمسح كل الصلاحيات ظنّاً أنه جرّده، فيعيده النظام
+  /// إلى الافتراضي الكامل لدوره. عكس المقصود تماماً وبصمت.
+  ///
+  /// الآن: `perm = ['none']` تعني الصفر الصريح، و`perm = []` تبقى تعني
+  /// «الافتراضي» حفاظاً على التوافق مع كل الحسابات الحالية.
+  static const String noneSentinel = 'none';
+
+  /// 🔒 أعلى دور يُعدّ **رتبة إدارية**. ما فوقه تخصّصات جانبية.
+  ///
+  /// VULN-001: الدوران 7 (محامٍ) و8 (معقّب) أُضيفا فوق المدير رقمياً بينما
+  /// هما تخصّصان لا رتبتان أعلى. الشرط `role >= minimumRoleForDefault` كان
+  /// يمنحهما **كل صلاحيات المدير** تلقائياً لأن أعلى قيمة في الجدول هي 6.
+  /// أُكِّد حياً: محامٍ عدّل إعدادات التطبيق، ومعقّب قرأ كل المدفوعات.
+  static const int maxAdministrativeRole = UserRole.manager;
+
+  /// هل هذا الدور تخصّص جانبي (محامٍ/معقّب) لا رتبة إدارية؟
+  static bool isSideSpecialty(int role) => role > maxAdministrativeRole;
+
   static List<String> defaultsForRole(int role) {
+    // 🔒 VULN-001: التخصّصات الجانبية لا ترث أي صلاحية إدارية افتراضية.
+    // شاشاتها محروسة بالراوتر عبر isLawyer/isExpediter، لا عبر هذا الجدول.
+    if (isSideSpecialty(role)) return const [];
+
     return permissions
         .where((permission) => role >= permission.minimumRoleForDefault)
         .map((permission) => permission.key)
@@ -115,7 +142,16 @@ class PermissionService {
 
   static List<String> effectivePermissions(UserModel? user) {
     if (user == null) return const [];
-    if (user.perm.isNotEmpty) return user.perm;
+
+    // 🔒 الصفر الصريح — تجريد كامل مقصود من الإدارة.
+    if (user.perm.contains(noneSentinel)) return const [];
+
+    if (user.perm.isNotEmpty) {
+      // 🔒 VULN-001: حتى التخصيص اليدوي لا يمنح رتبة إدارية لدور جانبي،
+      // وإلا صار بالإمكان الالتفاف على السقف بمنح perm يدوياً لمحامٍ.
+      if (isSideSpecialty(user.role)) return const [];
+      return user.perm;
+    }
 
     final perms = defaultsForRole(user.role);
 

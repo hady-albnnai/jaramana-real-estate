@@ -324,6 +324,25 @@ serve(async (req) => {
             }
             curAll[chKey] = curCh;
           }
+
+          // 🔒 BUG-009 (2026-08-14): حارس «آخر قناة دفع».
+          // كان بالإمكان تعطيل القنوات الخمس كلها بطلب واحد ⇒ **لا يستطيع أي
+          // مستخدم الدفع إطلاقاً**: الباقات والإعلان المميز والاستشارة القانونية
+          // تتوقف كلها، والأسوأ أن العطل صامت — الإدارة ترى «تم الحفظ» ولا شيء
+          // ينبّهها. أُكِّد حياً: الطلب نجح والنتيجة `القنوات المفعّلة: []`.
+          const anyEnabled = Object.values(curAll).some((ch) => {
+            const o = (ch && typeof ch === "object" && !Array.isArray(ch))
+              ? ch as Record<string, unknown> : {};
+            return o.enabled === true;
+          });
+          if (!anyEnabled) {
+            return json({
+              success: false,
+              error: "AT_LEAST_ONE_CHANNEL_REQUIRED",
+              detail: "يجب إبقاء قناة دفع واحدة مفعّلة على الأقل — وإلا يتعذّر الدفع في التطبيق كلياً.",
+            }, 400);
+          }
+
           value[k] = curAll;
           continue;
         }
