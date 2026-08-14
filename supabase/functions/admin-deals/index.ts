@@ -106,7 +106,19 @@ serve(async (req) => {
       });
 
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: data === true });
+
+      // 🔒 BUG-010 (2026-08-14): إبلاغ فشل كاذب.
+      // `create_deal_internal` مُعرَّفة `RETURNS SETOF deals` فتُرجع صفوفاً،
+      // بينما كان الفحص `data === true` ⇒ **كل** إنشاء ناجح يُبلَّغ عنه
+      // `success:false` رغم أن الصفقة أُنشئت فعلاً في قاعدة البيانات.
+      // النتيجة: المدير يرى «فشل» فيعيد المحاولة ⇒ صفقات مكرّرة صامتة.
+      // أُكِّد حياً: 4 محاولات أعادت success:false و4 صفقات ظهرت في الجدول.
+      const rows = Array.isArray(data) ? data : (data ? [data] : []);
+      if (rows.length === 0) {
+        return json({ success: false, error: "DEAL_NOT_CREATED" }, 400);
+      }
+      const created = rows[0] as Record<string, unknown>;
+      return json({ success: true, deal_id: created?.id ?? null, deal: created });
     }
 
     if (action === "complete") {
