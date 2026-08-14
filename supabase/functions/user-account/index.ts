@@ -123,12 +123,43 @@ serve(async (req) => {
       const password = (body.password ?? "").toString();
       if (!identifier || !password) return json({ success: false, error: "MISSING_CREDENTIALS" }, 400);
 
+      // 🔒 SEC-005 (2026-08-14): حد محاولات الدخول — منع التخمين.
+      // كانت 8 محاولات خاطئة متتالية تمرّ بلا أي إبطاء أو قفل (أُكِّد حياً).
+      // خطير هنا تحديداً لأن كلمات السر تُنشأ إدارياً وكثير منها أرقام قصيرة،
+      // وأرقام الهواتف كانت قابلة للحصاد (BUG-021) ⇒ مسار مباشر لحساب مدير.
+      const throttle = await supabaseAdmin.rpc("check_login_throttle", {
+        p_identifier: identifier,
+      });
+      const tData = (throttle.data ?? {}) as Record<string, unknown>;
+      if (tData.allowed === false) {
+        const retry = Number(tData.retry_after ?? 900);
+        const mins = Math.max(1, Math.ceil(retry / 60));
+        return json({
+          success: false,
+          error: "TOO_MANY_ATTEMPTS",
+          retry_after: retry,
+          detail: `محاولات كثيرة خاطئة — أعد المحاولة بعد ${mins} دقيقة.`,
+        }, 429);
+      }
+
       const { data, error } = await supabaseAdmin.rpc("login_with_password", {
         p_identifier: identifier,
         p_password: password,
       });
 
-      if (error) return json({ success: false, error: error.message }, 400);
+      if (error) {
+        await supabaseAdmin.rpc("record_login_attempt", { p_identifier: identifier, p_ok: false });
+        return json({ success: false, error: error.message }, 400);
+      }
+
+      // الدالة تُرجع كائناً فيه success — الفشل المنطقي (كلمة خاطئة) يُحتسب
+      const res = (data ?? {}) as Record<string, unknown>;
+      const loggedIn = res.success === true;
+      await supabaseAdmin.rpc("record_login_attempt", {
+        p_identifier: identifier,
+        p_ok: loggedIn,
+      });
+
       return json({ success: true, result: data });
     }
 
