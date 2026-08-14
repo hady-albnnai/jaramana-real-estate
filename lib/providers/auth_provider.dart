@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
@@ -269,6 +271,10 @@ class AuthProvider with ChangeNotifier {
       debugPrint('👉 [LOAD_USER_DEBUG] _userModel set! nm=${_userModel?.nm}');
       notifyListeners();
       DeviceService().registerWithServer();
+      // 🚫 GP-004: تحميل قائمة المحظورين مع بيانات المستخدم، كي تُخفى
+      // عروضهم من أول إطار بدل أن تومض ثم تختفي. لا await: لا نؤخّر
+      // إظهار الواجهة على نداء ثانوي — يصل ويُحدّث عبر notifyListeners.
+      unawaited(refreshBlockedOffers());
     } catch (e) {
       debugPrint('👉 [LOAD_USER_DEBUG] Exception: $e');
     }
@@ -294,6 +300,116 @@ class AuthProvider with ChangeNotifier {
   Future<void> refreshUser() async {
     final userId = await AuthService().getSavedUserId();
     if (userId != null) await _loadUserData(userId);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 🚫 GP-004 (2026-08-15) — حظر المستخدمين (متطلب سياسة UGC)
+  // ══════════════════════════════════════════════════════════════════════
+  // سياسة Google Play تشترط مع التبليغ **إمكانية حظر المستخدمين**.
+  // `SupabaseService` يحقن `staff_session_token` تلقائياً، والسيرفر يتحقق
+  // أن المنفّذ هو صاحب الجلسة (مؤكَّد حياً: محاولة الانتحال تُرفض).
+  //
+  // معرّفات العروض المحظورة تُخزَّن هنا ليقرأها `OfferProvider` عند الفلترة
+  // بلا نداء شبكي إضافي لكل قائمة.
+  Set<String> _blockedOfferIds = {};
+  Set<String> get blockedOfferIds => _blockedOfferIds;
+
+  /// حظر صاحب عرض بمعرّف **العرض** (الواجهة لا تعرف `usr_id` — SEC-004).
+  Future<bool> blockOfferOwner(String offerId) async {
+    if (_userModel == null) {
+      _lastError = 'NOT_LOGGED_IN';
+      return false;
+    }
+    try {
+      _lastError = null;
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'block_offer_owner',
+        'user_uid': _userModel!.uid,
+        'offer_id': offerId,
+      });
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data) : null;
+      if (data == null || data['success'] != true) {
+        // §13: نحتفظ بنصّ الخطأ الخادمي ليعرضه الاستدعاء بدل ابتلاعه.
+        _lastError = data?['error']?.toString() ?? 'BLOCK_FAILED';
+        return false;
+      }
+      await refreshBlockedOffers();
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      return false;
+    }
+  }
+
+  /// رفع الحظر عن مستخدم (من شاشة المحظورين).
+  Future<bool> unblockUser(String blockedUid) async {
+    if (_userModel == null) return false;
+    try {
+      _lastError = null;
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'unblock_user',
+        'user_uid': _userModel!.uid,
+        'blocked_uid': blockedUid,
+      });
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data) : null;
+      if (data == null || data['success'] != true) {
+        _lastError = data?['error']?.toString() ?? 'UNBLOCK_FAILED';
+        return false;
+      }
+      await refreshBlockedOffers();
+      return true;
+    } catch (e) {
+      _lastError = e.toString();
+      return false;
+    }
+  }
+
+  /// قائمة المحظورين لعرضها وإدارتها.
+  Future<List<Map<String, dynamic>>> listMyBlocks() async {
+    if (_userModel == null) return const [];
+    try {
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'list_my_blocks',
+        'user_uid': _userModel!.uid,
+      });
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data) : null;
+      if (data == null || data['success'] != true) return const [];
+      final raw = data['blocks'];
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      // فشل القراءة يعني قائمة فارغة — الشاشة تعرض «لا يوجد» ولا تنهار.
+      return const [];
+    }
+  }
+
+  /// تحديث مجموعة العروض المخفية (الأثر متماثل: من حظرتَهم ومن حظروك).
+  Future<void> refreshBlockedOffers() async {
+    if (_userModel == null) {
+      if (_blockedOfferIds.isNotEmpty) {
+        _blockedOfferIds = {};
+        notifyListeners();
+      }
+      return;
+    }
+    try {
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'blocked_offer_ids',
+        'user_uid': _userModel!.uid,
+      });
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data) : null;
+      if (data == null || data['success'] != true) return;
+      final raw = data['offer_ids'];
+      if (raw is! List) return;
+      _blockedOfferIds = raw.map((e) => e.toString()).toSet();
+      notifyListeners();
+    } catch (_) {
+      // فشل التحديث يُبقي القائمة السابقة — الأسوأ أن نُظهر محتوى محظوراً،
+      // لكن إفراغها عند كل فشل شبكي عابر أسوأ. تُحدَّث في المحاولة التالية.
+    }
   }
 
   String? _lastDailyStreakCheckDate;
@@ -374,6 +490,9 @@ class AuthProvider with ChangeNotifier {
     _isNewUser = false;
     _emailSessionHandled = false;
     _lastDailyStreakCheckDate = null;
+    // 🚫 GP-004: تفريغ قائمة الحظر عند الخروج — وإلا ورث المستخدمُ التالي
+    // على نفس الجهاز فلترةَ من سبقه (عروض تختفي عنه بلا سبب مفهوم).
+    _blockedOfferIds = {};
     notifyListeners();
   }
 

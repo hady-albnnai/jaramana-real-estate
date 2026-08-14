@@ -6,9 +6,18 @@
 
     <!-- Notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- WAKE_LOCK مبرَّر: firebaseBackgroundHandler يوقظ محرّك Dart لمعالجة
+         رسائل FCM والتطبيق في الخلفية/مُنهى. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!--
+      🧹 GP-003 (2026-08-15): حُذف RECEIVE_BOOT_COMPLETED.
+      كان يُستخدم لإعادة جدولة الإشعارات المحلية بعد إقلاع الجهاز، لكن
+      التطبيق **لا يجدول أي إشعار محلي** إطلاقاً (لا zonedSchedule ولا
+      periodicallyShow — كل الإشعارات فورية عبر FCM). إذن بلا استخدام =
+      سؤال إضافي في مراجعة الأذونات بلا مقابل، وسياسة Google تنصّ على
+      طلب الحد الأدنى الضروري فقط.
+    -->
 
     <!-- Media (image_picker) - Android 13+ -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
@@ -22,8 +31,17 @@
       This avoids Google Play policy restrictions on SMS permissions.
     -->
 
-    <!-- Location (المرحلة D: اختيار موقع العرض على الخريطة) -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!--
+      Location — اختيار موقع العرض على الخريطة.
+
+      📍 GP-002 (2026-08-15): حُذف ACCESS_FINE_LOCATION عمداً.
+      الوظيفة الوحيدة للموقع هي تحريك مؤشّر خريطة يضبطه المستخدم بإصبعه
+      بعدها، وACCESS_COARSE_LOCATION (~100م) تكفيها تماماً.
+      طلب الدقّة العالية (GPS) يستدعي تدقيقاً أشدّ من مراجعي Google Play
+      تحت سياسة «الحد الأدنى من الأذونات» بلا أي فائدة إضافية للمستخدم،
+      وكان يناقض إقرار Data Safety الذي يصرّح بـ«موقع تقريبي».
+      المقابل في الكود: LocationAccuracy.medium في location_picker.dart.
+    -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <application

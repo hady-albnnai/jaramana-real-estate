@@ -126,7 +126,14 @@ class _MyAppState extends State<MyApp> {
         // ✅ استخدام .value لأننا أنشأنا المتغير مسبقاً
         ChangeNotifierProvider.value(value: _authProvider),
         ChangeNotifierProvider(create: (_) => ConfigProvider()),
-        ChangeNotifierProvider(create: (_) => OfferProvider()),
+        // 🚫 GP-004 (2026-08-15): `OfferProvider` يتبع `AuthProvider` ليعرف
+        // العروض المحظورة ويُخفيها. Proxy بدل قراءة متقاطعة يدوية: التحديث
+        // تلقائي عند كل تغيّر في الحظر (دخول، خروج، حظر جديد، رفع حظر).
+        ChangeNotifierProxyProvider<AuthProvider, OfferProvider>(
+          create: (_) => OfferProvider(),
+          update: (_, auth, offers) =>
+              (offers ?? OfferProvider())..setBlockedIds(auth.blockedOfferIds),
+        ),
         ChangeNotifierProvider(create: (_) => RequestProvider()),
         ChangeNotifierProvider(create: (_) => AppointmentProvider()),
         ChangeNotifierProvider(create: (_) => NotificationProvider()),

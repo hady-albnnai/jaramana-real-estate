@@ -36,7 +36,69 @@ class _LocationPickerState extends State<LocationPicker> {
     _picked = widget.initial ?? _sweedaCenter;
   }
 
+  /// ═══════════════════════════════════════════════════════════════════
+  /// 📍 GP-002 (2026-08-15) — الإفصاح البارز قبل طلب إذن الموقع
+  /// ═══════════════════════════════════════════════════════════════════
+  /// سياسة Google Play (Permissions & APIs / Prominent Disclosure) تُلزم
+  /// بإفصاح **داخل التطبيق** قبل طلب أي إذن حسّاس، يوضّح: ما البيانات،
+  /// ولماذا، وأنها لا تُستخدم لغير الغرض المعلن. كان الإذن يُطلب مباشرةً
+  /// عند الضغط على «موقعي الحالي» بلا أي شرح ⇒ سبب شائع لرفض المراجعة.
+  ///
+  /// يُعرض مرة واحدة لكل جلسة قبل أول طلب فعلي؛ إن رفض المستخدم لا نطلب
+  /// الإذن من النظام إطلاقاً (احترام الرفض، لا إلحاح).
+  bool _disclosureAccepted = false;
+
+  Future<bool> _showLocationDisclosure() async {
+    if (_disclosureAccepted) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Row(children: [
+          Icon(Icons.location_on_outlined, color: AppTheme.primaryGold),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text('تحديد موقع العقار',
+                style: TextStyle(color: AppTheme.primaryGold, fontSize: 18)),
+          ),
+        ]),
+        content: const Text(
+          'لتعبئة موقع العقار على الخريطة تلقائياً، يحتاج التطبيق إلى قراءة '
+          'موقع جهازك الحالي.\n\n'
+          '• يُستخدم الموقع لمرّة واحدة لتحريك مؤشّر الخريطة فقط.\n'
+          '• لا نتتبّع موقعك في الخلفية، ولا نجمعه إلا عند ضغطك هذا الزر.\n'
+          '• الموقع الدقيق لا يظهر للزوّار إطلاقاً — يراه موظفو المكتب '
+          'والمصوّر المكلّف فقط لإتمام المعاينة.\n\n'
+          'يمكنك دائماً تجاهل هذا وتحديد الموقع يدوياً بالضغط على الخريطة.',
+          style: TextStyle(color: AppTheme.textWhite, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('ليس الآن',
+                style: TextStyle(color: AppTheme.textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGold,
+              foregroundColor: AppTheme.deepBlack,
+            ),
+            child: const Text('موافق، حدّد موقعي'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) _disclosureAccepted = true;
+    return ok == true;
+  }
+
   Future<void> _useMyLocation() async {
+    // 📍 GP-002: الإفصاح أولاً — لا يُطلب إذن النظام قبل موافقة صريحة.
+    final agreed = await _showLocationDisclosure();
+    if (!agreed) return;
+    if (!mounted) return;
+
     setState(() => _locating = true);
     try {
       // طلب الإذن
@@ -46,12 +108,16 @@ class _LocationPickerState extends State<LocationPicker> {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        _snack('تم رفض إذن الموقع');
+        _snack('تم رفض إذن الموقع — يمكنك تحديد الموقع يدوياً على الخريطة');
         return;
       }
 
+      // 📍 GP-002: `medium` تكفي تماماً لتحريك مؤشّر خريطة (~100م) ثم
+      // يضبطه المستخدم بإصبعه. كانت `high` (GPS دقيق) وهي أعلى مما تحتاجه
+      // الوظيفة، وطلب دقة زائدة يستدعي تدقيقاً أشد من مراجعي Google بلا
+      // أي فائدة للمستخدم. (الإذن في المانيفست خُفِّض لـCOARSE تبعاً لذلك.)
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.medium,
       );
       final newLoc = LatLng(position.latitude, position.longitude);
       setState(() => _picked = newLoc);

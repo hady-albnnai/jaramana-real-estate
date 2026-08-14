@@ -27,6 +27,7 @@ import '../../screens/user/favorites_screen.dart';
 import '../../screens/user/profile_screen.dart';
 import '../../screens/user/account_info_screen.dart';
 import '../../screens/user/settings_screen.dart';
+import '../../screens/user/blocked_users_screen.dart';
 import '../../screens/user/notifications_screen.dart';
 import '../../screens/user/push_channels_screen.dart';
 import '../../screens/user/add_request_screen.dart';
@@ -155,6 +156,7 @@ class AppRouter {
         path == '/user/referral' ||
         path == '/user/my-ratings' ||
         path == '/user/my-payments' ||
+        path == '/user/blocked-users' ||
         path == '/user/favorites') {
       return PermissionKeys.userProfile;
     }
@@ -271,6 +273,8 @@ class AppRouter {
       GoRoute(path: '/user/profile', builder: (context, state) => const ProfileScreen()),
       GoRoute(path: '/user/account-info', builder: (context, state) => const AccountInfoScreen()),
       GoRoute(path: '/user/settings', builder: (context, state) => const SettingsScreen()),
+      // 🚫 GP-004: إدارة المستخدمين المحظورين (متطلب سياسة UGC)
+      GoRoute(path: '/user/blocked-users', builder: (context, state) => const BlockedUsersScreen()),
       GoRoute(path: '/user/notifications', builder: (context, state) => const NotificationsScreen()),
       GoRoute(path: '/user/push-channels', builder: (context, state) => const PushChannelsScreen()),
       GoRoute(path: '/user/packages', builder: (context, state) => const PackagesScreen()),

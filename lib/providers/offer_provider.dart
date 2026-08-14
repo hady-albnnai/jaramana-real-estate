@@ -27,7 +27,30 @@ class OfferProvider with ChangeNotifier {
   bool get hasMore => _hasMore;
   bool get loadingMore => _loadingMore;
 
-  List<OfferModel> get offers => _offers;
+  // ══════════════════════════════════════════════════════════════════════
+  // 🚫 GP-004 (2026-08-15) — إخفاء عروض المحظورين
+  // ══════════════════════════════════════════════════════════════════════
+  // الحظر بلا إخفاء فعلي = زرّ شكليّ لا يُرضي سياسة UGC ولا المستخدم.
+  // الفلترة في **الـgetter** لا في كل دالة تحميل: هناك 5+ مسارات تملأ
+  // `_offers` (تحميل أولي، صفحات، بحث، كاش، realtime)، وتعديلها واحدةً
+  // واحدةً يضمن أن يُنسى أحدها. نقطة اختناق واحدة = تغطية كاملة.
+  //
+  // المصدر `AuthProvider.blockedOfferIds` (يُحدَّث عند الدخول وبعد كل حظر).
+  Set<String> _blockedIds = const {};
+
+  /// يُستدعى من `AuthProvider` عبر `ChangeNotifierProxyProvider`.
+  void setBlockedIds(Set<String> ids) {
+    if (_blockedIds.length == ids.length && _blockedIds.containsAll(ids)) {
+      return; // لا إشعار بلا تغيير فعلي (يمنع إعادة بناء لا داعي لها)
+    }
+    _blockedIds = ids;
+    notifyListeners();
+  }
+
+  List<OfferModel> get offers => _blockedIds.isEmpty
+      ? _offers
+      : _offers.where((o) => !_blockedIds.contains(o.id)).toList();
+
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get fromCache => _fromCache;

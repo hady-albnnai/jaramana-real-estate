@@ -550,6 +550,94 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     );
   }
 
+  /// ═══════════════════════════════════════════════════════════════════
+  /// 🚫 GP-004 (2026-08-15) — حظر صاحب العرض (متطلب سياسة UGC)
+  /// ═══════════════════════════════════════════════════════════════════
+  /// سياسة Google Play «User Generated Content» تشترط — إلى جانب التبليغ —
+  /// **إمكانية حظر المستخدمين**. كانت غائبة كلياً.
+  ///
+  /// الحظر يُرسَل بمعرّف **العرض** لا بمعرّف المالك: الواجهة لا تعرف
+  /// `usr_id` إطلاقاً (SEC-004 يمنع كشفه عبر REST)، والسيرفر يستنتج المالك
+  /// بمفتاح الخدمة. الأثر متماثل: يختفي محتوى كلٍّ منهما عن الآخر.
+  Future<void> _blockOfferOwner() async {
+    if (_offer == null) return;
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      if (!mounted) return;
+      AppTheme.showSnackBar(
+        context,
+        SnackBar(
+          content: const Text('يجب تسجيل الدخول لحظر مُعلِن'),
+          action: SnackBarAction(
+            label: 'دخول',
+            onPressed: () => context.push('/login'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Row(children: [
+          Icon(Icons.block, color: AppTheme.errorRed),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text('حظر هذا المُعلِن',
+                style: TextStyle(color: AppTheme.textWhite, fontSize: 18)),
+          ),
+        ]),
+        content: const Text(
+          'عند الحظر:\n\n'
+          '• لن تظهر لك أي عروض لهذا المُعلِن.\n'
+          '• لن تظهر عروضك له كذلك.\n\n'
+          'يمكنك رفع الحظر في أي وقت من: الإعدادات ← المستخدمون المحظورون.',
+          style: TextStyle(color: AppTheme.textWhite, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء',
+                style: TextStyle(color: AppTheme.textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorRed,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('حظر'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final ok = await context.read<AuthProvider>().blockOfferOwner(_offer!.id);
+    if (!mounted) return;
+    if (ok) {
+      AppTheme.showSnackBar(
+        context,
+        const SnackBar(content: Text('✅ تم حظر المُعلِن — لن تظهر لك عروضه')),
+      );
+      // نغادر الصفحة: بقاء عرضٍ لمُعلِن محظور أمام المستخدم يناقض الحظر.
+      if (context.canPop()) context.pop();
+    } else {
+      // §13: نعلن الفشل بنصّه لا نبتلعه.
+      final err = context.read<AuthProvider>().lastError ?? '';
+      AppTheme.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(err.contains('CANNOT_BLOCK_STAFF')
+              ? 'لا يمكن حظر موظفي المكتب — استخدم «تبليغ» بدلاً من ذلك'
+              : 'تعذّر حظر المُعلِن، حاول مرة أخرى'),
+        ),
+      );
+    }
+  }
+
   Future<void> _reportOffer() async {
     if (_offer == null) return;
     final auth = context.read<AuthProvider>();
@@ -822,13 +910,40 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                 icon: const Icon(Icons.arrow_back_ios),
                 onPressed: () => Navigator.pop(context)),
             actions: [
-              // لا تبليغ عن العرض الخاص بك — والسيرفر يحسم أيضاً (CANNOT_REPORT_OWN)
+              // لا تبليغ/حظر على العرض الخاص بك — والسيرفر يحسم أيضاً
+              // (CANNOT_REPORT_OWN / CANNOT_BLOCK_SELF).
+              // 🚫 GP-004 (2026-08-15): صار الزر قائمة تضم «تبليغ» و«حظر
+              // المُعلِن» معاً — سياسة UGC في Google Play تشترط الاثنين.
               if (_offer != null &&
                   context.read<AuthProvider>().userModel?.uid != _offer!.usrId)
-                IconButton(
-                  icon: const Icon(Icons.flag_outlined),
-                  tooltip: 'تبليغ',
-                  onPressed: _reportOffer,
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'خيارات',
+                  color: AppTheme.surfaceBlack,
+                  onSelected: (v) {
+                    if (v == 'report') _reportOffer();
+                    if (v == 'block') _blockOfferOwner();
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'report',
+                      child: Row(children: [
+                        Icon(Icons.flag_outlined, color: AppTheme.errorRed, size: 20),
+                        SizedBox(width: 10),
+                        Text('تبليغ عن العرض',
+                            style: TextStyle(color: AppTheme.textWhite)),
+                      ]),
+                    ),
+                    PopupMenuItem(
+                      value: 'block',
+                      child: Row(children: [
+                        Icon(Icons.block, color: AppTheme.errorRed, size: 20),
+                        SizedBox(width: 10),
+                        Text('حظر هذا المُعلِن',
+                            style: TextStyle(color: AppTheme.textWhite)),
+                      ]),
+                    ),
+                  ],
                 ),
               IconButton(
                 icon: const Icon(Icons.share),

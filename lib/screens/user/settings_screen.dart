@@ -81,6 +81,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _settingsTile('الباقة الحالية', Icons.card_membership,
                 () => context.push('/user/packages')),
 
+          // 🚫 GP-004 (2026-08-15): المستخدمون المحظورون — **متطلب سياسة
+          // UGC في Google Play** (حظر + تبليغ معاً). الحظر يُنشأ من صفحة
+          // العرض، وهنا مكان مراجعته ورفعه.
+          if (!isInternal)
+            _settingsTile('المستخدمون المحظورون', Icons.block_outlined,
+                () => context.push('/user/blocked-users')),
+
           // 🗑️ GP-001 (2026-08-14): حذف الحساب — **شرط إلزامي في Google Play**.
           // إقرار Data Safety المرفوع لجوجل ينصّ على «حذف الحساب من داخل
           // التطبيق»، وكانت الميزة غير موجودة إطلاقاً (لا شاشة ولا فعل).

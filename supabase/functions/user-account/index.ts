@@ -711,6 +711,68 @@ serve(async (req) => {
       return json({ success: true, report_id: data });
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // 🚫 GP-004 (2026-08-15): حظر المستخدمين — متطلب سياسة UGC
+    // ═══════════════════════════════════════════════════════════════════
+    // سياسة Google Play تشترط مع نظام التبليغ **إمكانية حظر المستخدمين**.
+    // الحظر بمعرّف العرض لأن الواجهة لا تعرف مالكه (SEC-004 يمنع كشف
+    // usr_id عبر REST) — السيرفر يستنتج المالك بمفتاح الخدمة.
+    if (action === "block_offer_owner") {
+      const offerId = (body.offer_id ?? body.offerId)?.toString() ?? "";
+      if (!offerId) return json({ success: false, error: "OFFER_ID_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin.rpc("block_offer_owner_internal", {
+        p_actor_uid: uid,
+        p_offer_id: offerId,
+        p_reason: (body.reason ?? "").toString(),
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true }, r.success === true ? 200 : 400);
+    }
+
+    if (action === "block_user") {
+      const targetUid = (body.blocked_uid ?? body.blockedUid)?.toString() ?? "";
+      if (!targetUid) return json({ success: false, error: "BLOCKED_UID_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin.rpc("block_user_internal", {
+        p_actor_uid: uid,
+        p_blocked_uid: targetUid,
+        p_reason: (body.reason ?? "").toString(),
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true }, r.success === true ? 200 : 400);
+    }
+
+    if (action === "unblock_user") {
+      const targetUid = (body.blocked_uid ?? body.blockedUid)?.toString() ?? "";
+      if (!targetUid) return json({ success: false, error: "BLOCKED_UID_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin.rpc("unblock_user_internal", {
+        p_actor_uid: uid,
+        p_blocked_uid: targetUid,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true }, r.success === true ? 200 : 400);
+    }
+
+    if (action === "list_my_blocks") {
+      const { data, error } = await supabaseAdmin.rpc("list_my_blocks_internal", {
+        p_actor_uid: uid,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true });
+    }
+
+    if (action === "blocked_offer_ids") {
+      const { data, error } = await supabaseAdmin.rpc("get_blocked_offer_ids_internal", {
+        p_actor_uid: uid,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true });
+    }
+
     if (action === "create_payment") {
       const paymentData = body.payment as Record<string, unknown>;
       if (!paymentData) return json({ success: false, error: "PAYMENT_DATA_REQUIRED" }, 400);
