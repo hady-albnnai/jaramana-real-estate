@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/notification_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
+import '../../core/services/notification_router.dart';
 import '../../widgets/shimmer_loading.dart';
 import '../../widgets/empty_state.dart';
 
@@ -103,14 +104,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     color: AppTheme.textGrey.withOpacity(0.7), fontSize: AppTheme.fontSizeCaption)),
           ],
         ),
-        trailing: n.isRead
-            ? null
-            : Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                    color: AppTheme.primaryGold, shape: BoxShape.circle),
-              ),
+        // 2026-08-14: السهم يظهر فقط إن كان للإشعار وجهة فعلية — عرضه على
+        // إشعار معلوماتي وعدٌ كاذب يُحبط المستخدم أكثر من غياب التنقّل.
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (!n.isRead)
+            Container(
+              width: 10,
+              height: 10,
+              decoration: const BoxDecoration(
+                  color: AppTheme.primaryGold, shape: BoxShape.circle),
+            ),
+          if (_tappable(n)) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.arrow_forward_ios,
+                color: AppTheme.textGrey, size: 13),
+          ],
+        ]),
         onTap: () {
           final uid = context.read<AuthProvider>().userModel?.uid ?? '';
           if (!n.isRead && uid.isNotEmpty) {
@@ -141,17 +150,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  int get _role => context.read<AuthProvider>().userModel?.role ?? 0;
+
+  bool _tappable(NotificationModel n) => NotificationRouter.isTappable(
+        act: n.act, refId: n.refId, tp: n.tp, role: _role,
+      );
+
+  /// 🧭 التنقّل عبر الموجّه الموحّد (نفسه الذي يستخدمه إشعار Push)
+  ///
+  /// كان يوجّه بـ`tp` فيعرف حالتين فقط من ست ⇒ 38% من الإشعارات لا تستجيب
+  /// للضغط. والآن بـ`act` (35+ قيمة) لأن قياساً حياً أثبت أن `tp` غير موثوق
+  /// (`photography_reminder_1h` مسجَّل بـtp=1 وtp=2 معاً).
   void _navigateForNotification(NotificationModel n) {
-    if (n.refId.isEmpty) return;
-    switch (n.tp) {
-      case 0: // عرض
-        context.push('/offer/${n.refId}');
-        break;
-      case 2: // موعد
-        context.push('/user/my-appointments');
-        break;
-      default:
-        break;
+    final target = NotificationRouter.resolve(
+      act: n.act, refId: n.refId, tp: n.tp, role: _role,
+    );
+    if (target.isDenied) {
+      AppTheme.showSnackBar(
+        context,
+        SnackBar(content: Text(target.deniedReason ?? 'غير متاح')),
+      );
+      return;
     }
+    if (!target.hasRoute) return; // معلوماتي — لا وجهة
+    context.push(target.route!);
   }
 }

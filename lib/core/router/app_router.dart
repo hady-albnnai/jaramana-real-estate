@@ -74,6 +74,7 @@ import '../../screens/admin/requests_management_screen.dart';
 import '../../screens/admin/resource_usage_screen.dart';
 import '../../screens/admin/completion_requests_screen.dart';
 import '../../screens/admin/office_operations_screen.dart';
+import '../../screens/admin/legal_consultations_admin_screen.dart';
 import '../../screens/admin/permissions_management_screen.dart';
 import '../../screens/admin/users_management_screen.dart';
 import '../../screens/admin/user_details_screen.dart';
@@ -98,6 +99,7 @@ class AppRouter {
     if (path == '/admin/operations-dashboard') return PermissionKeys.adminDashboard;
     if (path == '/admin/sections') return PermissionKeys.adminDashboard;
     if (path == '/admin/office-operations') return PermissionKeys.officeOperations;
+    if (path == '/admin/legal-consultations') return PermissionKeys.officeOperations;
     if (path == '/admin/permissions') return PermissionKeys.managePermissions;
     if (path.startsWith('/admin/users') || path.startsWith('/admin/user/')) return PermissionKeys.manageUsers;
     if (path == '/admin/review-offers') return PermissionKeys.reviewOffers;
@@ -298,6 +300,8 @@ class AppRouter {
       GoRoute(path: '/admin/employee-management', builder: (context, state) => const EmployeeManagementScreen()),
       GoRoute(path: '/admin/sections', builder: (context, state) => const AdminSectionsScreen()),
       GoRoute(path: '/admin/office-operations', builder: (context, state) => const OfficeOperationsScreen()),
+      // ⚖️ إدارة الاستشارات القانونية (2026-08-14) — إسناد يدوي ومنح رصيد
+      GoRoute(path: '/admin/legal-consultations', builder: (context, state) => const LegalConsultationsAdminScreen()),
       GoRoute(path: '/admin/operations-dashboard', builder: (context, state) => const OfficeOperationsScreen()),
       GoRoute(path: '/admin/permissions', builder: (context, state) => const PermissionsManagementScreen()),
       GoRoute(path: '/admin/users', builder: (context, state) => const UsersManagementScreen()),

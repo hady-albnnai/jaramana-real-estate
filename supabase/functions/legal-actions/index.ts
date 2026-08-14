@@ -199,15 +199,22 @@ serve(async (req) => {
       const { data, error } = await supabaseAdmin.rpc("get_active_lawyers");
       if (error) return json({ success: false, error: error.message }, 400);
       const lawyers = (data ?? []) as Record<string, unknown>[];
-      // 🔒 إخفاء واتساب والعنوان عن المستخدم العادي (يظهر فقط للمحامي/الإدارة)
+      // 🔒 2026-08-14: كان يحجب الواتساب والعنوان فقط ويترك **الاسم الحقيقي
+      // والهاتف** — أي أن هوية المحامي تتسرّب للمستخدم رغم قرار الإخفاء.
+      // الآن: المستخدم العادي يرى اللقب والتخصص والانشغال فقط.
       const hidePrivate = !isLawyer(role) && !canManageLawyerProfiles(role);
       const safeLawyers = hidePrivate
-        ? lawyers.map((l) => {
-            const safe = { ...l };
-            delete safe.whatsapp_phone;
-            delete safe.office_address;
-            return safe;
-          })
+        ? await Promise.all(lawyers.map(async (l) => {
+            const { data: alias } = await supabaseAdmin
+              .rpc("lawyer_alias_for", { p_lawyer_uid: l.uid });
+            return {
+              uid: l.uid,
+              alias: (alias as string | null) ?? "محامي المكتب",
+              specialization: l.specialization,
+              active_tasks_count: l.active_tasks_count,
+              avl: l.avl,
+            };
+          }))
         : lawyers;
       return json({ success: true, lawyers: safeLawyers });
     }
@@ -1832,30 +1839,87 @@ serve(async (req) => {
     }
 
     // ─── تحويل لحضورية مع خصم ───
+    // ─── 🔀 تحويل الاستشارة الهاتفية إلى جلسة حضورية (أُصلح 2026-08-14) ───
+    // كان مكسوراً منطقياً بعد اعتماد نظام المواعيد:
+    //   ❌ لا يُنشئ موعداً (فتصير حضورية بلا موعد — الفراغ الذي أصلحناه)
+    //   ❌ لا يغيّر service_type من 0 إلى 1 (تبقى «هاتفية» بالواجهة)
+    //   ❌ لا يتحقق من توفر السلوت ولا يمنع التعارض
+    // الآن: يشترط اختيار موعد متاح، ويُنشئ الموعد، ويحوّل النوع فعلياً،
+    // ويحسب الفرق المستحق من الإعدادات (الحضورية − المدفوع سابقاً).
     if (action === "convert_to_onsite") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      const slot = (body.slot ?? "").toString();
       if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (!slot) return json({ success: false, error: "SLOT_REQUIRED_FOR_ONSITE" }, 400);
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, price, converted_to_onsite")
+        .select("id, user_uid, lawyer_uid, price, status, service_type, converted_to_onsite, subject")
         .eq("id", consultId).eq("i_del", 0).maybeSingle();
       if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
       if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
       if (row.converted_to_onsite) return json({ success: false, error: "ALREADY_CONVERTED" }, 400);
+      if (Number(row.service_type) === 1) {
+        return json({ success: false, error: "ALREADY_ONSITE" }, 400);
+      }
+      if (![0, 1, 5].includes(Number(row.status))) {
+        return json({ success: false, error: "CONSULTATION_NOT_CONVERTIBLE" }, 409);
+      }
+      if (!row.lawyer_uid) {
+        return json({ success: false, error: "NO_LAWYER_ASSIGNED" }, 409);
+      }
 
-      // الخصم = سعر الاستشارة الهاتفية المدفوع · الفرق يُحسب من الإعدادات
-      // (2026-08-14: كان 2000 ثابتاً بالكود فلا يتبع تعديل الإدارة للسعر)
+      // السلوت يجب أن يكون ضمن أوقات المحامي وغير محجوز (منع التعارض)
+      const { data: freeSlots } = await supabaseAdmin
+        .rpc("get_lawyer_free_slots", { p_lawyer_uid: row.lawyer_uid, p_days: 30 });
+      const wanted = new Date(slot).getTime();
+      const isFree = ((freeSlots ?? []) as Record<string, unknown>[])
+        .some((r) => new Date(String(r.slot_dt)).getTime() === wanted);
+      if (!isFree) return json({ success: false, error: "SLOT_NO_LONGER_AVAILABLE" }, 409);
+
       const priceCfg = await getLegalPrices(supabaseAdmin);
       const discount = Number(row.price) || priceCfg.phone;
       const remainingAmount = Math.max(0, priceCfg.onsite - discount);
 
+      const { data: appt, error: apptErr } = await supabaseAdmin
+        .from("appointments")
+        .insert({
+          bkr_id: row.lawyer_uid, req_uid: uid, dt: slot, sts: 0,
+          ts_crt: new Date().toISOString(),
+          executor_notes: String(row.subject ?? "").slice(0, 200),
+        })
+        .select("id").single();
+      if (apptErr) return json({ success: false, error: apptErr.message }, 400);
+
       await supabaseAdmin.from("legal_consultations").update({
+        service_type: 1,                 // تصبح حضورية فعلياً
         converted_to_onsite: true,
         onsite_discount: discount,
+        appointment_id: appt?.id ?? null,
+        requested_slot: slot,
+        status: 0,                       // بانتظار تأكيد المحامي للموعد
+        ts_upd: new Date().toISOString(),
       }).eq("id", consultId);
 
-      return json({ success: true, discount, remaining_amount: remainingAmount });
+      // إشعار المحامي بالتحويل والموعد
+      await supabaseAdmin.from("notifications").insert({
+        uid: row.lawyer_uid, tp: 1, ttl: "🔀 تحويل إلى جلسة حضورية",
+        bdy: `حوّل العميل استشارته لجلسة حضورية — راجع «مواعيدي» وأكّد الموعد.`,
+        ref_id: consultId, act: "legal_consultation_new",
+        i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+      });
+      try {
+        await supabaseAdmin.rpc("send_push_notification", {
+          p_uid: row.lawyer_uid, p_title: "🔀 تحويل إلى جلسة حضورية",
+          p_body: "موعد جديد بانتظار تأكيدك",
+          p_data: { act: "legal_consultation_new", ref_id: consultId },
+        });
+      } catch { /* push ثانوي */ }
+
+      return json({
+        success: true, discount, remaining_amount: remainingAmount,
+        appointment_id: appt?.id ?? null,
+      });
     }
 
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);

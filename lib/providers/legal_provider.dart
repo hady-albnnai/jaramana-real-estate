@@ -62,7 +62,10 @@ class LegalProvider with ChangeNotifier {
   Future<void> fetchActiveLawyers() async {
     _isLoading = true; _error = null; notifyListeners();
     try {
-      final res = await SupabaseService().invokeFunction('legal-actions', body: {'action': 'get_active_lawyers'});
+      // 2026-08-14: كان بلا user_uid فيرتد USER_UID_REQUIRED (نفس العطل الذي
+      // شلّ لوحة المحامي) — يمنع نافذة «اختر المحامي» بشاشة الإدارة.
+      final res = await SupabaseService().invokeFunction('legal-actions',
+          body: {'action': 'get_active_lawyers', 'user_uid': _actorUid});
       final data = res.data as Map<String, dynamic>?;
       if (data != null && data['success'] == true) {
         final list = data['lawyers'] as List? ?? [];
@@ -459,6 +462,161 @@ class LegalProvider with ChangeNotifier {
       _error = e.toString();
       notifyListeners();
       return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 👔 أدوات الإدارة للاستشارات (2026-08-14)
+  // الفجوة: بعد رفض كل المحامين تبقى الاستشارة يتيمة بلا أي أداة إدارية.
+  // ═══════════════════════════════════════════════════════════════
+  List<Map<String, dynamic>> _adminConsultations = [];
+  List<Map<String, dynamic>> get adminConsultations => _adminConsultations;
+
+  Future<void> fetchAdminConsultations({bool onlyOrphan = false}) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'admin_list_consultations',
+        'user_uid': _actorUid,
+        'only_orphan': onlyOrphan,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      _adminConsultations = _ok(data, 'تعذّر جلب الاستشارات')
+          ? ((data!['consultations'] as List?)
+                  ?.map((e) => Map<String, dynamic>.from(e as Map))
+                  .toList() ??
+              [])
+          : [];
+    } catch (e) {
+      _error = e.toString();
+      _adminConsultations = [];
+    }
+    notifyListeners();
+  }
+
+  /// إسناد يدوي بعد تنسيق الإدارة الخارجي مع المحامين
+  Future<bool> adminAssignConsultation({
+    required String consultationId,
+    required String lawyerUid,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'admin_assign_consultation',
+        'user_uid': _actorUid,
+        'consultation_id': consultationId,
+        'lawyer_uid': lawyerUid,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'فشل الإسناد')) {
+        await fetchAdminConsultations();
+        return true;
+      }
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// منح رصيد استشارة (بدل الاسترداد النقدي — المبلغ يبقى بالخزينة)
+  Future<bool> adminGrantCredit({
+    required String userUid,
+    required int serviceType,
+    required String reason,
+    String sourceConsultationId = '',
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'admin_grant_credit',
+        'user_uid': _actorUid,
+        'user_uid_target': userUid,
+        'service_type': serviceType,
+        'reason': reason,
+        if (sourceConsultationId.isNotEmpty)
+          'source_consultation_id': sourceConsultationId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'فشل منح الرصيد')) {
+        await fetchAdminConsultations();
+        return true;
+      }
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// 🎁 رصيد المستخدم المتاح (تعرضه شاشة الاستشارة بدل زر الدفع)
+  Future<List<Map<String, dynamic>>> fetchMyCredits(String userUid) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'my_consultation_credits',
+        'user_uid': _uidOr(userUid),
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) {
+        return ((data['credits'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 🔔 العميل ينبّه المحامي المتأخر (كان الفعل موجوداً بالسيرفر بلا واجهة)
+  /// الحارس الخادمي: مرّت ساعة على الأقل + الحالة 0 + المالك فقط.
+  Future<Map<String, dynamic>?> reactivateConsultation({
+    required String consultationId,
+    required String userUid,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'reactivate_consultation',
+        'user_uid': _uidOr(userUid),
+        'consultation_id': consultationId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) {
+        _error = null;
+        return data;
+      }
+      _error = data?['error']?.toString() ?? 'فشل التنبيه';
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      return null;
+    }
+  }
+
+  /// 🔀 تحويل الاستشارة الهاتفية إلى جلسة حضورية بموعد مختار
+  Future<Map<String, dynamic>?> convertToOnsite({
+    required String consultationId,
+    required String userUid,
+    required String slot,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'convert_to_onsite',
+        'user_uid': _uidOr(userUid),
+        'consultation_id': consultationId,
+        'slot': slot,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) {
+        _error = null;
+        return data;
+      }
+      _error = data?['error']?.toString() ?? 'فشل التحويل';
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      return null;
     }
   }
 

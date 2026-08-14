@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/network/supabase_service.dart';
 import '../core/router/app_router.dart';
+import '../core/services/notification_router.dart';
 import '../core/utils/error_utils.dart';
 
 /// خدمة Firebase Cloud Messaging (FCM)
@@ -18,6 +19,11 @@ class FCMService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   String? _currentToken;
+
+  /// دور المستخدم الحالي — يلزم لتوجيه إشعارات الأدوار (معقّب/مصوّر/محامٍ).
+  /// يُحدَّث من AuthProvider عند الدخول لأن _navigateFromData متزامنة.
+  int _currentRole = 0;
+  void setCurrentRole(int role) => _currentRole = role;
   bool _initialized = false;
   String? _lastError;
 
@@ -179,35 +185,20 @@ class FCMService {
     }
   }
 
-  /// التنقل حسب نوع الإشعار
+  /// 🧭 التنقل من إشعار Push — عبر **نفس** الموجّه الذي تستخدمه شاشة الإشعارات
+  ///
+  /// 2026-08-14: كان هنا منطق مستقل يوجّه بـ`data['type']` (6 حالات) بينما
+  /// الشاشة توجّه بـ`tp` (حالتان) ⇒ نفس الحدث يوصل لمكانين مختلفين حسب طريقة
+  /// الفتح، وكلاهما يجهل الاستشارة القانونية والتصوير. الآن مصدر واحد.
   void _navigateFromData(Map<String, dynamic> data) {
     try {
-      final type = data['type']?.toString() ?? '';
-      final id = data['id']?.toString() ?? '';
+      final target = NotificationRouter.fromPushData(data, role: _currentRole);
       final router = AppRouter.router;
-
-      switch (type) {
-        case 'offer':
-          if (id.isNotEmpty) router.push('/offer/$id');
-          break;
-        case 'appointment':
-          router.push('/user/my-appointments');
-          break;
-        case 'request':
-          if (id.isNotEmpty) router.push('/user/request/$id');
-          break;
-        case 'payment':
-          router.push('/user/packages');
-          break;
-        case 'broker':
-          router.push('/broker/dashboard');
-          break;
-        case 'admin':
-          router.push('/admin/dashboard');
-          break;
-        default:
-          // افتراضي: شاشة الإشعارات
-          router.push('/user/notifications');
+      if (target.hasRoute) {
+        router.push(target.route!);
+      } else {
+        // معلوماتي أو ممنوع بالدور ⇒ شاشة الإشعارات (سياق آمن دائماً)
+        router.push('/user/notifications');
       }
     } catch (e) {
       _setError(e);

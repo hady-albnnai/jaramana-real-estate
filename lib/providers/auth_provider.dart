@@ -92,7 +92,8 @@ class AuthProvider with ChangeNotifier {
         await _loadUserData(userId);
       }
 
-      // تسجيل FCM token
+      // تسجيل FCM token + تزويده بالدور لتوجيه الإشعارات الصحيح
+      FCMService().setCurrentRole(_userModel?.role ?? 0);
       await FCMService().registerCurrentTokenForUser();
 
       notifyListeners();
@@ -263,6 +264,8 @@ class AuthProvider with ChangeNotifier {
       }
       final row = Map<String, dynamic>.from(profileList.first as Map);
       _userModel = UserModel.fromSupabase(row, userId);
+      // تزويد FCM بالدور هنا أيضاً — هذا مسار استعادة الجلسة عند فتح التطبيق
+      FCMService().setCurrentRole(_userModel?.role ?? 0);
       debugPrint('👉 [LOAD_USER_DEBUG] _userModel set! nm=${_userModel?.nm}');
       notifyListeners();
       DeviceService().registerWithServer();
