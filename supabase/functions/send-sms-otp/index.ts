@@ -60,10 +60,24 @@ serve(async (req) => {
     const TEXTBEE_DEVICE_ID = Deno.env.get('TEXTBEE_DEVICE_ID')
 
     if (!TEXTBEE_API_KEY || !TEXTBEE_DEVICE_ID) {
-      console.log("DEV MODE: SMS NOT SENT. OTP is:", otp)
+      // 🔒 SEC-008 (2026-08-14): كان يُرجع الرمز نفسه في جسم الاستجابة
+      // (`{ devMode: true, otp }`) حين تغيب أسرار البوابة.
+      // اليوم الأسرار مضبوطة فلا يُفعَّل هذا الفرع (تحقُّق حي: الاستجابة
+      // تحمل smsBatchId لا رمزاً)، لكنه فخّ مؤجَّل: انتهاء اشتراك TextBee أو
+      // خطأ في متغيّرات البيئة يحوّل التطبيق فوراً إلى **كاشف رموز للعموم** —
+      // أي شخص يرسل رقم أي مستخدم ويستلم رمز دخوله في الرد.
+      // الآن: الرمز لا يغادر السيرفر أبداً؛ يُسجَّل في اللوغ فقط، والاستجابة
+      // تُعلن العطل صراحةً (§13) بدل التظاهر بالنجاح.
+      console.log("OTP_GATEWAY_NOT_CONFIGURED — code kept server-side only")
+      const devEcho = (Deno.env.get('ALLOW_OTP_ECHO') ?? '') === 'true'
       return new Response(
-        JSON.stringify({ success: true, devMode: true, otp }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: "OTP_GATEWAY_NOT_CONFIGURED",
+          detail: "تعذّر إرسال رمز التحقق — بوابة الرسائل غير مهيّأة. راجع الإدارة.",
+          ...(devEcho ? { devMode: true, otp } : {}),
+        }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 

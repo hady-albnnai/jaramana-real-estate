@@ -60,14 +60,18 @@ serve(async (req) => {
     const templateLang = Deno.env.get("META_OTP_TEMPLATE_LANG") ?? "ar";
 
     if (!token || !phoneNumberId) {
-      // وضع التطوير: ما في إعدادات Meta → نرجّع الكود بالـ response
-      console.warn("⚠️ Meta WhatsApp credentials missing — DEV MODE");
+      // 🔒 SEC-008 (2026-08-14): نفس فخّ send-sms-otp — كان يُرجع الرمز في
+      // جسم الاستجابة حين تغيب أسرار Meta. انتهاء توكن أو خطأ بيئة يحوّل
+      // المسار إلى كاشف رموز للعموم. الرمز لا يغادر السيرفر الآن، والعطل
+      // يُعلَن صراحةً (503) بدل التظاهر بالنجاح (§13).
+      console.warn("OTP_GATEWAY_NOT_CONFIGURED (whatsapp) — code kept server-side only");
+      const devEcho = (Deno.env.get("ALLOW_OTP_ECHO") ?? "") === "true";
       return json({
-        success: true,
-        devMode: true,
-        otp: code,
-        message: "DEV: OTP not sent, returned in response",
-      });
+        success: false,
+        error: "OTP_GATEWAY_NOT_CONFIGURED",
+        detail: "تعذّر إرسال رمز التحقق عبر واتساب — البوابة غير مهيّأة.",
+        ...(devEcho ? { devMode: true, otp: code } : {}),
+      }, 503);
     }
 
     const waUrl = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
