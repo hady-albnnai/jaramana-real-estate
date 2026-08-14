@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,6 +7,9 @@ import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
+import '../../core/constants/app_constants.dart';
+import '../../core/services/app_info_service.dart';
+import '../../core/utils/social_links.dart';
 import '../../widgets/bottom_nav_bar.dart';
 
 /// شاشة الإعدادات
@@ -102,10 +106,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           AppTheme.gapHeightXL,
 
-          // إصدار التطبيق
-          Center(
-            child: Text('الإصدار 1.0.0', style: TextStyle(color: AppTheme.textGrey.withOpacity(0.5), fontSize: AppTheme.fontSizeSmall)),
-          ),
+          // إصدار التطبيق — من الـAPK نفسه. يُخفى كلياً إن تعذّرت قراءته
+          // (لا نعرض رقماً مخترَعاً؛ كان `1.0.0` نصاً ثابتاً وهمياً).
+          if (AppInfoService.isReady)
+            Center(
+              child: Text('الإصدار ${AppInfoService.displayVersion}',
+                  style: TextStyle(
+                      color: AppTheme.textGrey.withOpacity(0.5),
+                      fontSize: AppTheme.fontSizeSmall)),
+            ),
         ],
       ),
       bottomNavigationBar: CustomBottomNavBar(currentIndex: auth.userModel?.isInternal == true ? 0 : 5),
@@ -187,172 +196,333 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// ℹ️ نافذة «عن التطبيق».
+  ///
+  /// **مبدأ حاكم (قرار المالك 2026-08-14): صفر قيم مطبوخة بالكود.**
+  /// كل نص ورقم ورابط هنا مصدره `app_config` — عدا الإصدار الذي يُقرأ من
+  /// الـAPK نفسه (لأن جعله قابلاً للتعديل يسمح بعرض رقم يخالف البناء الفعلي).
+  /// أي بند فارغ **يختفي كلياً** بدل أن يعرض قيمة افتراضية.
+  ///
+  /// ما أُزيل ولماذا:
+  ///   • «رقم المطور / المطور الثاني» ← «للتواصل معنا» — التسمية كانت توحي
+  ///     بأنها أرقام شركة البرمجة، وكان الرقمان مطبوخين كقيمة افتراضية فلا
+  ///     يختفيان عند تفريغ الحقل من الإدارة.
+  ///   • «Backend: Supabase • Frontend: Flutter» — كشف بنية تقنية بلا فائدة
+  ///     للمستخدم، ويسهّل على مهاجم استهداف الطبقة الصحيحة.
+  ///   • «الإصدار: 1.0.0» كنص حرفي — رقم وهمي منفصل عن `pubspec.yaml`.
   void _showAboutDialog() {
     final configProv = Provider.of<ConfigProvider>(context, listen: false);
     final config = configProv.config;
-    final facebook = config?.facebookPage ?? '';
-    final instagram = config?.instagramPage ?? '';
-    final devPhone = config?.developerPhone ?? '(سيتم إضافته لاحقاً)';
-    final devPhone2 = config?.developerPhone2 ?? '';
-    final extraSocials = config?.socialPages ?? {};
+
+    // ── الروابط الاجتماعية: المعروفة أولاً بترتيب ثابت، ثم الإضافية ──
+    // تُدمج `txts.facebook` و`txts.instagram` القديمة مع `txts.socialPages`
+    // في خريطة واحدة حتى لا يظهر أي رابط مرتين، ويبقى التوافق مع البيانات
+    // المخزَّنة سابقاً (facebook محفوظ حالياً بالمفتاح القديم).
+    final socials = <String, String>{};
+    void addSocial(String key, String? url) {
+      final k = SocialLinks.normalizeKey(key);
+      final u = (url ?? '').trim();
+      if (k.isEmpty || u.isEmpty) return;
+      if (!SocialLinks.isValidUrl(u)) return; // رابط غير آمن ⇒ لا يُعرض
+      socials.putIfAbsent(k, () => u);
+    }
+
+    addSocial('facebook', config?.facebookPage);
+    addSocial('instagram', config?.instagramPage);
+    (config?.socialPages ?? {}).forEach((k, v) => addSocial(k, v?.toString()));
+
+    // ترتيب العرض: الشبكات المعروفة بترتيب SocialLinks.known ثم الباقي أبجدياً
+    final orderedKeys = <String>[
+      ...SocialLinks.known.map((n) => n.key).where(socials.containsKey),
+      ...(socials.keys.where((k) => SocialLinks.byKey(k) == null).toList()
+        ..sort()),
+    ];
+
+    // ── أرقام التواصل ──
+    final phone1 = (config?.contactPhone1 ?? '').trim();
+    final phone2 = (config?.contactPhone2 ?? '').trim();
+    final waRaw = (config?.contactWhatsApp ?? '').trim();
+    final waNumber = SocialLinks.toWhatsAppNumber(waRaw);
+    final hasContact =
+        phone1.isNotEmpty || phone2.isNotEmpty || waNumber.isNotEmpty;
+
+    // ── النصوص التحريرية ──
+    final aboutUs = (config?.aboutUsText ?? '').trim();
+    final appDesc = (config?.appDescriptionText ?? '').trim();
+
+    // ── الروابط القانونية (شرط نشر Google Play) ──
+    final privacyUrl = (config?.privacyPolicyUrl ?? '').trim();
+    final termsUrl = (config?.termsUrl ?? '').trim();
+    final hasLegal = SocialLinks.isValidUrl(privacyUrl) ||
+        SocialLinks.isValidUrl(termsUrl);
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surfaceBlack,
-        title: const Text('عن التطبيق', style: TextStyle(color: AppTheme.primaryGold)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // من نحن
-              const Text(
-                'من نحن',
-                style: TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold),
-              ),
-              AppTheme.gapHeightSmall,
-              const Text(
-                'نحن فريق من الشباب المبدعين الذين يؤمنون بتحويل تجربة الوساطة العقارية إلى نموذج يجمع بين الاحترافية العالية والأمان المطلق. نسعى لتحقيق أعلى معايير الشفافية، وحماية حقوق جميع الأطراف، وتسهيل كافة الإجراءات بأحدث التقنيات الرقمية.',
-                style: TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody, height: 1.5),
-              ),
-              AppTheme.gapHeightXL,
-
-              // صفحات التواصل الاجتماعي
-              if (facebook.isNotEmpty || instagram.isNotEmpty || extraSocials.isNotEmpty) ...[
-                const Text(
-                  'تابعنا على',
-                  style: TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold),
-                ),
-                AppTheme.gapHeightSmall,
-                if (facebook.isNotEmpty)
-                  _socialLinkTile('فيسبوك', Icons.facebook, facebook, () => _launchUrl(facebook)),
-                if (instagram.isNotEmpty)
-                  _socialLinkTile('إنستغرام', Icons.camera_alt, instagram, () => _launchUrl(instagram)),
-                ...extraSocials.entries.map((e) {
-                  final label = e.key.toString();
-                  final url = e.value?.toString() ?? '';
-                  if (url.isEmpty) return const SizedBox.shrink();
-                  return _socialLinkTile(label, Icons.link, url, () => _launchUrl(url));
-                }),
-                AppTheme.gapHeightLarge,
-              ],
-
-              // المطور
-              const Text(
-                'التطوير',
-                style: TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold),
-              ),
-              AppTheme.gapHeightLarge,
-              // أيقونة لورانيم بسطر لحالها
-              Center(
-                child: ClipRRect(
-                  borderRadius: AppTheme.radiusMedium,
-                  child: Image.asset(
-                    'assets/images/loraneem_tech_logo.png',
-                    // الصورة أصلها عريضة (1200×520) — contain بلا قص
-                    width: 150,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              AppTheme.gapHeightMedium,
-              const Center(
-                child: Column(
-                  children: [
-                    Text(
-                      'loraneem-tech',
-                      style: TextStyle(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        title: const Text('عن التطبيق',
+            style: TextStyle(color: AppTheme.primaryGold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── من نحن — يُحرَّر من الإدارة، يختفي إن فُرِّغ ──
+                if (aboutUs.isNotEmpty) ...[
+                  _aboutHeading('من نحن'),
+                  AppTheme.gapHeightSmall,
+                  Text(
+                    aboutUs,
+                    style: const TextStyle(
                         color: AppTheme.textWhite,
-                        fontSize: AppTheme.fontSizeSubtitle,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    AppTheme.gapHeightXXS,
-                    Text(
-                      'CODE • AI • LIMITLESS EVOLUTION',
-                      style: TextStyle(
-                        color: AppTheme.primaryGold,
-                        fontSize: AppTheme.fontSizeCaption,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              AppTheme.gapHeightLarge,
-              // رقم المطور
-              Container(
-                padding: AppTheme.paddingAllMedium,
-                decoration: BoxDecoration(
-                  color: AppTheme.deepBlack,
-                  borderRadius: AppTheme.radiusSmall,
-                  border: Border.all(color: AppTheme.primaryGold.withOpacity(0.25)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.phone, color: AppTheme.primaryGold, size: 18),
-                    AppTheme.gapWidthSmall,
-                    Text(
-                      'رقم المطور: $devPhone',
-                      style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody),
-                    ),
-                  ],
-                ),
-              ),
-              // رقم المطور الثاني (يُخفى إذا النص فارغ من لوحة الأدمن)
-              if (devPhone2.isNotEmpty) ...[
-                AppTheme.gapHeightSmall,
-                Container(
-                  padding: AppTheme.paddingAllMedium,
-                  decoration: BoxDecoration(
-                    color: AppTheme.deepBlack,
-                    borderRadius: AppTheme.radiusSmall,
-                    border: Border.all(
-                        color: AppTheme.primaryGold.withOpacity(0.25)),
+                        fontSize: AppTheme.fontSizeBody,
+                        height: 1.5),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  AppTheme.gapHeightXL,
+                ],
+
+                // ── تابعنا على ──
+                if (orderedKeys.isNotEmpty) ...[
+                  _aboutHeading('تابعنا على'),
+                  AppTheme.gapHeightSmall,
+                  ...orderedKeys.map((k) => _socialLinkTile(
+                        SocialLinks.labelFor(k),
+                        SocialLinks.iconFor(k),
+                        () => _launchUrl(socials[k]!),
+                      )),
+                  AppTheme.gapHeightLarge,
+                ],
+
+                // ── للتواصل معنا ──
+                if (hasContact) ...[
+                  _aboutHeading('للتواصل معنا'),
+                  AppTheme.gapHeightXXS,
+                  const Text(
+                    'اضغط للاتصال · اضغط مطولاً لنسخ الرقم',
+                    style: TextStyle(
+                        color: AppTheme.textGrey,
+                        fontSize: AppTheme.fontSizeCaption),
+                  ),
+                  AppTheme.gapHeightSmall,
+                  if (phone1.isNotEmpty)
+                    _contactPhoneTile('رقم التواصل الأول', phone1),
+                  if (phone2.isNotEmpty)
+                    _contactPhoneTile('رقم التواصل الثاني', phone2),
+                  if (waNumber.isNotEmpty)
+                    _whatsAppTile(waNumber),
+                  AppTheme.gapHeightLarge,
+                ],
+
+                // ── سياسة الخصوصية وشروط الاستخدام ──
+                if (hasLegal) ...[
+                  _aboutHeading('السياسات'),
+                  AppTheme.gapHeightSmall,
+                  if (SocialLinks.isValidUrl(privacyUrl))
+                    _socialLinkTile('سياسة الخصوصية',
+                        Icons.privacy_tip_outlined, () => _launchUrl(privacyUrl)),
+                  if (SocialLinks.isValidUrl(termsUrl))
+                    _socialLinkTile('شروط الاستخدام',
+                        Icons.description_outlined, () => _launchUrl(termsUrl)),
+                  AppTheme.gapHeightLarge,
+                ],
+
+                // ── التطوير ──
+                _aboutHeading('التطوير'),
+                AppTheme.gapHeightLarge,
+                Center(
+                  child: ClipRRect(
+                    borderRadius: AppTheme.radiusMedium,
+                    child: Image.asset(
+                      'assets/images/loraneem_tech_logo.png',
+                      // الصورة أصلها عريضة (1200×520) — contain بلا قص
+                      width: 150,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                AppTheme.gapHeightMedium,
+                const Center(
+                  child: Column(
                     children: [
-                      const Icon(Icons.phone,
-                          color: AppTheme.primaryGold, size: 18),
-                      AppTheme.gapWidthSmall,
                       Text(
-                        'رقم المطور الثاني: $devPhone2',
-                        style: const TextStyle(
-                            color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody),
+                        'loraneem-tech',
+                        style: TextStyle(
+                          color: AppTheme.textWhite,
+                          fontSize: AppTheme.fontSizeSubtitle,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      AppTheme.gapHeightXXS,
+                      Text(
+                        'CODE • AI • LIMITLESS EVOLUTION',
+                        style: TextStyle(
+                          color: AppTheme.primaryGold,
+                          fontSize: AppTheme.fontSizeCaption,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-              AppTheme.gapHeightXL,
+                AppTheme.gapHeightXL,
 
-              // معلومات التطبيق
-              const Divider(color: Colors.white12),
-              AppTheme.gapHeightSmall,
-              const Text(
-                'عقارات السويداء — المكتب العقاري الإلكتروني\n\n'
-                'تطبيق لتصفح وعرض العقارات والسيارات في محافظة السويداء',
-                style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall),
-              ),
-              AppTheme.gapHeightSmall,
-              Text(
-                'الإصدار: 1.0.0\nBackend: Supabase • Frontend: Flutter',
-                style: TextStyle(color: AppTheme.textGrey.withValues(alpha: 0.7), fontSize: AppTheme.fontSizeCaption),
-              ),
-            ],
+                // ── وصف التطبيق والإصدار ──
+                const Divider(color: Colors.white12),
+                AppTheme.gapHeightSmall,
+                Text(
+                  AppConstants.appName,
+                  style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: AppTheme.fontSizeSmall,
+                      fontWeight: FontWeight.bold),
+                ),
+                if (appDesc.isNotEmpty) ...[
+                  AppTheme.gapHeightXXS,
+                  Text(
+                    appDesc,
+                    style: const TextStyle(
+                        color: AppTheme.textGrey,
+                        fontSize: AppTheme.fontSizeSmall),
+                  ),
+                ],
+                // الإصدار من الـAPK — يُخفى إن تعذّرت قراءته بدل عرض رقم مخترَع
+                if (AppInfoService.isReady) ...[
+                  AppTheme.gapHeightSmall,
+                  Text(
+                    'الإصدار: ${AppInfoService.displayVersion}',
+                    style: TextStyle(
+                        color: AppTheme.textGrey.withValues(alpha: 0.7),
+                        fontSize: AppTheme.fontSizeCaption),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('حسناً', style: TextStyle(color: AppTheme.primaryGold))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('حسناً',
+                  style: TextStyle(color: AppTheme.primaryGold))),
         ],
       ),
     );
   }
 
-  Widget _socialLinkTile(String label, IconData icon, String url, VoidCallback onTap) {
+  /// عنوان قسم داخل نافذة «عن التطبيق».
+  Widget _aboutHeading(String text) => Text(
+        text,
+        style: const TextStyle(
+            color: AppTheme.primaryGold,
+            fontSize: AppTheme.fontSizeSubtitle,
+            fontWeight: FontWeight.bold),
+      );
+
+  /// 📞 بند رقم تواصل — **قابل للضغط**.
+  /// كان `Container` أصمّ: يعرض الرقم ويترك المستخدم يحفظه غيباً ويكتبه يدوياً
+  /// في تطبيق الهاتف. الآن: نقرة = اتصال، ونقرة مطوّلة = نسخ.
+  /// مخطط `tel` مصرَّح به في AndroidManifest ضمن `<queries>` ✅
+  Widget _contactPhoneTile(String label, String phone) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () => _launchUrl('tel:$phone'),
+        onLongPress: () => _copyToClipboard(phone),
+        borderRadius: AppTheme.radiusSmall,
+        child: Container(
+          padding: AppTheme.paddingAllMedium,
+          decoration: BoxDecoration(
+            color: AppTheme.deepBlack,
+            borderRadius: AppTheme.radiusSmall,
+            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.25)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.phone, color: AppTheme.primaryGold, size: 18),
+              AppTheme.gapWidthSmall,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: const TextStyle(
+                            color: AppTheme.textGrey,
+                            fontSize: AppTheme.fontSizeCaption)),
+                    Text(
+                      phone,
+                      textDirection: TextDirection.ltr,
+                      style: const TextStyle(
+                          color: AppTheme.textWhite,
+                          fontSize: AppTheme.fontSizeBody,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.call, color: AppTheme.textGrey, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 💬 زر «راسلنا واتساب».
+  /// ⚠️ يتطلب `<package android:name="com.whatsapp"/>` داخل `<queries>` في
+  /// AndroidManifest، وإلا يُرجع `canLaunchUrl` القيمة false على أندرويد 11+
+  /// فيفشل الزر **بصمت** رغم أن واتساب مثبَّت (قيود visibility الحزم).
+  Widget _whatsAppTile(String waNumber) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: () => _launchUrl('https://wa.me/$waNumber'),
+        onLongPress: () => _copyToClipboard(waNumber),
+        borderRadius: AppTheme.radiusSmall,
+        child: Container(
+          padding: AppTheme.paddingAllMedium,
+          decoration: BoxDecoration(
+            color: AppTheme.deepBlack,
+            borderRadius: AppTheme.radiusSmall,
+            border: Border.all(color: AppTheme.successGreen.withOpacity(0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.chat_bubble_outline,
+                  color: AppTheme.successGreen, size: 18),
+              AppTheme.gapWidthSmall,
+              const Expanded(
+                child: Text(
+                  'راسلنا على واتساب',
+                  style: TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: AppTheme.fontSizeBody,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Icon(Icons.open_in_new, color: AppTheme.textGrey, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copyToClipboard(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    AppTheme.showSnackBar(
+      context,
+      const SnackBar(
+          content: Text('✅ تم نسخ الرقم'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  /// بند رابط داخل «عن التطبيق» — الاسم والأيقونة يُشتقّان من SocialLinks.
+  /// الرابط نفسه لا يُعرض نصاً (يزحم الواجهة وقد يكون طويلاً جداً).
+  Widget _socialLinkTile(String label, IconData icon, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -372,7 +542,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeMedium, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: AppTheme.fontSizeMedium,
+                      fontWeight: FontWeight.w500),
                 ),
               ),
               const Icon(Icons.open_in_new, color: AppTheme.textGrey, size: 16),

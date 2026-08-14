@@ -98,11 +98,39 @@ class ConfigModel {
   /// مثال: { "tiktok": "https://tiktok.com/@sweeda", "linkedin": "..." }
   Map<String, dynamic> get socialPages => _getNestedMap('txts.socialPages', {});
 
-  /// رقم هاتف المطور (قابل للتعديل من الإدارة — يظهر في "عن التطبيق")
-  String get developerPhone => _getNested('txts.developerPhone', '0933713023');
+  // ── 📞 أرقام التواصل (2026-08-14) ──
+  // كانت تُسمّى developerPhone/developerPhone2 وتحمل رقمين حقيقيين **مطبوخين
+  // بالكود كقيمة افتراضية**. عيبان: (1) التسمية خاطئة — المستخدم يفهم أنها
+  // أرقام شركة البرمجة لا أرقام تواصل المكتب؛ (2) تفريغ الحقل من الإدارة كان
+  // لا يُخفي الرقم لأن الافتراضي غير فارغ ⇒ رقم شخصي يظهر رغم حذفه.
+  // القاعدة الآن: **كل الافتراضيات نصوص فارغة** — أي بند فارغ يختفي كلياً،
+  // ومصدر القيم الوحيد هو app_config. (قرار المالك: «ما بدي شي افتراضي»)
 
-  /// رقم هاتف المطور الثاني (قابل للتعديل من الإدارة — نص فارغ يخفيه من "عن التطبيق")
-  String get developerPhone2 => _getNested('txts.developerPhone2', '0938862469');
+  /// رقم التواصل الأول — فارغ يخفيه من «عن التطبيق»
+  String get contactPhone1 => _getNested('txts.contactPhone1', '');
+
+  /// رقم التواصل الثاني — فارغ يخفيه من «عن التطبيق»
+  String get contactPhone2 => _getNested('txts.contactPhone2', '');
+
+  /// رقم واتساب التواصل — فارغ يخفي زر «راسلنا واتساب»
+  String get contactWhatsApp => _getNested('txts.contactWhatsApp', '');
+
+  /// فقرة «من نحن» — تُحرَّر من الإدارة بلا إعادة بناء
+  String get aboutUsText => _getNested('txts.aboutUs', '');
+
+  /// وصف التطبيق المختصر أسفل النافذة
+  String get appDescriptionText => _getNested('txts.appDescription', '');
+
+  /// رابط سياسة الخصوصية (شرط نشر في Google Play)
+  String get privacyPolicyUrl => _getNested('txts.privacyPolicyUrl', '');
+
+  /// رابط شروط الاستخدام
+  String get termsUrl => _getNested('txts.termsUrl', '');
+
+  /// أساس رابط الإحالة — فارغ ⇒ يُعرض الكود وحده بلا رابط مكسور.
+  /// كان `https://sweeda-realestate.com/invite?code=` مطبوخاً بالكود، وهو نطاق
+  /// **غير موجود** ⇒ كل رابط دعوة يُشارَك ينتهي بخطأ 404.
+  String get referralBaseUrl => _getNested('txts.referralBaseUrl', '');
 
   /// أسعار «الإعلان المميز» المدفوع بالأسبوع (ل.س) — قابلة للتعديل من السيرفر (fmsp)
   Map<String, dynamic> get featuredAdPrices => _getNestedMap(

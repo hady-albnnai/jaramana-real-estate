@@ -1,7 +1,14 @@
 name: sweeda_real_estate
 description: تطبيق عقارات السويداء — مكتب عقاري إلكتروني
 publish_to: 'none'
-version: 1.0.0+2
+# ⚠️ سياسة Google Play (2026-08-14):
+#   • ما قبل «+» = versionName — يراه المستخدم بالمتجر، نص حر بلا قيود.
+#   • ما بعد «+» = versionCode — عدد صحيح، **يجب أن يزيد مع كل رفعة**،
+#     لا يتكرر ولا يتراجع أبداً (رقم مستهلَك = رفض فوري)، وحدُّه 2100000000.
+#   بدأنا من 10 (لا من 1) لترك مساحة للرفعات التجريبية.
+#   `android/app/build.gradle.kts` يقرأ الاثنين من هنا (flutter.versionCode/Name)،
+#   و`package_info_plus` يقرأهما وقت التشغيل من الـAPK نفسه ⇒ مصدر واحد للحقيقة.
+version: 1.0.0+10
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -37,6 +44,9 @@ dependencies:
   # Networking
   http: ^1.2.2
   http_parser: ^4.0.2
+
+  # قراءة الإصدار ورقم البناء من الـAPK نفسه وقت التشغيل — لا نص ثابت
+  package_info_plus: ^8.0.2
 
   # Utils
   google_fonts: ^6.1.0

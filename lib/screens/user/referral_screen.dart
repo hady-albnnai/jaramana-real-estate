@@ -53,8 +53,19 @@ class _ReferralScreenState extends State<ReferralScreen> {
     return uid.replaceAll('-', '').substring(0, 8).toUpperCase();
   }
 
-  String _refLink(String code) =>
-      'https://sweeda-realestate.com/invite?code=$code';
+  /// 🔗 رابط الدعوة — يُبنى من `txts.referralBaseUrl` في app_config.
+  ///
+  /// كان النطاق `https://sweeda-realestate.com/invite?code=` **مطبوخاً بالكود
+  /// وهو غير موجود أصلاً** ⇒ كل رابط دعوة يشاركه مستخدم ينتهي بخطأ 404 عند
+  /// الطرف الآخر. الآن: إن كان الأساس فارغاً يُرجَع نص فارغ، وتُشارَك رسالة
+  /// تحمل **الكود وحده** بلا رابط مكسور. (قرار المالك: صفر قيم افتراضية)
+  String _refLink(BuildContext context, String code) {
+    final base =
+        (context.read<ConfigProvider>().config?.referralBaseUrl ?? '').trim();
+    if (base.isEmpty) return '';
+    final sep = base.contains('?') ? '&' : '?';
+    return '$base${sep}code=$code';
+  }
 
   Future<void> _copyCode(String code) async {
     await Clipboard.setData(ClipboardData(text: code));
@@ -67,10 +78,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Future<void> _share(String code) async {
-    final link = _refLink(code);
+    final link = _refLink(context, code);
+    // سطر الرابط يُحذف كلياً حين لا يكون هناك أساس رابط مضبوط من الإدارة،
+    // فلا تُشارَك رسالة تحمل رابطاً معطوباً.
+    final linkLine = link.isEmpty ? '' : '\nأو اضغط الرابط: $link';
     await SharePlus.instance.share(
       ShareParams(
-        text: 'انضم للمكتب العقاري الالكتروني واحصل على نقاط ترحيب! 🎁\n\nاستخدم كود الدعوة: $code\nأو اضغط الرابط: $link',
+        text:
+            'انضم للمكتب العقاري الالكتروني واحصل على نقاط ترحيب! 🎁\n\nاستخدم كود الدعوة: $code$linkLine',
         subject: 'دعوة إلى المكتب العقاري الالكتروني',
       ),
     );
