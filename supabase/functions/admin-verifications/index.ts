@@ -106,7 +106,18 @@ serve(async (req) => {
         p_target_uid: targetUid,
       });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: data === true });
+      // 🔒 §13 No-Silent-Probes (2026-08-14): الدالة تُرجع FALSE مجرّداً حين
+      // لا يكون المستخدم بحالة «قيد المراجعة» (vrf<>1) — سواء كان موثّقاً
+      // سلفاً أو غير موجود أو لم يطلب أصلاً. كان الإيدج يمرّر `success:false`
+      // **بلا سبب**، فيرى المدير زراً لا يفعل شيئاً ولا يعرف لماذا.
+      if (data !== true) {
+        return json({
+          success: false,
+          error: "VERIFICATION_NOT_PENDING",
+          detail: "الطلب غير موجود أو ليس بحالة «قيد المراجعة» (قد يكون موثّقاً سلفاً).",
+        }, 409);
+      }
+      return json({ success: true });
     }
 
     if (action === "reject") {
@@ -119,7 +130,15 @@ serve(async (req) => {
         p_reason: reason,
       });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: data === true });
+      // 🔒 §13: نفس علة الاعتماد — FALSE مجرّد بلا سبب.
+      if (data !== true) {
+        return json({
+          success: false,
+          error: "VERIFICATION_NOT_PENDING",
+          detail: "الطلب غير موجود أو ليس بحالة «قيد المراجعة».",
+        }, 409);
+      }
+      return json({ success: true });
     }
 
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);

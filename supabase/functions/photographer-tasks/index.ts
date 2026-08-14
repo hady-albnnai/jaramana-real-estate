@@ -233,10 +233,27 @@ serve(async (req) => {
         return json({ success: false, error: "INVALID_REQUEST_DATA" }, 400);
       }
 
+      // 🔒 BUG-014 (2026-08-14): `Array.isArray([])` تنجح على المصفوفة الفارغة
+      // ⇒ كان المصوّر يستطيع «تسليم» مهمة **بصفر صور**، فتنتقل إلى «بانتظار
+      // المراجعة» ثم تُعتمد، ويُغلق الطلب بلا أي وسائط. أُكِّد حياً: تسليم
+      // بـ`media:[]` أعاد success:true والحالة صارت 2 والوسائط [].
+      // والأسوأ: بعدها يُرفض التسليم الصحيح بـTASK_NOT_FOUND_OR_NOT_ALLOWED
+      // لأن الحالة لم تعد 1 ⇒ المصوّر يفقد مهمته بلا رجعة.
+      const cleanMedia = media
+        .map((m) => String(m ?? "").trim())
+        .filter((m) => m.length > 0);
+      if (cleanMedia.length === 0) {
+        return json({
+          success: false,
+          error: "MEDIA_REQUIRED",
+          detail: "لا يمكن تسليم مهمة تصوير بلا صور — أرفق صورة واحدة على الأقل.",
+        }, 400);
+      }
+
       const { data, error } = await supabaseAdmin.rpc("submit_photography_task_internal", {
         p_photographer_uid: uid,
         p_task_id: taskId,
-        p_media: media,
+        p_media: cleanMedia,
         p_photographer_note: note,
       });
       if (error) return json({ success: false, error: error.message }, 400);
