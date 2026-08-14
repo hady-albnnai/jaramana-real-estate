@@ -202,13 +202,15 @@ class LegalProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// 2026-08-14: أُضيف actorUid — الإيدج يتحقق من الجلسة عبر user_uid بالجسم،
+  /// وتمريره فارغاً كان يُفشل نداء المستخدم العادي (إلغاء طلبه) بـUNAUTHORIZED.
   Future<bool> updateConsultationStatus(
-      {required String id, required int status}) async {
+      {required String id, required int status, String actorUid = ''}) async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions',
           body: {
             'action': 'update_consultation_status',
-            'user_uid': '',
+            'user_uid': actorUid,
             'consultation_id': id,
             'status': status,
           });
@@ -218,6 +220,84 @@ class LegalProvider with ChangeNotifier {
         return true;
       }
       _error = data?['error']?.toString() ?? 'فشل التحديث';
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      return false;
+    }
+  }
+
+  /// ⚖️ رفض المحامي مُوجَّه بالسبب (2026-08-14)
+  /// السبب يحدد الإجراء التلقائي على السيرفر:
+  /// need_info → الحالة 5 (المستخدم يستكمل) · unavailable/out_of_scope →
+  /// إعادة إسناد تلقائية · illegal → رفض نهائي + تصعيد للإدارة.
+  Future<Map<String, dynamic>?> rejectConsultation({
+    required String id,
+    required String reasonCode,
+    String reasonNote = '',
+    String actorUid = '',
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'reject_consultation',
+        'user_uid': actorUid,
+        'consultation_id': id,
+        'reason_code': reasonCode,
+        'reason_note': reasonNote,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) {
+        await fetchLawyerConsultations();
+        return data;
+      }
+      _error = data?['error']?.toString() ?? 'فشل الرفض';
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      return null;
+    }
+  }
+
+  /// 🟢 تبديل حالة توفر المحامي (2026-08-14)
+  /// كان is_active يُقرأ بمكانين بلا أي كاتب ⇒ مجمّد على true للجميع.
+  Future<Map<String, dynamic>?> setAvailability({
+    required String lawyerUid,
+    required bool available,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'set_lawyer_availability',
+        'user_uid': lawyerUid,
+        'available': available,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) return data;
+      _error = data?['error']?.toString() ?? 'فشل تحديث حالة التوفر';
+      return null;
+    } catch (e) {
+      _error = e.toString();
+      return null;
+    }
+  }
+
+  /// 🔁 المستخدم يستكمل البيانات الناقصة (الحالة 5 → 0)
+  Future<bool> resubmitConsultation({
+    required String id,
+    required String userUid,
+    required String subject,
+    List<String> attachments = const [],
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'resubmit_consultation',
+        'user_uid': userUid,
+        'consultation_id': id,
+        'subject': subject,
+        'attachments': attachments,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data != null && data['success'] == true) return true;
+      _error = data?['error']?.toString() ?? 'فشل إرسال البيانات';
       return false;
     } catch (e) {
       _error = e.toString();

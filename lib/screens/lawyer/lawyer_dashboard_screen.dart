@@ -33,6 +33,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
 
   bool _savingProfile = false;
   bool _creatingTask = false;
+  bool _isAvailable = true; // 🟢 حالة توفر المحامي (is_active) — أُضيفت 2026-08-14
   bool _checking = true; // يمنع وميض شاشة الإعداد
   String? _selectedExpediterUid;
   int _selectedItemType = 0;
@@ -51,6 +52,8 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     if (user == null) return;
     final legal = context.read<LegalProvider>();
     await legal.checkLawyerProfile(user.uid);
+    // 🟢 قراءة حالة التوفر الفعلية من ملف المحامي
+    _isAvailable = (legal.lawyerProfile?['is_active'] ?? true) == true;
     if (legal.profileSetupComplete) {
       legal.fetchAvailableExpediters();
       legal.fetchLawyerAppointments();
@@ -384,6 +387,19 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
       appBar: AppBar(
         title: const E2E(id: 'e2e_screen_lawyer_dashboard', child: Text('⚖️ لوحة المحامي')), backgroundColor: AppTheme.scaffoldBackground,
         actions: [
+          // 🟢 مفتاح التوفر (2026-08-14) — أول أسس الإسناد:
+          // متاح ← الأقل انشغالاً ← الدور. كان is_active بلا كاتب إطلاقاً.
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(_isAvailable ? 'متاح' : 'غير متاح',
+                style: TextStyle(
+                    color: _isAvailable ? AppTheme.successGreen : AppTheme.textGrey,
+                    fontSize: 11, fontWeight: FontWeight.bold)),
+            Switch(
+              value: _isAvailable,
+              activeColor: AppTheme.successGreen,
+              onChanged: (v) => _toggleAvailability(context.read<LegalProvider>(), v),
+            ),
+          ]),
           IconButton(
             icon: const Icon(Icons.notifications_outlined, color: AppTheme.primaryGold),
             tooltip: 'الإشعارات',
@@ -559,9 +575,12 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
             AppTheme.gapHeightSmall,
             Row(children: [
               Expanded(child: OutlinedButton.icon(
-                onPressed: () => _updateConsultationStatus(legal, c['id'], 4, 'مرفوضة'),
+                // 2026-08-14: الرفض صار موجَّهاً بالسبب — السبب يحدد الإجراء
+                // التالي آلياً بدل الرفض النهائي الصامت الذي كان يترك العميل
+                // أمام «المحامي يدرس مشكلتك» إلى الأبد وماله محجوز.
+                onPressed: () => _showRejectDialog(legal, c['id']?.toString()),
                 icon: const Icon(Icons.close, color: AppTheme.errorRed, size: 16),
-                label: const Text('رفض', style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSmall)),
+                label: const Text('اعتذار', style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSmall)),
                 style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.errorRed)),
               )),
               AppTheme.gapWidthSmall,
@@ -666,11 +685,149 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     }
   }
 
+  /// ⚖️ نافذة الاعتذار عن الاستشارة — السبب يحدد الإجراء (أُضيفت 2026-08-14)
+  Future<void> _showRejectDialog(LegalProvider legal, String? id) async {
+    if (id == null) return;
+    String reason = 'unavailable';
+    final noteCtrl = TextEditingController();
+
+    const options = <Map<String, String>>[
+      {
+        'code': 'need_info',
+        'title': '📄 نقص تفاصيل أو مستندات',
+        'sub': 'يعود الطلب للعميل ليستكمل ثم يرجع إليك — بلا دفع جديد',
+      },
+      {
+        'code': 'unavailable',
+        'title': '🚫 غير متوفر حالياً',
+        'sub': 'يُحوَّل تلقائياً لمحامٍ آخر متاح',
+      },
+      {
+        'code': 'out_of_scope',
+        'title': '⚖️ خارج اختصاصي',
+        'sub': 'يُحوَّل تلقائياً لمحامٍ آخر',
+      },
+      {
+        'code': 'illegal',
+        'title': '❌ الطلب مخالف / غير قانوني',
+        'sub': 'رفض نهائي مع إخطار الإدارة للبتّ بالمبلغ',
+      },
+    ];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppTheme.surfaceBlack,
+          title: const Text('سبب الاعتذار',
+              style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('السبب يحدد ما سيحدث للطلب — اختر بدقة.',
+                  style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+              const SizedBox(height: 10),
+              ...options.map((o) => RadioListTile<String>(
+                    value: o['code']!,
+                    groupValue: reason,
+                    onChanged: (v) => setLocal(() => reason = v ?? reason),
+                    activeColor: AppTheme.primaryGold,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(o['title']!,
+                        style: const TextStyle(color: AppTheme.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
+                    subtitle: Text(o['sub']!,
+                        style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                  )),
+              const SizedBox(height: 6),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 3,
+                maxLength: 400,
+                style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: (reason == 'need_info' || reason == 'illegal')
+                      ? 'التفاصيل المطلوبة (إلزامي)'
+                      : 'ملاحظة (اختياري)',
+                  hintText: reason == 'need_info'
+                      ? 'مثال: أرفق صورة سند الملكية وحدد رقم العقار'
+                      : '',
+                  filled: true,
+                  fillColor: AppTheme.scaffoldBackground,
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+              child: const Text('تأكيد', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true) { noteCtrl.dispose(); return; }
+
+    final note = noteCtrl.text.trim();
+    noteCtrl.dispose();
+    if ((reason == 'need_info' || reason == 'illegal') && note.length < 5) {
+      _snack('يرجى كتابة التفاصيل — العميل يحتاج معرفة السبب', bg: AppTheme.errorRed);
+      return;
+    }
+
+    final res = await legal.rejectConsultation(
+        id: id, reasonCode: reason, reasonNote: note,
+        actorUid: context.read<AuthProvider>().userModel?.uid ?? '');
+    if (!mounted) return;
+    if (res == null) {
+      _snack(legal.error ?? 'فشل تنفيذ الاعتذار', bg: AppTheme.errorRed);
+      return;
+    }
+    switch (res['outcome']?.toString()) {
+      case 'need_info':
+        _snack('📄 أُعيد الطلب للعميل لاستكمال البيانات');
+        break;
+      case 'reassigned':
+        _snack('🔄 حُوّل الطلب إلى ${res['lawyer_alias'] ?? 'محامٍ آخر'}');
+        break;
+      case 'escalated_to_admin':
+        _snack('🚨 لا يوجد محامٍ متاح — أُخطرت الإدارة');
+        break;
+      default:
+        _snack('❌ تم رفض الطلب وإخطار الإدارة');
+    }
+  }
+
+  /// 🟢 تبديل حالة التوفر (يؤثر مباشرة على إسناد الطلبات الجديدة)
+  Future<void> _toggleAvailability(LegalProvider legal, bool value) async {
+    final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+    if (uid.isEmpty) return;
+    final res = await legal.setAvailability(lawyerUid: uid, available: value);
+    if (!mounted) return;
+    if (res == null) {
+      _snack(legal.error ?? 'فشل تحديث حالة التوفر', bg: AppTheme.errorRed);
+      return;
+    }
+    setState(() => _isAvailable = value);
+    final pending = (res['pending_count'] ?? 0) as int;
+    if (!value && pending > 0) {
+      _snack('⚠️ لديك $pending طلب لم يبدأ — اعتذر عنها بسبب «غير متوفر» لتحويلها لمحامٍ آخر');
+    } else {
+      _snack(value ? '🟢 أنت متاح لاستقبال الطلبات' : '⚪ لن تصلك طلبات جديدة');
+    }
+  }
+
   Future<void> _updateConsultationStatus(
       LegalProvider legal, String? id, int status, String errorLabel) async {
     if (id == null) return;
     final action = status == 1 ? 'تأكيد' : status == 2 ? 'إتمام' : 'رفض';
-    final ok = await legal.updateConsultationStatus(id: id, status: status);
+    final ok = await legal.updateConsultationStatus(
+        id: id, status: status,
+        actorUid: context.read<AuthProvider>().userModel?.uid ?? '');
     if (!mounted) return;
     if (ok) {
       _snack('✅ تم $action الاستشارة');

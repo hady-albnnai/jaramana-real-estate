@@ -37,7 +37,11 @@ class _State extends State<LegalConsultationBookingScreen> {
   bool _loading = true;
 
   // البيانات
-  Map<String, dynamic>? _pendingPayment;    // دفعة قيد المراجعة
+  Map<String, dynamic>? _pendingPayment;    // دفعة قيد المراجعة (أقدم نوع)
+  Map<int, Map<String, dynamic>> _pendingByType = {}; // دفعة معلّقة لكل نوع
+  Map<String, dynamic>? _rejectedPayment;   // دفعة مرفوضة من الإدارة (sts=2)
+  Map<String, dynamic>? _rejectedConsultation; // استشارة مرفوضة نهائياً (4)
+  Map<String, dynamic>? _needInfoConsultation; // بانتظار استكمال بياناتك (5)
   Map<String, dynamic>? _approvedPayment;   // دفعة مقبولة بدون استشارة
   Map<String, dynamic>? _activeConsultation; // استشارة نشطة (الأحدث)
   List<Map<String, dynamic>> _previousChats = [];
@@ -108,15 +112,24 @@ class _State extends State<LegalConsultationBookingScreen> {
           .select('id, sts, amt, pkg, channel, ref, ts_crt, meta')
           .eq('uid', uid).eq('tp', 2).order('ts_crt', ascending: false);
       
-      Map<String, dynamic>? pending, approved;
+      // 2026-08-14: الدفعات تُصنَّف **حسب النوع** (pkg: 0 هاتفية · 1 حضورية)
+      // تنفيذاً لقاعدة المالك: المنع لنفس النوع فقط. وتُلتقط المرفوضة أيضاً
+      // (sts=2) — كانت الشاشة تتجاهلها تماماً فيبقى المستخدم بلا تفسير.
+      Map<String, dynamic>? pending, approved, rejected;
+      final pendingByType = <int, Map<String, dynamic>>{};
       for (final p in pays as List) {
         final m = Map<String, dynamic>.from(p as Map);
-        if (m['sts'] == 0 && pending == null) pending = m;
-        else if (m['sts'] == 1 && approved == null) {
+        final pk = (m['pkg'] ?? 0) as int;
+        if (m['sts'] == 0) {
+          pendingByType.putIfAbsent(pk, () => m);
+          pending ??= m;
+        } else if (m['sts'] == 1 && approved == null) {
           // تأكد ما في استشارة مربوطة
           final cRes = await SupabaseService().client.from('legal_consultations')
               .select('id').eq('payment_id', m['id']).limit(1);
           if ((cRes as List).isEmpty) approved = m;
+        } else if (m['sts'] == 2 && rejected == null) {
+          rejected = m;
         }
       }
 
@@ -128,14 +141,20 @@ class _State extends State<LegalConsultationBookingScreen> {
           ? List<Map<String, dynamic>>.from((cData['consultations'] as List?) ?? []) : <Map<String, dynamic>>[];
       
       Map<String, dynamic>? active;
+      Map<String, dynamic>? rejectedConsult; // status=4 رفض نهائي
+      Map<String, dynamic>? needInfo;        // status=5 بانتظار استكمال بيانات
       final previous = <Map<String, dynamic>>[];
       final now = DateTime.now();
       for (final c in all) {
         final status = c['status'] ?? 0;
         final chatStarted = c['chat_started_at'];
         
-        // استشارة نشطة = لم تُفتح محادثة بعد (status 0 أو 4)
-        if ((status == 0 || status == 4) && active == null) {
+        // 🔴 إصلاح 2026-08-14: كانت 4 (مرفوضة نهائياً) تُعامل كـ«نشطة» وتُعرض
+        // «المحامي يدرس مشكلتك» إلى الأبد — أخطر تشويش في المنطق كله.
+        // الآن: 4 = مرفوضة · 5 = بانتظار استكمال بياناتك · 0 = بانتظار المحامي.
+        if (status == 4) { rejectedConsult ??= c; continue; }
+        if (status == 5) { needInfo ??= c; continue; }
+        if (status == 0 && active == null) {
           active = c;
           continue;
         }
@@ -168,8 +187,12 @@ class _State extends State<LegalConsultationBookingScreen> {
 
       if (mounted) setState(() {
         _pendingPayment = pending;
+        _pendingByType = pendingByType;
+        _rejectedPayment = rejected;
         _approvedPayment = approved;
         _activeConsultation = active;
+        _rejectedConsultation = rejectedConsult;
+        _needInfoConsultation = needInfo;
         _previousChats = previous;
         _loading = false;
       });
@@ -185,10 +208,14 @@ class _State extends State<LegalConsultationBookingScreen> {
   /// دفعة `tp=2` بحالة `sts=0` تُعترض وتُحوَّل لشاشة «الدفعة قيد الانتظار» —
   /// وهي نفس شاشة ما بعد إرسال الدفع (فيها زر «العودة للرئيسية»).
   /// يمنع ذلك إرسال دفعتين متتاليتين لنفس الخدمة قبل بتّ الإدارة بالأولى.
-  bool _guardPending() {
-    if (_pendingPayment == null) return false;
+  /// يمنع البدء **لنفس النوع فقط** (قاعدة المالك 2026-08-14):
+  /// هاتفية معلّقة لا تمنع الحضورية والعكس. والدفعة المقبولة لا تمنع شيئاً.
+  bool _guardPending(int serviceType) {
+    final p = _pendingByType[serviceType];
+    if (p == null) return false;
     setState(() {
       _viewingPending = true;
+      _pendingPayment = p; // نعرض دفعة النوع المقصود بالضبط
       _screen = 6;
     });
     return true;
@@ -315,149 +342,432 @@ class _State extends State<LegalConsultationBookingScreen> {
     );
   }
 
+  /// الشاشة الرئيسية — تُبنى تراكمياً (2026-08-14).
+  ///
+  /// المبدأ: **لا حالة مخفية ولا تكهن**. كل ما يخص المستخدم يظهر معاً:
+  /// طلب ناقص البيانات · دفعة مرفوضة · دفعات معلّقة (لكل نوع) · دفعة مقبولة
+  /// · استشارة نشطة · اعتذار نهائي. والأزرار تبقى ظاهرة دائماً لأن المنع
+  /// صار **حسب النوع** لا شاملاً.
   Widget _buildHomeContent() {
-    // الحالة 1: دفعة معلقة → بانر قابل للضغط + الأزرار تبقى ظاهرة (يعترضها الحارس)
-    if (_pendingPayment != null) {
-      return ListView(padding: AppTheme.paddingAllLarge, children: [
-        AppTheme.gapHeightLarge,
-        _pendingBanner(),
-        AppTheme.gapHeightXL,
-        const Divider(color: Colors.white12),
-        AppTheme.gapHeightMedium,
-        _buildNewButtons(),
-      ]);
+    final cards = <Widget>[];
+
+    // ① بانتظار استكمال بياناتك (الأولوية القصوى — الكرة بملعب المستخدم)
+    if (_needInfoConsultation != null) cards.add(_needInfoCard(_needInfoConsultation!));
+
+    // ② دفعة رفضتها الإدارة — كانت الشاشة تتجاهلها فيبقى بلا تفسير
+    if (_rejectedPayment != null) cards.add(_rejectedPaymentCard(_rejectedPayment!));
+
+    // ③ اعتذار نهائي من المحامي (كان يُعرض «المحامي يدرس مشكلتك» للأبد)
+    if (_rejectedConsultation != null) cards.add(_rejectedConsultCard(_rejectedConsultation!));
+
+    // ④ الدفعات المعلّقة — بطاقة لكل نوع
+    for (final e in _pendingByType.entries) {
+      cards.add(_pendingBannerFor(e.key, e.value));
     }
 
-    // الحالة 2: دفعة مقبولة بدون استشارة → أرسل الطلب
-    if (_approvedPayment != null) {
-      final pkg = (_approvedPayment!['pkg'] ?? 0) as int;
+    // ⑤ دفعة مقبولة بانتظار إرسال الطلب
+    if (_approvedPayment != null) cards.add(_approvedCard(_approvedPayment!));
+
+    // ⑥ استشارة نشطة
+    if (_activeConsultation != null) cards.add(_activeCard(_activeConsultation!));
+
+    if (cards.isEmpty) {
       return ListView(padding: AppTheme.paddingAllLarge, children: [
-        AppTheme.gapHeightXL,
-        const Center(child: Icon(Icons.check_circle, color: AppTheme.successGreen, size: 64)),
+        AppTheme.gapHeightXXL,
+        const Center(child: Icon(Icons.gavel, color: AppTheme.primaryGold, size: 56)),
         AppTheme.gapHeightLarge,
-        const Center(child: Text('تم تأكيد دفعتك ✅', style: TextStyle(color: AppTheme.successGreen, fontSize: 18, fontWeight: FontWeight.bold))),
+        const Center(child: Text('الاستشارة القانونية', style: TextStyle(color: AppTheme.textWhite, fontSize: 20, fontWeight: FontWeight.bold))),
         AppTheme.gapHeightSmall,
-        Center(child: Text('${(_approvedPayment!['amt'] as num).toStringAsFixed(0)} ل.س — ${pkg == 0 ? 'استشارة هاتفية' : 'جلسة حضورية'}', style: const TextStyle(color: AppTheme.textGrey, fontSize: 14))),
-        AppTheme.gapHeightXL,
-        SizedBox(width: double.infinity, height: 50, child: ElevatedButton.icon(
-          onPressed: () { _serviceType = pkg; _goTo(4); },
-          icon: const Icon(Icons.send, color: Colors.black),
-          label: const Text('إرسال الطلب للمحامي', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
-        )),
-      ]);
-    }
-
-    // الحالة 3: استشارة نشطة
-    if (_activeConsultation != null) {
-      final c = _activeConsultation!;
-      final status = c['status'] ?? 0;
-      final chatStarted = c['chat_started_at'] != null;
-      final id = c['id'].toString();
-      final alias = (c['lawyer_alias'] ?? '').toString();
-      final subject = (c['subject'] ?? '').toString();
-      final sType = (c['service_type'] ?? 0) as int;
-
-      return ListView(padding: AppTheme.paddingAllLarge, children: [
-        AppTheme.gapHeightLarge,
-        Container(padding: AppTheme.paddingAllLarge,
-          decoration: BoxDecoration(color: AppTheme.surfaceBlack, borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
-          child: Column(children: [
-            Row(children: [
-              Icon(sType == 0 ? Icons.phone_in_talk : Icons.business, color: AppTheme.primaryGold, size: 24),
-              AppTheme.gapWidthSmall,
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(sType == 0 ? 'استشارة هاتفية' : 'جلسة حضورية', style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 16)),
-                Text(subject, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textGrey, fontSize: 12)),
-              ])),
-            ]),
-            if (alias.isNotEmpty) ...[AppTheme.gapHeightXS, Text('⚖️ $alias', style: const TextStyle(color: AppTheme.primaryGold, fontSize: 13))],
-            AppTheme.gapHeightLarge,
-            if (status == 0) ...[
-              const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.hourglass_empty, color: AppTheme.warningOrange, size: 20), SizedBox(width: 8), Text('بانتظار قبول المحامي', style: TextStyle(color: AppTheme.warningOrange, fontWeight: FontWeight.bold))]),
-            ] else if (status == 4 || !chatStarted) ...[
-              const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.menu_book, color: AppTheme.infoBlue, size: 20), SizedBox(width: 8), Text('المحامي يدرس مشكلتك', style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold))]),
-            ] else if (chatStarted) ...[
-              SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
-                onPressed: () => _openChat(id),
-                icon: const Icon(Icons.chat, color: Colors.black),
-                label: const Text('فتح المحادثة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
-              )),
-            ],
-          ])),
-        AppTheme.gapHeightXL,
-        const Divider(color: Colors.white12),
-        AppTheme.gapHeightMedium,
+        const Center(child: Text('احصل على استشارة قانونية من محامي المكتب', style: TextStyle(color: AppTheme.textGrey, fontSize: 13))),
+        AppTheme.gapHeightXXL,
         _buildNewButtons(),
       ]);
     }
 
-    // الحالة 4: لا شي — أزرار جديدة
     return ListView(padding: AppTheme.paddingAllLarge, children: [
-      AppTheme.gapHeightXXL,
-      const Center(child: Icon(Icons.gavel, color: AppTheme.primaryGold, size: 56)),
-      AppTheme.gapHeightLarge,
-      const Center(child: Text('الاستشارة القانونية', style: TextStyle(color: AppTheme.textWhite, fontSize: 20, fontWeight: FontWeight.bold))),
+      AppTheme.gapHeightMedium,
+      ...cards.expand((w) => [w, AppTheme.gapHeightMedium]),
+      const Divider(color: Colors.white12),
+      AppTheme.gapHeightMedium,
+      const Text('ابدأ طلباً جديداً:',
+          style: TextStyle(color: AppTheme.textGrey, fontSize: 12, fontWeight: FontWeight.bold)),
       AppTheme.gapHeightSmall,
-      const Center(child: Text('احصل على استشارة قانونية من محامي المكتب', style: TextStyle(color: AppTheme.textGrey, fontSize: 13))),
-      AppTheme.gapHeightXXL,
       _buildNewButtons(),
+      AppTheme.gapHeightLarge,
     ]);
   }
 
-  /// 🟠 بانر «لديك دفعة قيد الانتظار» — بالضغط عليه تُعرض شاشة حالة الدفعة
-  /// (نفس شاشة ما بعد إرسال الدفع). أُضيف 2026-08-14 ويعمل للنوعين:
-  /// الاستشارة الهاتفية والجلسة الحضورية، وكذلك دفعات تجديد المحادثة.
-  Widget _pendingBanner() {
-    final p = _pendingPayment!;
-    final amt = (p['amt'] as num?)?.toStringAsFixed(0) ?? '—';
-    final isPhone = (p['pkg'] ?? 0) == 0;
-    final dt = DateTime.tryParse(p['ts_crt']?.toString() ?? '');
-    final when = dt == null
-        ? ''
-        : '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
-            ' — ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  // ═══════════════════════════════════════════════════════════════
+  // بطاقات الحالة (2026-08-14) — كل واحدة تجيب: أين طلبي؟ وما التالي؟
+  // ═══════════════════════════════════════════════════════════════
 
-    return GestureDetector(
-      onTap: () => setState(() { _viewingPending = true; _screen = 6; }),
-      child: Container(
+  /// 🧭 خط زمني مرئي — يلغي التكهن بموضع الطلب في الرحلة
+  Widget _timeline(int step, {bool phone = true}) {
+    final steps = phone
+        ? ['الدفع', 'اعتماد الإدارة', 'المحامي', 'المحادثة']
+        : ['الدفع', 'اعتماد الإدارة', 'المحامي', 'الجلسة'];
+    return Row(
+      children: List.generate(steps.length * 2 - 1, (i) {
+        if (i.isOdd) {
+          final done = (i ~/ 2) < step;
+          return Expanded(
+            child: Container(
+              height: 2,
+              color: done ? AppTheme.successGreen : Colors.white24,
+            ),
+          );
+        }
+        final idx = i ~/ 2;
+        final done = idx < step;
+        final current = idx == step;
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 20, height: 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: done
+                  ? AppTheme.successGreen
+                  : current ? AppTheme.primaryGold : Colors.transparent,
+              border: Border.all(
+                  color: done || current ? Colors.transparent : Colors.white24, width: 1.5),
+            ),
+            child: done
+                ? const Icon(Icons.check, size: 12, color: Colors.white)
+                : current
+                    ? const Icon(Icons.more_horiz, size: 12, color: Colors.black)
+                    : null,
+          ),
+          const SizedBox(height: 3),
+          SizedBox(
+            width: 58,
+            child: Text(steps[idx], textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 9,
+                    color: done || current ? AppTheme.textWhite : AppTheme.textGrey,
+                    fontWeight: current ? FontWeight.bold : FontWeight.normal)),
+          ),
+        ]);
+      }),
+    );
+  }
+
+  Widget _statusCard({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required List<Widget> children,
+  }) =>
+      Container(
         width: double.infinity,
         padding: AppTheme.paddingAllMedium,
         decoration: BoxDecoration(
-          color: AppTheme.warningOrange.withOpacity(0.12),
+          color: color.withOpacity(0.10),
           borderRadius: AppTheme.radiusMedium,
-          border: Border.all(color: AppTheme.warningOrange.withOpacity(0.6)),
+          border: Border.all(color: color.withOpacity(0.55)),
         ),
-        child: Row(children: [
-          const Icon(Icons.hourglass_top, color: AppTheme.warningOrange, size: 32),
-          AppTheme.gapWidthMedium,
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('لديك دفعة قيد الانتظار',
-                  style: TextStyle(color: AppTheme.warningOrange, fontWeight: FontWeight.bold, fontSize: 15)),
-              const SizedBox(height: 3),
-              Text('$amt ل.س — ${isPhone ? 'استشارة هاتفية' : 'جلسة حضورية'}',
-                  style: const TextStyle(color: AppTheme.textWhite, fontSize: 13)),
-              if (when.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(when, style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
-              ],
-              const SizedBox(height: 4),
-              const Text('اضغط لعرض تفاصيل الطلب',
-                  style: TextStyle(color: AppTheme.primaryGold, fontSize: 11, fontWeight: FontWeight.bold)),
-            ]),
-          ),
-          const Icon(Icons.arrow_forward_ios, color: AppTheme.warningOrange, size: 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, color: color, size: 24),
+            AppTheme.gapWidthSmall,
+            Expanded(child: Text(title,
+                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 15))),
+          ]),
+          const SizedBox(height: 8),
+          ...children,
         ]),
+      );
+
+  String _typeName(int pkg) => pkg == 1 ? 'جلسة حضورية' : 'استشارة هاتفية';
+
+  /// 📄 المحامي يطلب استكمال بيانات (الحالة 5) — بلا دفع جديد
+  Widget _needInfoCard(Map<String, dynamic> c) {
+    final note = (c['reject_note'] ?? '').toString();
+    final sType = (c['service_type'] ?? 0) as int;
+    return _statusCard(
+      icon: Icons.edit_note, color: AppTheme.infoBlue,
+      title: 'المحامي يحتاج تفاصيل إضافية',
+      children: [
+        Text('المطلوب: $note',
+            style: const TextStyle(color: AppTheme.textWhite, fontSize: 13, height: 1.5)),
+        const SizedBox(height: 6),
+        const Text('دفعتك محفوظة — لا حاجة لدفع جديد.',
+            style: TextStyle(color: AppTheme.successGreen, fontSize: 11, fontWeight: FontWeight.bold)),
+        AppTheme.gapHeightMedium,
+        _timeline(2, phone: sType == 0),
+        AppTheme.gapHeightMedium,
+        SizedBox(width: double.infinity, height: 44, child: ElevatedButton.icon(
+          onPressed: () => _showResubmitDialog(c),
+          icon: const Icon(Icons.send, color: Colors.black, size: 18),
+          label: const Text('استكمال البيانات وإعادة الإرسال',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+        )),
+      ],
+    );
+  }
+
+  /// ❌ الإدارة رفضت الدفعة — كانت الشاشة تتجاهل sts=2 تماماً
+  Widget _rejectedPaymentCard(Map<String, dynamic> p) {
+    final reason = ((p['meta'] as Map?)?['reject_reason'] ?? '').toString();
+    final pkg = (p['pkg'] ?? 0) as int;
+    return _statusCard(
+      icon: Icons.money_off, color: AppTheme.errorRed,
+      title: 'لم تُقبل دفعتك',
+      children: [
+        Text('${_fmt((p['amt'] as num?)?.toInt() ?? 0)} ل.س — ${_typeName(pkg)}',
+            style: const TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+        if (reason.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('السبب: $reason',
+              style: const TextStyle(color: AppTheme.textGrey, fontSize: 12, height: 1.5)),
+        ],
+        const SizedBox(height: 6),
+        const Text('راجع بيانات التحويل وأعد الإرسال.',
+            style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+        AppTheme.gapHeightMedium,
+        SizedBox(width: double.infinity, height: 42, child: ElevatedButton.icon(
+          onPressed: () { setState(() { _rejectedPayment = null; _serviceType = pkg; }); _goTo(4); },
+          icon: const Icon(Icons.refresh, color: Colors.black, size: 18),
+          label: const Text('إعادة المحاولة',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+        )),
+      ],
+    );
+  }
+
+  /// 🚫 اعتذار نهائي من المحامي (status=4)
+  Widget _rejectedConsultCard(Map<String, dynamic> c) {
+    final note = (c['reject_note'] ?? '').toString();
+    return _statusCard(
+      icon: Icons.gavel, color: AppTheme.errorRed,
+      title: 'تعذّر قبول طلبك',
+      children: [
+        Text((c['subject'] ?? '').toString(),
+            maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text('السبب: $note',
+              style: const TextStyle(color: AppTheme.textWhite, fontSize: 13, height: 1.5)),
+        ],
+        const SizedBox(height: 8),
+        const Text('الإدارة أُخطرت وستتواصل معك بخصوص المبلغ المدفوع.',
+            style: TextStyle(color: AppTheme.warningOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  /// ⏳ دفعة قيد المراجعة — لكل نوع بطاقته
+  Widget _pendingBannerFor(int pkg, Map<String, dynamic> p) {
+    final dt = DateTime.tryParse(p['ts_crt']?.toString() ?? '');
+    final when = dt == null ? '' :
+        '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
+        ' — ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return GestureDetector(
+      onTap: () => setState(() { _viewingPending = true; _pendingPayment = p; _screen = 6; }),
+      child: _statusCard(
+        icon: Icons.hourglass_top, color: AppTheme.warningOrange,
+        title: 'دفعة قيد المراجعة — ${_typeName(pkg)}',
+        children: [
+          Text('${_fmt((p['amt'] as num?)?.toInt() ?? 0)} ل.س'
+               '${when.isEmpty ? '' : '  •  $when'}',
+              style: const TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+          const SizedBox(height: 6),
+          const Text('الإدارة تراجعها عادة خلال ساعة — سيصلك إشعار.',
+              style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+          AppTheme.gapHeightMedium,
+          _timeline(1, phone: pkg == 0),
+          AppTheme.gapHeightSmall,
+          const Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            Text('اضغط للتفاصيل',
+                style: TextStyle(color: AppTheme.primaryGold, fontSize: 11, fontWeight: FontWeight.bold)),
+            Icon(Icons.arrow_forward_ios, color: AppTheme.primaryGold, size: 11),
+          ]),
+        ],
       ),
     );
+  }
+
+  /// ✅ دفعة معتمدة — أرسل طلبك للمحامي
+  Widget _approvedCard(Map<String, dynamic> p) {
+    final pkg = (p['pkg'] ?? 0) as int;
+    return _statusCard(
+      icon: Icons.check_circle, color: AppTheme.successGreen,
+      title: 'تم تأكيد دفعتك',
+      children: [
+        Text('${_fmt((p['amt'] as num?)?.toInt() ?? 0)} ل.س — ${_typeName(pkg)}',
+            style: const TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+        AppTheme.gapHeightMedium,
+        _timeline(2, phone: pkg == 0),
+        AppTheme.gapHeightMedium,
+        SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
+          onPressed: () { _serviceType = pkg; _goTo(4); },
+          icon: const Icon(Icons.send, color: Colors.black, size: 18),
+          label: const Text('إرسال الطلب للمحامي',
+              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+        )),
+      ],
+    );
+  }
+
+  /// ⚖️ استشارة نشطة (بانتظار المحامي أو محادثة جارية)
+  Widget _activeCard(Map<String, dynamic> c) {
+    final status = (c['status'] ?? 0) as int;
+    final chatStarted = c['chat_started_at'] != null;
+    final id = c['id'].toString();
+    final alias = (c['lawyer_alias'] ?? '').toString();
+    final sType = (c['service_type'] ?? 0) as int;
+    final reassigned = ((c['reassign_count'] ?? 0) as int) > 0;
+    final noLawyer = alias.isEmpty;
+
+    final step = chatStarted ? 3 : (status == 1 ? 3 : 2);
+    return _statusCard(
+      icon: sType == 0 ? Icons.phone_in_talk : Icons.business,
+      color: AppTheme.primaryGold,
+      title: _typeName(sType == 1 ? 1 : 0),
+      children: [
+        Text((c['subject'] ?? '').toString(),
+            maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+        if (alias.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('⚖️ $alias', style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12)),
+        ],
+        if (reassigned) ...[
+          const SizedBox(height: 4),
+          const Text('🔄 حُوّل طلبك لمحامٍ آخر متاح — بلا رسوم إضافية',
+              style: TextStyle(color: AppTheme.infoBlue, fontSize: 11)),
+        ],
+        AppTheme.gapHeightMedium,
+        _timeline(step, phone: sType == 0),
+        AppTheme.gapHeightMedium,
+        if (noLawyer)
+          const Row(children: [
+            Icon(Icons.search, color: AppTheme.warningOrange, size: 18),
+            SizedBox(width: 6),
+            Expanded(child: Text('نبحث لك عن محامٍ متاح — الإدارة تتابع طلبك',
+                style: TextStyle(color: AppTheme.warningOrange, fontSize: 12, fontWeight: FontWeight.bold))),
+          ])
+        else if (status == 0)
+          const Row(children: [
+            Icon(Icons.hourglass_empty, color: AppTheme.warningOrange, size: 18),
+            SizedBox(width: 6),
+            Text('بانتظار قبول المحامي',
+                style: TextStyle(color: AppTheme.warningOrange, fontWeight: FontWeight.bold, fontSize: 12)),
+          ])
+        else if (status == 1 && !chatStarted)
+          const Row(children: [
+            Icon(Icons.menu_book, color: AppTheme.infoBlue, size: 18),
+            SizedBox(width: 6),
+            Text('المحامي يدرس مشكلتك',
+                style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold, fontSize: 12)),
+          ])
+        else if (chatStarted)
+          SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
+            onPressed: () => _openChat(id),
+            icon: const Icon(Icons.chat, color: Colors.black, size: 18),
+            label: const Text('فتح المحادثة',
+                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
+          )),
+        if (status == 0) ...[
+          AppTheme.gapHeightSmall,
+          TextButton.icon(
+            onPressed: () => _cancelConsultation(id),
+            icon: const Icon(Icons.cancel_outlined, color: AppTheme.errorRed, size: 16),
+            label: const Text('إلغاء الطلب',
+                style: TextStyle(color: AppTheme.errorRed, fontSize: 12)),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 🔁 نافذة استكمال البيانات الناقصة
+  Future<void> _showResubmitDialog(Map<String, dynamic> c) async {
+    final ctrl = TextEditingController(text: (c['subject'] ?? '').toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('استكمال البيانات',
+            style: TextStyle(color: AppTheme.primaryGold, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('المطلوب: ${(c['reject_note'] ?? '').toString()}',
+                style: const TextStyle(color: AppTheme.infoBlue, fontSize: 12, height: 1.5)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl, maxLines: 5, maxLength: 500,
+              style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+              decoration: const InputDecoration(
+                labelText: 'اكتب التفاصيل كاملة',
+                filled: true, fillColor: AppTheme.scaffoldBackground,
+              ),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('لاحقاً', style: TextStyle(color: AppTheme.textGrey))),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+              child: const Text('إرسال', style: TextStyle(color: Colors.black))),
+        ],
+      ),
+    );
+    final text = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true) return;
+    if (text.length < 10) { _snack('اكتب تفاصيل أوضح (10 أحرف على الأقل)'); return; }
+
+    setState(() => _submitting = true);
+    final done = await context.read<LegalProvider>().resubmitConsultation(
+      id: c['id'].toString(),
+      userUid: context.read<AuthProvider>().userModel?.uid ?? '',
+      subject: text,
+    );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    _snack(done ? '✅ أُرسلت البيانات للمحامي' : (context.read<LegalProvider>().error ?? 'فشل الإرسال'));
+    if (done) _loadAll();
+  }
+
+  /// 🚫 إلغاء الطلب (الإيدج يسمح 0→3 ولم يكن له زر إطلاقاً)
+  Future<void> _cancelConsultation(String id) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('إلغاء الطلب', style: TextStyle(color: AppTheme.errorRed, fontSize: 16)),
+        content: const Text(
+            'سيُلغى طلب الاستشارة. المبلغ المدفوع يبقى مسجّلاً لدى الإدارة للتسوية.',
+            style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+              child: const Text('تأكيد الإلغاء', style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final done = await context.read<LegalProvider>()
+        .updateConsultationStatus(
+          id: id, status: 3,
+          actorUid: context.read<AuthProvider>().userModel?.uid ?? '');
+    if (!mounted) return;
+    _snack(done ? '🚫 أُلغي الطلب' : 'فشل الإلغاء');
+    if (done) _loadAll();
   }
 
   Widget _buildNewButtons() {
     return Row(children: [
       Expanded(child: GestureDetector(
-        onTap: () { if (_guardPending()) return; _serviceType = 0; _goTo(1); },
+        onTap: () { if (_guardPending(0)) return; _serviceType = 0; _goTo(1); },
         child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.08), borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
           child: Column(children: [
             const Icon(Icons.phone_in_talk, color: AppTheme.primaryGold, size: 32),
@@ -471,7 +781,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           ])))),
       AppTheme.gapWidthMedium,
       Expanded(child: GestureDetector(
-        onTap: () { if (_guardPending()) return; _serviceType = 1; _goTo(1); },
+        onTap: () { if (_guardPending(1)) return; _serviceType = 1; _goTo(1); },
         child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.08), borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
           child: Column(children: [
             const Icon(Icons.business, color: AppTheme.primaryGold, size: 32),
@@ -508,7 +818,7 @@ class _State extends State<LegalConsultationBookingScreen> {
         AppTheme.gapHeightLarge,
         SizedBox(width: double.infinity, height: 50, child: ElevatedButton.icon(
           // هاتفية → فحص قديمة / حضورية → موضوع مباشرة (مع حارس الدفعة المعلّقة)
-          onPressed: () { if (_guardPending()) return; _goTo(_serviceType == 0 ? 3 : 4); },
+          onPressed: () { if (_guardPending(_serviceType)) return; _goTo(_serviceType == 0 ? 3 : 4); },
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           label: const Text('متابعة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
@@ -541,7 +851,7 @@ class _State extends State<LegalConsultationBookingScreen> {
   }
 
   Widget _typeCard(IconData icon, String title, String sub, int sType) {
-    return GestureDetector(onTap: () { if (_guardPending()) return; _serviceType = sType; _goTo(sType == 0 ? 3 : 4); },
+    return GestureDetector(onTap: () { if (_guardPending(sType)) return; _serviceType = sType; _goTo(sType == 0 ? 3 : 4); },
       child: Container(width: double.infinity, padding: AppTheme.paddingAllLarge,
         decoration: BoxDecoration(color: AppTheme.surfaceBlack, borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
         child: Row(children: [
@@ -589,7 +899,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           }),
           AppTheme.gapHeightLarge,
           if (_continueChatId != null) SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
-            onPressed: () { if (_guardPending()) return; _isContinuing = true; _goTo(5); }, // مباشر للدفع
+            onPressed: () { if (_guardPending(0)) return; _isContinuing = true; _goTo(5); }, // مباشر للدفع
             icon: const Icon(Icons.payment, color: Colors.black),
             label: Text('متابعة — دفع ${_fmt(_renewPrice)} ل.س', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
@@ -597,7 +907,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           AppTheme.gapHeightMedium,
         ],
         SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(
-          onPressed: () { if (_guardPending()) return; _isContinuing = false; _continueChatId = null; _goTo(4); },
+          onPressed: () { if (_guardPending(0)) return; _isContinuing = false; _continueChatId = null; _goTo(4); },
           icon: const Icon(Icons.add, color: AppTheme.primaryGold),
           label: Text(chats.isNotEmpty ? 'لا — أريد استشارة جديدة' : 'بدء استشارة جديدة', style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
           style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
