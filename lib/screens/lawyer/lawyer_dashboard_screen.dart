@@ -51,6 +51,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     final user = context.read<AuthProvider>().userModel;
     if (user == null) return;
     final legal = context.read<LegalProvider>();
+    // 🔴 إلزامي قبل أي نداء: الإيدج يتحقق من الجلسة عبر user_uid بالجسم،
+    // وبدونه ترتد كل الدوال USER_UID_REQUIRED وتبدو الشاشة «فارغة».
+    legal.setActor(user.uid);
     await legal.checkLawyerProfile(user.uid);
     // 🟢 قراءة حالة التوفر الفعلية من ملف المحامي
     _isAvailable = (legal.lawyerProfile?['is_active'] ?? true) == true;
@@ -179,9 +182,12 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     if (!mounted) return; setState(() => _savingProfile = false);
     if (ok) {
       _snack('✅ تم حفظ البيانات');
-      context.read<LegalProvider>().fetchAvailableExpediters();
-      context.read<LegalProvider>().fetchLawyerAppointments();
-      context.read<LegalProvider>().fetchLawyerTasks();
+      final legal = context.read<LegalProvider>();
+      legal.setActor(user.uid); // إلزامي قبل الجلب (وإلا USER_UID_REQUIRED)
+      legal.fetchAvailableExpediters();
+      legal.fetchLawyerAppointments();
+      legal.fetchLawyerTasks();
+      legal.fetchLawyerConsultations(); // كانت مفقودة هنا
     } else { _snack('فشل الحفظ', bg: AppTheme.errorRed); }
   }
 
@@ -423,11 +429,39 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
         ],
         bottom: TabBar(controller: _tabCtrl, indicatorColor: AppTheme.primaryGold,
           labelColor: AppTheme.primaryGold, unselectedLabelColor: AppTheme.textGrey,
-          tabs: const [
-            Tab(icon: E2E(id: 'e2e_lawyer_tab_consultations', button: true, child: Icon(Icons.gavel)), text: 'الاستشارات'),
-            Tab(icon: E2E(id: 'e2e_lawyer_tab_appointments', button: true, child: Icon(Icons.calendar_month)), text: 'مواعيدي'),
-            Tab(icon: E2E(id: 'e2e_lawyer_tab_create_task', button: true, child: Icon(Icons.add_task)), text: 'إضافة مهمة'),
-            Tab(icon: E2E(id: 'e2e_lawyer_tab_sent_tasks', button: true, child: Icon(Icons.assignment)), text: 'المهام المرسلة'),
+          tabs: [
+            Tab(
+              // 🔔 شارة الطلبات الجديدة (status=0) — تلفت نظر المحامي فوراً
+              icon: E2E(
+                id: 'e2e_lawyer_tab_consultations',
+                button: true,
+                child: Builder(builder: (_) {
+                  final newCount = legal.lawyerConsultations
+                      .where((c) => (c['status'] ?? 0) == 0)
+                      .length;
+                  if (newCount == 0) return const Icon(Icons.gavel);
+                  return Stack(clipBehavior: Clip.none, children: [
+                    const Icon(Icons.gavel),
+                    Positioned(
+                      top: -4, right: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppTheme.errorRed,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text('$newCount',
+                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ]);
+                }),
+              ),
+              text: 'الاستشارات',
+            ),
+            const Tab(icon: E2E(id: 'e2e_lawyer_tab_appointments', button: true, child: Icon(Icons.calendar_month)), text: 'مواعيدي'),
+            const Tab(icon: E2E(id: 'e2e_lawyer_tab_create_task', button: true, child: Icon(Icons.add_task)), text: 'إضافة مهمة'),
+            const Tab(icon: E2E(id: 'e2e_lawyer_tab_sent_tasks', button: true, child: Icon(Icons.assignment)), text: 'المهام المرسلة'),
           ]),
       ),
       body: TabBarView(controller: _tabCtrl, children: [
@@ -493,18 +527,54 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
   // ──────── تبويب الاستشارات القانونية ────────
   Widget _buildConsultationsTab(LegalProvider legal) {
     final consultations = legal.lawyerConsultations;
-    if (consultations.isEmpty) {
+
+    // 2026-08-14: «فارغ» كان يعني أحياناً «فشل النداء» (USER_UID_REQUIRED)
+    // فيظن المحامي أنه بلا طلبات. الآن الفشل يُعلن صراحةً مع زر إعادة محاولة.
+    if (consultations.isEmpty && legal.error != null) {
       return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.gavel, size: 60, color: AppTheme.textGrey.withOpacity(0.4)),
-          AppTheme.gapHeightMedium,
-          const Text('لا توجد استشارات حالياً',
-              style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSubtitle)),
-          AppTheme.gapHeightSmall,
-          const Text('عند حجز عميل لاستشارة قانونية، ستظهر هنا',
-              style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
-        ]),
+        child: Padding(
+          padding: AppTheme.paddingAllXL,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.cloud_off, size: 56, color: AppTheme.errorRed),
+            AppTheme.gapHeightMedium,
+            const Text('تعذّر جلب الاستشارات',
+                style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold)),
+            AppTheme.gapHeightSmall,
+            Text(legal.error!, textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+            AppTheme.gapHeightLarge,
+            ElevatedButton.icon(
+              onPressed: () => legal.fetchLawyerConsultations(),
+              icon: const Icon(Icons.refresh, color: Colors.black),
+              label: const Text('إعادة المحاولة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+            ),
+          ]),
+        ),
       );
+    }
+
+    if (consultations.isEmpty) {
+      return Stack(children: [
+        ListView(), // ليعمل السحب للتحديث على القائمة الفارغة
+        Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.gavel, size: 60, color: AppTheme.textGrey.withOpacity(0.4)),
+            AppTheme.gapHeightMedium,
+            const Text('لا توجد استشارات حالياً',
+                style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSubtitle)),
+            AppTheme.gapHeightSmall,
+            const Text('عند حجز عميل لاستشارة قانونية، ستظهر هنا',
+                style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
+            AppTheme.gapHeightLarge,
+            TextButton.icon(
+              onPressed: () => legal.fetchLawyerConsultations(),
+              icon: const Icon(Icons.refresh, color: AppTheme.primaryGold, size: 18),
+              label: const Text('تحديث', style: TextStyle(color: AppTheme.primaryGold)),
+            ),
+          ]),
+        ),
+      ]);
     }
     return RefreshIndicator(
       onRefresh: () => legal.fetchLawyerConsultations(),
@@ -525,11 +595,16 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     final price = (c['price'] ?? 0) as num;
     final subject = (c['subject'] ?? '').toString();
     final clientName = c['client_nm']?.toString() ?? 'عميل';
-    final tsCrt = c['ts_crt']?.toString().substring(0, 16) ?? '';
+    // substring(0,16) كان يرمي استثناء ويكسر البطاقة لو قصُر النص
+    final tsRaw = c['ts_crt']?.toString() ?? '';
+    final tsCrt = tsRaw.length >= 16 ? tsRaw.substring(0, 16) : tsRaw;
     final chatStarted = c['chat_started_at'] != null;
     final extended = c['extended'] == true;
     final consultId = c['id']?.toString() ?? '';
     final attachments = (c['attachments'] as List?) ?? [];
+    final rejectNote = (c['reject_note'] ?? '').toString();
+    final reassignCount = (c['reassign_count'] ?? 0) as int;
+    final reassigned = reassignCount > 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -563,6 +638,43 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
             AppTheme.gapHeightXS,
             Text('📎 ${attachments.length} مستند مرفق', style: const TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeCaption)),
           ],
+
+          // 🔄 وسم التحويل: يعرف المحامي أن الطلب وصله من زميل اعتذر عنه
+          if (reassigned) ...[
+            AppTheme.gapHeightXS,
+            Text('🔄 مُحوَّلة إليك (محاولة رقم $reassignCount)',
+                style: const TextStyle(color: AppTheme.warningOrange, fontSize: AppTheme.fontSizeCaption, fontWeight: FontWeight.bold)),
+          ],
+
+          // 📄 بانتظار استكمال بيانات العميل — يعرض ما طلبه المحامي بنفسه
+          if (sts == 5) ...[
+            AppTheme.gapHeightSmall,
+            Container(
+              width: double.infinity,
+              padding: AppTheme.paddingAllMedium,
+              decoration: BoxDecoration(
+                color: AppTheme.infoBlue.withOpacity(0.08),
+                borderRadius: AppTheme.radiusSmall,
+                border: Border.all(color: AppTheme.infoBlue.withOpacity(0.35)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('⏳ بانتظار استكمال العميل للبيانات',
+                    style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold, fontSize: AppTheme.fontSizeSmall)),
+                if (rejectNote.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text('طلبتَ: $rejectNote',
+                      style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption, height: 1.4)),
+                ],
+              ]),
+            ),
+          ],
+
+          // ❌ اعتذار نهائي — يبقى السبب ظاهراً للمرجع
+          if (sts == 4 && rejectNote.isNotEmpty) ...[
+            AppTheme.gapHeightXS,
+            Text('سبب الاعتذار: $rejectNote',
+                style: const TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeCaption)),
+          ],
           const SizedBox(height: 6),
           Row(children: [
             Text('${price.toStringAsFixed(0)} ل.س', style: const TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.bold)),
@@ -586,9 +698,11 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
               AppTheme.gapWidthSmall,
               Expanded(child: ElevatedButton.icon(
                 onPressed: () async {
-                  // تأكيد + بدء المحادثة فوراً
-                  await _updateConsultationStatus(legal, c['id'], 1, '');
-                  // بدء المحادثة
+                  // 2026-08-14: كان يبدأ المحادثة حتى لو فشل القبول ⇒ خطأ
+                  // CONSULTATION_NOT_CONFIRMED ورسالتا فشل متتاليتان بلا معنى.
+                  final accepted =
+                      await _updateConsultationStatus(legal, c['id'], 1, '');
+                  if (!accepted) return;
                   if (mounted && consultId.isNotEmpty) {
                     await _startChat(consultId);
                   }
@@ -639,13 +753,28 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     );
   }
 
+  /// 2026-08-14: كانت تعرض «✅ بدأت المحادثة» حتى عند فشل السيرفر لأنها لم
+  /// تقرأ data['success'] إطلاقاً — تشويش مباشر للمحامي.
   Future<void> _startChat(String consultId) async {
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-      await SupabaseService().invokeFunction('legal-actions', body: {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'start_chat', 'user_uid': uid, 'consultation_id': consultId,
       });
-      if (mounted) _snack('✅ بدأت المحادثة');
+      final data = res.data as Map<String, dynamic>?;
+      if (!mounted) return;
+      if (data != null && data['success'] == true) {
+        _snack('✅ بدأت المحادثة');
+        await context.read<LegalProvider>().fetchLawyerConsultations();
+      } else {
+        final err = data?['error']?.toString() ?? '';
+        _snack(
+          err == 'CHAT_ALREADY_STARTED'
+              ? 'المحادثة مفتوحة أصلاً'
+              : err.isEmpty ? 'فشل بدء المحادثة' : 'فشل بدء المحادثة: $err',
+          bg: AppTheme.errorRed,
+        );
+      }
     } catch (e) {
       if (mounted) _snack('فشل بدء المحادثة', bg: AppTheme.errorRed);
     }
@@ -680,6 +809,8 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
         return ('ملغاة', AppTheme.textGrey);
       case 4:
         return ('مرفوضة', AppTheme.errorRed);
+      case 5:
+        return ('بانتظار بيانات العميل', AppTheme.infoBlue);
       default:
         return ('غير معروف', AppTheme.textGrey);
     }
@@ -821,9 +952,11 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     }
   }
 
-  Future<void> _updateConsultationStatus(
+  /// ترجع true عند النجاح (2026-08-14) — «قبول وبدء» يعتمد عليها لئلا
+  /// يبدأ المحادثة بعد فشل القبول.
+  Future<bool> _updateConsultationStatus(
       LegalProvider legal, String? id, int status, String errorLabel) async {
-    if (id == null) return;
+    if (id == null) return false;
     final action = status == 1 ? 'تأكيد' : status == 2 ? 'إتمام' : 'رفض';
     final ok = await legal.updateConsultationStatus(
         id: id, status: status,
@@ -832,8 +965,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     if (ok) {
       _snack('✅ تم $action الاستشارة');
     } else {
-      _snack('فشل $action الاستشارة', bg: AppTheme.errorRed);
+      _snack(legal.error ?? 'فشل $action الاستشارة', bg: AppTheme.errorRed);
     }
+    return ok;
   }
 
   Widget _buildAppointmentsTab(LegalProvider legal) {

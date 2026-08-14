@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/expediting_task_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/legal_provider.dart';
 
 class ExpediterTaskDetailScreen extends StatefulWidget {
@@ -41,6 +42,7 @@ class _ExpediterTaskDetailScreenState extends State<ExpediterTaskDetailScreen> {
     String attachmentContentType = 'image/jpeg',
   }) async {
     final prov = context.read<LegalProvider>();
+    prov.setActor(context.read<AuthProvider>().userModel?.uid ?? '');
     final ok = await prov.updateChecklistItem(
       taskId: widget.task.id,
       itemKey: item.key,
@@ -114,7 +116,9 @@ class _ExpediterTaskDetailScreenState extends State<ExpediterTaskDetailScreen> {
 
     if (confirmed != true || !mounted) return;
     setState(() => _completingTask = true);
-    final ok = await context.read<LegalProvider>().completeExpeditingTask(
+    final prov2 = context.read<LegalProvider>();
+    prov2.setActor(context.read<AuthProvider>().userModel?.uid ?? '');
+    final ok = await prov2.completeExpeditingTask(
       taskId: widget.task.id,
       notes: notesCtrl.text.trim(),
     );

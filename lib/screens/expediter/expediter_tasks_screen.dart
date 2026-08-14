@@ -25,7 +25,11 @@ class _ExpediterTasksScreenState extends State<ExpediterTasksScreen> {
   Future<void> _load() async {
     final user = context.read<AuthProvider>().userModel;
     if (user != null) {
-      await context.read<LegalProvider>().getExpeditingTasks(userUid: user.uid);
+      final legal = context.read<LegalProvider>();
+      // إلزامي: بقية نداءات المعقّب (تحديث بند/إتمام مهمة) تعتمد الهوية
+      // المحفوظة، وبدونها ترتد USER_UID_REQUIRED بصمت.
+      legal.setActor(user.uid);
+      await legal.getExpeditingTasks(userUid: user.uid);
     }
   }
 
