@@ -603,8 +603,14 @@ serve(async (req) => {
       const subject = (body.subject ?? "").toString().trim();
       const price = Number(body.price ?? 0);
       const attachments = Array.isArray(body.attachments) ? body.attachments.map(String) : [];
+      const requestedSlot = (body.slot ?? "").toString(); // حضورية: موعد مختار مسبقاً
       if (!subject) return json({ success: false, error: "SUBJECT_REQUIRED" }, 400);
       if (serviceType < 0 || serviceType > 1) return json({ success: false, error: "INVALID_SERVICE_TYPE" }, 400);
+      // 🏢 الحضورية = موعد + دفع فقط (لا محادثة) ⇒ الموعد إلزامي قبل الحجز.
+      // كانت تُنشأ بلا أي موعد فتبقى معلّقة في الفراغ بعد الدفع.
+      if (serviceType === 1 && !requestedSlot) {
+        return json({ success: false, error: "SLOT_REQUIRED_FOR_ONSITE" }, 400);
+      }
 
       // الأسعار الرسمية تُقرأ من app_config.main.legalPrice (قابلة لتعديل الإدارة).
       // 2026-08-14: كانت ثابتة { 0: 500, 1: 2000 } بالكود ⇒ تعديل السعر مستحيل.
@@ -631,13 +637,9 @@ serve(async (req) => {
       const lawyerUid = consultation?.lawyer_uid?.toString() ?? "";
       let lawyerAlias = "محامي المكتب";
       if (lawyerUid) {
-        const { count: lawyerOrder } = await supabaseAdmin
-          .from("lawyer_profiles").select("*", { count: "exact", head: true })
-          .eq("is_active", true)
-          .lte("created_at", (consultation as Record<string, unknown>)?.created_at ?? new Date().toISOString());
-        const orderNum = (lawyerOrder ?? 1);
-        const arabicOrdinals = ["", "الأول", "الثاني", "الثالث", "الرابع", "الخامس"];
-        lawyerAlias = `محامي المكتب ${arabicOrdinals[orderNum] ?? orderNum}`;
+        const { data: aliasInit } = await supabaseAdmin
+          .rpc("lawyer_alias_for", { p_lawyer_uid: lawyerUid });
+        lawyerAlias = (aliasInit as string | null) ?? "محامي المكتب";
         // حفظ alias و attachments
         await supabaseAdmin.from("legal_consultations").update({
           lawyer_alias: lawyerAlias,
@@ -696,19 +698,65 @@ serve(async (req) => {
         }
       }
 
+      // 🏢 الجلسة الحضورية: إنشاء الموعد فعلياً في appointments (2026-08-14).
+      // قبل اليوم لم تكن تُنشأ إطلاقاً ⇒ العميل يدفع 2000 ولا أحد يعرف متى
+      // يلتقيان، وتبويب «مواعيدي» يبقى فارغاً. الربط بـbkr_id/req_uid/dt
+      // يجعلها تظهر تلقائياً وتستفيد من التذكيرات القائمة (rmnd_24/rmnd_2).
+      let apptId: string | null = null;
+      if (serviceType === 1 && lawyerUid && requestedSlot) {
+        // تحقق أن السلوت ما زال ضمن أوقات المحامي وغير محجوز
+        const { data: freeSlots } = await supabaseAdmin
+          .rpc("get_lawyer_free_slots", { p_lawyer_uid: lawyerUid, p_days: 30 });
+        const wanted = new Date(requestedSlot).getTime();
+        const isFree = ((freeSlots ?? []) as Record<string, unknown>[])
+          .some((r) => new Date(String(r.slot_dt)).getTime() === wanted);
+        if (!isFree) {
+          // نظافة: نحذف الاستشارة المنشأة لئلا تبقى يتيمة بلا موعد
+          await supabaseAdmin.from("legal_consultations").delete().eq("id", consultId);
+          return json({ success: false, error: "SLOT_NO_LONGER_AVAILABLE" }, 409);
+        }
+        const { data: appt, error: apptErr } = await supabaseAdmin
+          .from("appointments")
+          .insert({
+            bkr_id: lawyerUid, req_uid: uid, dt: requestedSlot,
+            sts: 0, ts_crt: new Date().toISOString(),
+            executor_notes: subject.slice(0, 200),
+          })
+          .select("id").single();
+        if (apptErr) {
+          await supabaseAdmin.from("legal_consultations").delete().eq("id", consultId);
+          return json({ success: false, error: apptErr.message }, 400);
+        }
+        apptId = appt?.id?.toString() ?? null;
+        await supabaseAdmin.from("legal_consultations")
+          .update({ appointment_id: apptId, requested_slot: requestedSlot })
+          .eq("id", consultId);
+      }
+
       // 📊 تحديث active_tasks_count للمحامي المُسند
       if (lawyerUid) {
         await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: lawyerUid });
       }
 
-      return json({ success: true, consultation_id: consultId, lawyer_assigned: !!lawyerUid });
+      return json({
+        success: true, consultation_id: consultId,
+        lawyer_assigned: !!lawyerUid, appointment_id: apptId,
+      });
     }
 
     // ─── قائمة استشاراتي (للمستخدم العادي) ───
     if (action === "list_my_consultations") {
+      // 🔒 2026-08-14: كان select("*") يسرّب lawyer_uid للمستخدم، وبه يمكن
+      // الاستعلام عن هوية المحامي — نقيض قرار إخفاء بياناته. الأعمدة محددة
+      // الآن، والمحامي يُعرف بـlawyer_alias فقط («محامي المكتب الأول»).
       const { data, error } = await supabaseAdmin
         .from("legal_consultations")
-        .select("*")
+        .select(
+          "id, service_type, subject, price, status, notes, attachments, lawyer_alias, " +
+          "chat_started_at, chat_duration_minutes, renew_count, rating, rating_comment, " +
+          "converted_to_onsite, onsite_discount, payment_id, payment_status, " +
+          "reject_reason_code, reject_note, reassign_count, expires_at, ts_crt, ts_upd",
+        )
         .eq("user_uid", uid)
         .eq("i_del", 0)
         .order("ts_crt", { ascending: false });
@@ -736,6 +784,396 @@ serve(async (req) => {
     }
 
     // ─── تحديث حالة الاستشارة (محامي/أدمن/المستخدم يلغي) ───
+    // ─── 🔀 رفض المحامي المُوجَّه بالسبب (أُضيف 2026-08-14) ───
+    // قرار المالك: «سبب الرفض هو من يحدد الإجراء التالي».
+    // need_info    → الحالة 5: المستخدم يستكمل ثم ترجع 0 لنفس المحامي (بلا دفع جديد)
+    // unavailable  → إعادة إسناد تلقائية لمحامٍ آخر (متاح + الأقل انشغالاً + الأقدم)
+    // out_of_scope → مثل unavailable مع تسجيل السبب
+    // illegal      → الحالة 4 نهائية + إخطار الإدارة للبتّ بالاسترداد
+    // حماية الحلقة: لا تُسند لمن رفض (rejected_by)، وبعد 3 محاولات تُصعَّد للإدارة.
+    if (action === "reject_consultation") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      const reasonCode = (body.reason_code ?? "").toString();
+      const reasonNote = (body.reason_note ?? "").toString().trim().slice(0, 400);
+      const VALID = ["need_info", "unavailable", "out_of_scope", "illegal"];
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (!VALID.includes(reasonCode)) return json({ success: false, error: "INVALID_REASON_CODE" }, 400);
+      // السبب النصي إلزامي لما يحتاج توضيحاً للمستخدم
+      if ((reasonCode === "need_info" || reasonCode === "illegal") && reasonNote.length < 5) {
+        return json({ success: false, error: "REASON_NOTE_REQUIRED" }, 400);
+      }
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, service_type, subject, status, reassign_count, rejected_by")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      const isAssignedLawyer = isLawyer(role) && row.lawyer_uid === uid;
+      if (!isAssignedLawyer && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
+      }
+      if (Number(row.status) !== 0) {
+        return json({ success: false, error: "ONLY_PENDING_CAN_BE_REJECTED" }, 409);
+      }
+
+      const userUid = row.user_uid?.toString() ?? "";
+      const sName = Number(row.service_type) === 1 ? "الجلسة الحضورية" : "الاستشارة الهاتفية";
+      const notifyUser = async (ttl: string, bdy: string, act: string) => {
+        if (!userUid) return;
+        await supabaseAdmin.from("notifications").insert({
+          uid: userUid, tp: 1, ttl, bdy, ref_id: consultId, act,
+          i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: userUid, p_title: ttl, p_body: bdy, p_data: { act, ref_id: consultId },
+          });
+        } catch { /* push ثانوي */ }
+      };
+      const notifyAdmins = async (ttl: string, bdy: string) => {
+        const { data: admins } = await supabaseAdmin
+          .from("users").select("id").gte("role", 5).eq("sts", 0).eq("i_del", 0);
+        if (!admins?.length) return;
+        await supabaseAdmin.from("notifications").insert(
+          admins.map((a: Record<string, unknown>) => ({
+            uid: a.id, tp: 1, ttl, bdy, ref_id: consultId,
+            act: "legal_consultation_escalated", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+          })),
+        );
+      };
+
+      // ── ① نقص تفاصيل/مستندات → الحالة 5 (نفس المحامي محتفظ بالسياق) ──
+      if (reasonCode === "need_info") {
+        await supabaseAdmin.from("legal_consultations").update({
+          status: 5, reject_reason_code: reasonCode, reject_note: reasonNote, ts_upd: new Date().toISOString(),
+        }).eq("id", consultId);
+        await notifyUser("📄 المحامي يحتاج تفاصيل إضافية",
+          `${sName}: ${reasonNote.slice(0, 120)} — افتح الطلب واستكمل البيانات (لا حاجة لدفع جديد).`,
+          "legal_consultation_need_info");
+        return json({ success: true, outcome: "need_info", status: 5 });
+      }
+
+      // ── ② مخالف/غير قانوني → 4 نهائية + تصعيد للإدارة ──
+      if (reasonCode === "illegal") {
+        await supabaseAdmin.from("legal_consultations").update({
+          status: 4, reject_reason_code: reasonCode, reject_note: reasonNote, ts_upd: new Date().toISOString(),
+        }).eq("id", consultId);
+        if (row.lawyer_uid) {
+          await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: row.lawyer_uid });
+        }
+        await notifyUser("❌ تعذّر قبول طلبك",
+          `${sName}: ${reasonNote.slice(0, 140)} — الإدارة ستتواصل معك بخصوص المبلغ المدفوع.`,
+          "legal_consultation_rejected");
+        await notifyAdmins("⚠️ استشارة مرفوضة (مخالفة)",
+          `رُفض طلب استشارة لسبب قانوني — يلزم البتّ بالاسترداد. السبب: ${reasonNote.slice(0, 120)}`);
+        return json({ success: true, outcome: "rejected_final", status: 4 });
+      }
+
+      // ── ③ غير متوفر / خارج الاختصاص → إعادة إسناد تلقائية ──
+      const rejectedBy: string[] = Array.isArray(row.rejected_by)
+        ? (row.rejected_by as string[]).map(String) : [];
+      if (row.lawyer_uid && !rejectedBy.includes(String(row.lawyer_uid))) {
+        rejectedBy.push(String(row.lawyer_uid));
+      }
+      const reassignCount = Number(row.reassign_count ?? 0) + 1;
+      const MAX_REASSIGN = 3;
+
+      let nextLawyer: string | null = null;
+      if (reassignCount <= MAX_REASSIGN) {
+        const { data: picked } = await supabaseAdmin
+          .rpc("pick_next_lawyer", { p_exclude: rejectedBy });
+        nextLawyer = picked ? String(picked) : null;
+      }
+
+      // لا بديل (أو تجاوزنا السقف) ⇒ تبقى معلّقة بلا محامي وتُصعَّد للإدارة
+      if (!nextLawyer) {
+        await supabaseAdmin.from("legal_consultations").update({
+          lawyer_uid: null, lawyer_alias: null, status: 0,
+          reject_reason_code: reasonCode, reject_note: reasonNote,
+          reassign_count: reassignCount, rejected_by: rejectedBy,
+          ts_upd: new Date().toISOString(),
+        }).eq("id", consultId);
+        if (row.lawyer_uid) {
+          await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: row.lawyer_uid });
+        }
+        await notifyUser("⏳ نبحث لك عن محامٍ متاح",
+          `${sName}: جميع المحامين مشغولون حالياً — الإدارة تتابع طلبك وسنخطرك فور توفر محامٍ.`,
+          "legal_consultation_escalated");
+        await notifyAdmins("🚨 استشارة بلا محامٍ متاح",
+          `تعذّر إسناد استشارة بعد ${reassignCount} محاولة — يلزم تدخل يدوي.`);
+        return json({ success: true, outcome: "escalated_to_admin", reassign_count: reassignCount });
+      }
+
+      // إسناد للمحامي التالي مع تحديث الاسم المستعار
+      // اللقب من دالة مركزية (ترتيب ثابت لكل محامٍ) — الحساب القديم بـcount
+      // كان يعطي محاميَين مختلفين نفس اللقب فيهدم وظيفة الإخفاء.
+      const { data: aliasData } = await supabaseAdmin
+        .rpc("lawyer_alias_for", { p_lawyer_uid: nextLawyer });
+      const newAlias = (aliasData as string | null) ?? "محامي المكتب";
+
+      await supabaseAdmin.from("legal_consultations").update({
+        lawyer_uid: nextLawyer, lawyer_alias: newAlias, status: 0,
+        reject_reason_code: reasonCode, reject_note: reasonNote,
+        reassign_count: reassignCount, rejected_by: rejectedBy,
+        ts_upd: new Date().toISOString(),
+      }).eq("id", consultId);
+
+      if (row.lawyer_uid) {
+        await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: row.lawyer_uid });
+      }
+      await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: nextLawyer });
+
+      // إشعار المحامي الجديد
+      await supabaseAdmin.from("notifications").insert({
+        uid: nextLawyer, tp: 1, ttl: "⚖️ استشارة مُحوَّلة إليك",
+        bdy: `${sName} — الموضوع: ${(row.subject ?? "").toString().slice(0, 100)}`,
+        ref_id: consultId, act: "legal_consultation_new", i_rd: 0, i_del: 0,
+        ts_crt: new Date().toISOString(),
+      });
+      try {
+        await supabaseAdmin.rpc("send_push_notification", {
+          p_uid: nextLawyer, p_title: "⚖️ استشارة مُحوَّلة إليك", p_body: sName,
+          p_data: { act: "legal_consultation_new", ref_id: consultId },
+        });
+      } catch { /* push ثانوي */ }
+
+      await notifyUser("🔄 تم تحويل طلبك لمحامٍ آخر",
+        `${sName}: المحامي السابق غير متاح — طلبك الآن مع ${newAlias} ولا حاجة لأي دفع إضافي.`,
+        "legal_consultation_reassigned");
+
+      return json({
+        success: true, outcome: "reassigned",
+        reassign_count: reassignCount, lawyer_alias: newAlias,
+      });
+    }
+
+    // ─── 🔁 المستخدم يستكمل البيانات الناقصة (الحالة 5 → 0) ───
+    if (action === "resubmit_consultation") {
+      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
+      const newSubject = (body.subject ?? "").toString().trim();
+      const extraAtts = Array.isArray(body.attachments) ? body.attachments.map(String) : [];
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (newSubject.length < 10) return json({ success: false, error: "SUBJECT_TOO_SHORT" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, lawyer_alias, service_type, status, attachments")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
+      if (Number(row.status) !== 5) return json({ success: false, error: "NOT_AWAITING_INFO" }, 409);
+
+      const merged = [
+        ...((row.attachments as string[] | null) ?? []),
+        ...extraAtts,
+      ].slice(0, 10);
+
+      await supabaseAdmin.from("legal_consultations").update({
+        subject: newSubject, attachments: merged, status: 0,
+        reject_reason_code: null, reject_note: null, ts_upd: new Date().toISOString(),
+      }).eq("id", consultId);
+
+      // إشعار نفس المحامي (يحتفظ بسياق القضية)
+      if (row.lawyer_uid) {
+        await supabaseAdmin.from("notifications").insert({
+          uid: row.lawyer_uid, tp: 1, ttl: "📄 العميل استكمل البيانات المطلوبة",
+          bdy: `${newSubject.slice(0, 100)}`, ref_id: consultId,
+          act: "legal_consultation_resubmitted", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: row.lawyer_uid, p_title: "📄 بيانات مستكملة",
+            p_body: "العميل أرسل التفاصيل المطلوبة",
+            p_data: { act: "legal_consultation_resubmitted", ref_id: consultId },
+          });
+        } catch { /* push ثانوي */ }
+      }
+      return json({ success: true, status: 0 });
+    }
+
+    // ─── 📎 روابط موقّعة لمستندات الاستشارة (أُضيف 2026-08-14) ───
+    // كانت المرفقات تُعرض للمحامي كعدد فقط («📎 3 مستند مرفق») بلا أي وسيلة
+    // لفتحها — لا في اللوحة ولا في المحادثة — فيقرر قبول القضية بلا رؤية
+    // سند الملكية. الـbucket خاص (public=false) فيلزم رابط موقّع.
+    if (action === "get_consultation_files") {
+      const consultId = (body.consultation_id ?? "").toString();
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("id, user_uid, lawyer_uid, attachments")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // 🔒 صاحب الاستشارة أو المحامي المُسند أو الإدارة فقط
+      const isOwner = row.user_uid === uid;
+      const isAssigned = row.lawyer_uid === uid;
+      if (!isOwner && !isAssigned && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+
+      const paths = ((row.attachments as string[] | null) ?? []).filter(Boolean);
+      const files: Record<string, string>[] = [];
+      for (const p of paths) {
+        const { data: signed } = await supabaseAdmin.storage
+          .from("consultation_files").createSignedUrl(p, 3600);
+        if (signed?.signedUrl) {
+          files.push({
+            path: p,
+            url: signed.signedUrl,
+            name: p.split("/").pop() ?? p,
+          });
+        }
+      }
+      return json({ success: true, files });
+    }
+
+    // ─── 🗓️ المحامي يضبط أوقاته المتاحة (إلزامي قبل استخدام الشاشة) ───
+    // قرار المالك 2026-08-14: المحامي يفتح أوقاته سلفاً والعميل لا يرى غيرها،
+    // فتُلغى جولة التفاوض (اقتراح/موافقة) لكل جلسة حضورية.
+    if (action === "set_availability_slots") {
+      const targetUid = (body.target_uid ?? uid)?.toString() ?? "";
+      const avl = body.avl;
+      if (targetUid !== uid && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+      if (!isLawyer(role) && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+      if (!avl || typeof avl !== "object" || Array.isArray(avl)) {
+        return json({ success: false, error: "AVL_OBJECT_REQUIRED" }, 400);
+      }
+      const { data, error } = await supabaseAdmin
+        .rpc("set_lawyer_availability_slots", { p_lawyer_uid: targetUid, p_avl: avl });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json((data ?? { success: false }) as Record<string, unknown>);
+    }
+
+    // ─── 🕐 السلوتات الحرة لمحامٍ (للعميل قبل حجز الجلسة الحضورية) ───
+    if (action === "get_free_slots") {
+      const lawyerUid = (body.lawyer_uid ?? "").toString();
+      const days = Math.min(30, Math.max(1, Number(body.days ?? 14)));
+
+      // بلا تحديد محامٍ: نأخذ التالي بالدور (متاح ← الأقل انشغالاً ← الأقدم)
+      let target = lawyerUid;
+      if (!target) {
+        const { data: picked } = await supabaseAdmin.rpc("pick_next_lawyer", { p_exclude: [] });
+        target = picked ? String(picked) : "";
+      }
+      if (!target) return json({ success: true, slots: [], lawyer_uid: null });
+
+      const { data, error } = await supabaseAdmin
+        .rpc("get_lawyer_free_slots", { p_lawyer_uid: target, p_days: days });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const slots = ((data ?? []) as Record<string, unknown>[])
+        .map((r) => String(r.slot_dt ?? r));
+      // 🔒 لا تُعاد هوية المحامي للعميل — اللقب فقط
+      const { data: alias } = await supabaseAdmin
+        .rpc("lawyer_alias_for", { p_lawyer_uid: target });
+      return json({ success: true, slots, lawyer_alias: alias ?? "محامي المكتب" });
+    }
+
+    // ─── 📅 المحامي يتصرف بموعد جلسة حضورية ───
+    if (action === "lawyer_appointment_action") {
+      const apptId = (body.appointment_id ?? "").toString();
+      const act = (body.appt_action ?? "").toString(); // confirm | complete | cancel
+      const reason = (body.reason ?? "").toString().trim().slice(0, 300);
+      if (!apptId) return json({ success: false, error: "APPOINTMENT_ID_REQUIRED" }, 400);
+      if (!["confirm", "complete", "cancel"].includes(act)) {
+        return json({ success: false, error: "INVALID_APPT_ACTION" }, 400);
+      }
+      if (act === "cancel" && reason.length < 5) {
+        return json({ success: false, error: "CANCEL_REASON_REQUIRED" }, 400);
+      }
+
+      const { data: appt } = await supabaseAdmin
+        .from("appointments").select("id, bkr_id, req_uid, dt, sts")
+        .eq("id", apptId).maybeSingle();
+      if (!appt) return json({ success: false, error: "APPOINTMENT_NOT_FOUND" }, 404);
+      if (appt.bkr_id !== uid && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_YOUR_APPOINTMENT" }, 403);
+      }
+
+      const cur = Number(appt.sts ?? 0);
+      const next = act === "confirm" ? 1 : act === "complete" ? 2 : 3;
+      const allowed: Record<number, number[]> = { 0: [1, 3], 1: [2, 3], 2: [], 3: [] };
+      if (!(allowed[cur] ?? []).includes(next)) {
+        return json({ success: false, error: "INVALID_APPT_TRANSITION", from: cur, to: next }, 409);
+      }
+
+      const upd: Record<string, unknown> = { sts: next };
+      if (act === "cancel") { upd.cnl_by = uid; upd.cnl_rsn = reason; }
+      if (act === "complete") { upd.completion_date = new Date().toISOString(); }
+      const { error: upErr } = await supabaseAdmin
+        .from("appointments").update(upd).eq("id", apptId);
+      if (upErr) return json({ success: false, error: upErr.message }, 400);
+
+      // مزامنة حالة الاستشارة المرتبطة (مكتملة/ملغاة)
+      if (next === 2 || next === 3) {
+        await supabaseAdmin.from("legal_consultations")
+          .update({ status: next === 2 ? 2 : 3, ts_upd: new Date().toISOString() })
+          .eq("appointment_id", apptId).eq("i_del", 0);
+        if (appt.bkr_id) {
+          await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: appt.bkr_id });
+        }
+      }
+
+      const titles: Record<string, string> = {
+        confirm: "✅ تأكيد موعد جلستك",
+        complete: "🎉 تمت جلستك القانونية",
+        cancel: "⚠️ أُلغي موعد جلستك",
+      };
+      const when = new Date(String(appt.dt)).toLocaleString("ar", {
+        timeZone: "Asia/Damascus", dateStyle: "full", timeStyle: "short",
+      });
+      const bodies: Record<string, string> = {
+        confirm: `تم تأكيد موعدك: ${when} — نراك في المكتب.`,
+        complete: "شكراً لك — يسعدنا تقييمك للجلسة.",
+        cancel: `أُلغي موعد ${when}. السبب: ${reason} — يمكنك اختيار موعد آخر.`,
+      };
+      if (appt.req_uid) {
+        await supabaseAdmin.from("notifications").insert({
+          uid: appt.req_uid, tp: 1, ttl: titles[act], bdy: bodies[act],
+          ref_id: apptId, act: "legal_appointment_update",
+          i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
+        });
+        try {
+          await supabaseAdmin.rpc("send_push_notification", {
+            p_uid: appt.req_uid, p_title: titles[act], p_body: bodies[act],
+            p_data: { act: "legal_appointment_update", ref_id: apptId },
+          });
+        } catch { /* push ثانوي */ }
+      }
+      return json({ success: true, appointment_status: next });
+    }
+
+    // ─── 🟢 المحامي يبدّل حالة توفره (أُضيف 2026-08-14) ───
+    // الفجوة: is_active كان يُقرأ بمكانين ولا كاتب له إطلاقاً ⇒ مجمّد على true.
+    if (action === "set_lawyer_availability") {
+      const available = body.available === true;
+      const targetUid = (body.target_uid ?? uid)?.toString() ?? "";
+      if (targetUid !== uid && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+      if (targetUid === uid && !isLawyer(role) && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+
+      const { error: upErr } = await supabaseAdmin
+        .from("lawyer_profiles")
+        .update({ is_active: available, updated_at: new Date().toISOString() })
+        .eq("uid", targetUid);
+      if (upErr) return json({ success: false, error: upErr.message }, 400);
+
+      // الطلبات المعلّقة التي لم تبدأ بعد — تُعرض على المحامي لتحويلها
+      const { count: pending } = await supabaseAdmin
+        .from("legal_consultations").select("*", { count: "exact", head: true })
+        .eq("lawyer_uid", targetUid).eq("status", 0).eq("i_del", 0);
+
+      return json({ success: true, available, pending_count: pending ?? 0 });
+    }
+
     if (action === "update_consultation_status") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
       const newStatus = Number(body.status ?? 0);
@@ -761,7 +1199,8 @@ serve(async (req) => {
       // - الإدارة: كل شي
       if (isOwner && !isAssignedLawyer && !isAdmin) {
         // المستخدم العادي — يسمح فقط بالإلغاء (0 → 3)
-        if (currentStatus !== 0 || newStatus !== 3) {
+        // 2026-08-14: يُسمح بالإلغاء من 0 أو 5 (بانتظار استكمال بياناته)
+        if (![0, 5].includes(currentStatus) || newStatus !== 3) {
           return json({ success: false, error: "USER_CAN_ONLY_CANCEL_PENDING" }, 403);
         }
       } else if (!isAssignedLawyer && !isAdmin) {
@@ -769,16 +1208,19 @@ serve(async (req) => {
       }
 
       // 🔒 حماية انتقالات الحالة — منع تغيير حالة مكتملة/ملغاة/مرفوضة
+      // 2026-08-14: أُضيفت الحالة 5 = بانتظار استكمال بيانات المستخدم.
+      // مسارها: 5 → 0 عبر resubmit_consultation · أو 5 → 3 إلغاء المستخدم.
       const allowedTransitions: Record<number, number[]> = {
-        0: [1, 3, 4], // بانتظار → مؤكد / ملغي / مرفوض
-        1: [2, 3],    // مؤكد → مكتمل / ملغي
-        2: [],         // مكتمل → لا شيء (نهائية)
-        3: [],         // ملغي → لا شيء (نهائية)
-        4: [],         // مرفوض → لا شيء (نهائية)
+        0: [1, 3, 4, 5], // بانتظار → مؤكد / ملغي / مرفوض / بانتظار بيانات
+        1: [2, 3],       // مؤكد → مكتمل / ملغي
+        2: [],            // مكتمل → لا شيء (نهائية)
+        3: [],            // ملغي → لا شيء (نهائية)
+        4: [],            // مرفوض → لا شيء (نهائية)
+        5: [0, 3],        // بانتظار بيانات → عاد للمحامي / ملغي
       };
       const allowed = allowedTransitions[currentStatus] ?? [];
       if (!allowed.includes(newStatus)) {
-        const statusNames: Record<number, string> = { 0: "بانتظار", 1: "مؤكدة", 2: "مكتملة", 3: "ملغاة", 4: "مرفوضة" };
+        const statusNames: Record<number, string> = { 0: "بانتظار", 1: "مؤكدة", 2: "مكتملة", 3: "ملغاة", 4: "مرفوضة", 5: "بانتظار استكمال بيانات" };
         return json({
           success: false,
           error: `INVALID_STATUS_TRANSITION`,
@@ -800,7 +1242,7 @@ serve(async (req) => {
       const userUid = row.user_uid?.toString() ?? "";
 
       // 📊 تحديث active_tasks_count عند انتقال لحالة نهائية (2,3,4)
-      if ([2, 3, 4].includes(newStatus) && [0, 1].includes(currentStatus)) {
+      if ([2, 3, 4].includes(newStatus) && [0, 1, 5].includes(currentStatus)) {
         const lawyerToUpdate = row.lawyer_uid?.toString() ?? "";
         if (lawyerToUpdate) {
           await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: lawyerToUpdate });
@@ -832,9 +1274,14 @@ serve(async (req) => {
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, lawyer_uid, status, chat_started_at")
+        .select("id, user_uid, lawyer_uid, status, chat_started_at, service_type")
         .eq("id", consultId).eq("i_del", 0).maybeSingle();
       if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+
+      // 🏢 الحضورية = موعد + دفع فقط، بلا محادثة إطلاقاً (قرار المالك 2026-08-14)
+      if (Number(row.service_type) === 1) {
+        return json({ success: false, error: "ONSITE_HAS_NO_CHAT" }, 400);
+      }
 
       // فقط المحامي المُسند أو الإدارة يفتح المحادثة
       if (isLawyer(role) && row.lawyer_uid !== uid && !canManageLawyerProfiles(role)) {
