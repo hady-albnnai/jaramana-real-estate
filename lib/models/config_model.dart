@@ -108,6 +108,35 @@ class ConfigModel {
   Map<String, dynamic> get featuredAdPrices => _getNestedMap(
       'fmsp', {'w1': 500, 'w2': 950, 'w3': 1350, 'w4': 1800}); // العملة الجديدة (حذف صفرين)
 
+  // ── ⚖️ أسعار الاستشارة القانونية (legalPrice) — أُضيفت 2026-08-14 ──
+  // كانت 500/2000 مضمّنة نصاً في 11 موضعاً بالواجهة و3 بالإيدج (مخالفة لقاعدة
+  // «لا نصوص ثابتة» بالدستور)، وسبق أن أنتج ذلك تضارباً بين الشاشات
+  // (كومِت «تصحيح سعر الاستشارة في الرئيسية من 50,000 إلى 500»).
+  Map<String, dynamic> get legalPrices => _getNestedMap(
+      'legalPrice', {'phone': 500, 'onsite': 2000, 'renew': 500, 'durationMins': 15});
+
+  /// سعر الاستشارة الهاتفية (ل.س)
+  int get legalPhonePrice => _asInt(legalPrices['phone'], 500);
+
+  /// سعر الجلسة الحضورية (ل.س)
+  int get legalOnsitePrice => _asInt(legalPrices['onsite'], 2000);
+
+  /// سعر تجديد المحادثة لمدة إضافية (ل.س)
+  int get legalRenewPrice => _asInt(legalPrices['renew'], 500);
+
+  /// مدة المحادثة الواحدة بالدقائق
+  int get legalDurationMins => _asInt(legalPrices['durationMins'], 15);
+
+  /// سعر الاستشارة حسب نوع الخدمة (0 = هاتفية، 1 = حضورية)
+  int legalPriceFor(int serviceType) =>
+      serviceType == 1 ? legalOnsitePrice : legalPhonePrice;
+
+  int _asInt(dynamic v, int fallback) {
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? fallback;
+    return fallback;
+  }
+
   /// 📸 أجر خدمة التصوير العقاري (ل.س) — قابل للتعديل من الإدارة (photoPrice).
   /// 0 يعني الخدمة مجانية فيُخفى ذكر الأجر من شاشة المستخدم.
   int get photographyPrice => _getNested('photoPrice', 1000);

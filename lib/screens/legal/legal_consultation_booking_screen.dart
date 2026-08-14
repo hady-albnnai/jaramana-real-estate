@@ -13,6 +13,7 @@ import '../../core/constants/db_constants.dart';
 import '../../core/validation/input_validators.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
+import '../../models/config_model.dart';
 import '../../providers/legal_provider.dart';
 import '../../providers/payment_provider.dart';
 import '../../models/payment_model.dart';
@@ -70,6 +71,21 @@ class _State extends State<LegalConsultationBookingScreen> {
     _subjectCtrl.dispose(); _refCtrl.dispose(); _senderPhoneCtrl.dispose();
     super.dispose();
   }
+
+  // ── ⚖️ الأسعار والمدة من الإعدادات (2026-08-14) ──
+  // كانت 500/2000/15 مضمّنة نصاً في 11 موضعاً بهذه الشاشة ⇒ تعديل الإدارة
+  // للسعر كان مستحيلاً، والسيرفر يرفض أي قيمة مخالفة بـ INVALID_PRICE.
+  ConfigModel? get _cfg => context.read<ConfigProvider>().config;
+  int _priceFor(int serviceType) =>
+      _cfg?.legalPriceFor(serviceType) ?? (serviceType == 1 ? 2000 : 500);
+  int get _phonePrice => _cfg?.legalPhonePrice ?? 500;
+  int get _onsitePrice => _cfg?.legalOnsitePrice ?? 2000;
+  int get _renewPrice => _cfg?.legalRenewPrice ?? 500;
+  int get _durationMins => _cfg?.legalDurationMins ?? 15;
+
+  /// تنسيق المبلغ بفواصل الآلاف (2,000 ل.س)
+  static String _fmt(int v) => v.toString().replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
 
   bool get _isLateNight => DateTime.now().hour >= 23 || DateTime.now().hour < 9;
   bool get _needsSenderPhone => _channel == 'balance' || _channel == 'syriatel_cash';
@@ -234,7 +250,9 @@ class _State extends State<LegalConsultationBookingScreen> {
     final proof = await _uploadProof(user.uid);
     if (proof == null) { _snack('فشل رفع الإثبات'); setState(() => _submitting = false); return; }
 
-    final price = _serviceType == 0 ? 500.0 : 2000.0;
+    // السعر من الإعدادات؛ ودفعة التجديد تأخذ سعر التجديد لا سعر الاستشارة
+    final price =
+        (_isContinuing ? _renewPrice : _priceFor(_serviceType)).toDouble();
     final payment = PaymentModel(
       id: '', uid: user.uid, tp: 2, pkg: _serviceType, amt: price, cur: 1, mtd: 0,
       channel: _channel, proof: proof, ref: ref, sts: 0, tsCrt: DateTime.now(),
@@ -255,7 +273,7 @@ class _State extends State<LegalConsultationBookingScreen> {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'book_consultation', 'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
         'service_type': _serviceType, 'subject': _subjectCtrl.text.trim(),
-        'price': _serviceType == 0 ? 500 : 2000, 'attachments': atts,
+        'price': _priceFor(_serviceType), 'attachments': atts,
       });
       if (res.data is Map && (res.data as Map)['success'] == true) {
         _snack('✅ تم إرسال الطلب — المحامي يدرس مشكلتك');
@@ -446,7 +464,7 @@ class _State extends State<LegalConsultationBookingScreen> {
             const SizedBox(height: 8),
             const Text('استشارة هاتفية', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 2),
-            const Text('500 ل.س', style: TextStyle(color: AppTheme.primaryGold, fontSize: 12, fontWeight: FontWeight.bold)),
+            Text('${_fmt(_phonePrice)} ل.س', style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: AppTheme.primaryGold, borderRadius: AppTheme.radiusXL),
               child: const Text('الأكثر طلباً', style: TextStyle(color: AppTheme.deepBlack, fontSize: 9, fontWeight: FontWeight.bold))),
@@ -460,7 +478,7 @@ class _State extends State<LegalConsultationBookingScreen> {
             const SizedBox(height: 8),
             const Text('جلسة حضورية', style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 2),
-            const Text('2,000 ل.س', style: TextStyle(color: AppTheme.primaryGold, fontSize: 12, fontWeight: FontWeight.bold)),
+            Text('${_fmt(_onsitePrice)} ل.س', style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12, fontWeight: FontWeight.bold)),
           ])))),
     ]);
   }
@@ -474,9 +492,9 @@ class _State extends State<LegalConsultationBookingScreen> {
       body: SingleChildScrollView(padding: AppTheme.paddingAllLarge, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Center(child: Icon(Icons.gavel, color: AppTheme.primaryGold, size: 48)),
         AppTheme.gapHeightLarge,
-        _infoCard(Icons.phone_in_talk, 'استشارة هاتفية', '500 ل.س', '15 دقيقة', ['محادثة مع محامي المكتب', 'للأسئلة القانونية البسيطة', 'تجديد بـ 500 ل.س كل 15 دقيقة', 'المحادثة تبقى 7 أيام']),
+        _infoCard(Icons.phone_in_talk, 'استشارة هاتفية', '${_fmt(_phonePrice)} ل.س', '$_durationMins دقيقة', ['محادثة مع محامي المكتب', 'للأسئلة القانونية البسيطة', 'تجديد بـ ${_fmt(_renewPrice)} ل.س كل $_durationMins دقيقة', 'المحادثة تبقى 7 أيام']),
         AppTheme.gapHeightMedium,
-        _infoCard(Icons.business, 'جلسة حضورية', '2,000 ل.س', 'ساعة', ['اجتماع في مكتب المحامي', 'للمشاكل المعقدة', 'حجز موعد مسبق']),
+        _infoCard(Icons.business, 'جلسة حضورية', '${_fmt(_onsitePrice)} ل.س', 'ساعة', ['اجتماع في مكتب المحامي', 'للمشاكل المعقدة', 'حجز موعد مسبق']),
         AppTheme.gapHeightXL,
         Container(width: double.infinity, padding: AppTheme.paddingAllMedium,
           decoration: BoxDecoration(color: AppTheme.warningOrange.withOpacity(0.1), borderRadius: AppTheme.radiusSmall, border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4))),
@@ -516,9 +534,9 @@ class _State extends State<LegalConsultationBookingScreen> {
         title: const Text('اختر النوع', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold), onPressed: () => _goTo(1))),
       body: Padding(padding: AppTheme.paddingAllLarge, child: Column(children: [AppTheme.gapHeightXL,
-        _typeCard(Icons.phone_in_talk, 'استشارة هاتفية', '500 ل.س — 15 دقيقة', 0),
+        _typeCard(Icons.phone_in_talk, 'استشارة هاتفية', '${_fmt(_phonePrice)} ل.س — $_durationMins دقيقة', 0),
         AppTheme.gapHeightLarge,
-        _typeCard(Icons.business, 'جلسة حضورية', '2,000 ل.س — ساعة', 1),
+        _typeCard(Icons.business, 'جلسة حضورية', '${_fmt(_onsitePrice)} ل.س — ساعة', 1),
       ])));
   }
 
@@ -548,7 +566,7 @@ class _State extends State<LegalConsultationBookingScreen> {
         if (chats.isNotEmpty) ...[
           Text(chats.length == 1 ? 'لديك محادثة سابقة' : 'لديك ${chats.length} محادثات سابقة', style: const TextStyle(color: AppTheme.primaryGold, fontSize: 16, fontWeight: FontWeight.bold)),
           AppTheme.gapHeightSmall,
-          const Text('هل تريد متابعة إحداها؟ (نفس المحامي — تجديد 500 ل.س)', style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+          Text('هل تريد متابعة إحداها؟ (نفس المحامي — تجديد ${_fmt(_renewPrice)} ل.س)', style: const TextStyle(color: AppTheme.textGrey, fontSize: 12)),
           AppTheme.gapHeightMedium,
           ...chats.map((c) {
             final id = c['id'].toString();
@@ -573,7 +591,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           if (_continueChatId != null) SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
             onPressed: () { if (_guardPending()) return; _isContinuing = true; _goTo(5); }, // مباشر للدفع
             icon: const Icon(Icons.payment, color: Colors.black),
-            label: const Text('متابعة — دفع 500 ل.س', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            label: Text('متابعة — دفع ${_fmt(_renewPrice)} ل.س', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
           )),
           AppTheme.gapHeightMedium,
@@ -630,7 +648,7 @@ class _State extends State<LegalConsultationBookingScreen> {
   Widget _buildPaymentForm() {
     final config = context.watch<ConfigProvider>().config;
     final channels = config?.enabledPayChannels ?? [];
-    final price = _serviceType == 0 ? 500 : 2000;
+    final price = _isContinuing ? _renewPrice : _priceFor(_serviceType);
     return Scaffold(backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(backgroundColor: AppTheme.scaffoldBackground, elevation: 0,
         title: const Text('الدفع', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),

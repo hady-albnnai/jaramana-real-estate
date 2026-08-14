@@ -40,6 +40,11 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _developerPhoneCtrl = TextEditingController();
   final _developerPhone2Ctrl = TextEditingController();
   final _photoPriceCtrl = TextEditingController();
+  // ⚖️ أسعار الاستشارة القانونية ومدة المحادثة (legalPrice) — أُضيفت 2026-08-14
+  final _legalPhoneCtrl = TextEditingController();
+  final _legalOnsiteCtrl = TextEditingController();
+  final _legalRenewCtrl = TextEditingController();
+  final _legalDurationCtrl = TextEditingController();
   bool _socialAutoPublish = true; // مفعّل افتراضياً منذ 2026-07-13
   // للصفحات الإضافية: نستخدم قائمة بسيطة (key: label, value: url)
   final List<Map<String, TextEditingController>> _extraSocialCtrls = [];
@@ -76,6 +81,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         _developerPhoneCtrl.text = c.developerPhone;
         _developerPhone2Ctrl.text = c.developerPhone2;
         _photoPriceCtrl.text = c.photographyPrice.toString();
+        _legalPhoneCtrl.text = c.legalPhonePrice.toString();
+        _legalOnsiteCtrl.text = c.legalOnsitePrice.toString();
+        _legalRenewCtrl.text = c.legalRenewPrice.toString();
+        _legalDurationCtrl.text = c.legalDurationMins.toString();
         _socialAutoPublish = c.socialAutoPublish;
 
         // Extra social pages (socialPages)
@@ -111,6 +120,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _developerPhoneCtrl,
       _developerPhone2Ctrl,
       _photoPriceCtrl,
+      _legalPhoneCtrl,
+      _legalOnsiteCtrl,
+      _legalRenewCtrl,
+      _legalDurationCtrl,
     ]) {
       c.dispose();
     }
@@ -380,6 +393,28 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                       ),
                       AppTheme.gapHeightXL,
 
+                      // ── ⚖️ أسعار الاستشارة القانونية (أُضيف 2026-08-14) ──
+                      _section('⚖️ أسعار الاستشارة القانونية'),
+                      Container(
+                        padding: AppTheme.paddingAllMedium,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.infoBlue.withOpacity(0.08),
+                          borderRadius: AppTheme.radiusSmall,
+                          border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3)),
+                        ),
+                        child: const Text(
+                          'تُطبَّق فوراً على كل الشاشات (الرئيسية • بطاقات الاستشارة • شاشة الدفع • المحادثة)\n'
+                          'والسيرفر يرفض أي دفعة بسعر مخالف — فالتعديل هنا هو المصدر الوحيد للسعر.',
+                          style: TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeSmall, height: 1.45),
+                        ),
+                      ),
+                      _numField('سعر الاستشارة الهاتفية (ل.س)', _legalPhoneCtrl),
+                      _numField('سعر الجلسة الحضورية (ل.س)', _legalOnsiteCtrl),
+                      _numField('سعر تجديد المحادثة (ل.س)', _legalRenewCtrl),
+                      _numField('مدة المحادثة (دقيقة)', _legalDurationCtrl),
+                      AppTheme.gapHeightXL,
+
                       _section('💳 قنوات الدفع'),
                       _navTile(
                         icon: Icons.payments,
@@ -605,6 +640,15 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     final photoPrice = int.tryParse(_photoPriceCtrl.text.trim()) ?? 1000;
     current['photoPrice'] = photoPrice;
 
+    // ⚖️ أسعار الاستشارة القانونية ومدة المحادثة (2026-08-14)
+    final legalPrice = <String, dynamic>{
+      'phone': int.tryParse(_legalPhoneCtrl.text.trim()) ?? 500,
+      'onsite': int.tryParse(_legalOnsiteCtrl.text.trim()) ?? 2000,
+      'renew': int.tryParse(_legalRenewCtrl.text.trim()) ?? 500,
+      'durationMins': int.tryParse(_legalDurationCtrl.text.trim()) ?? 15,
+    };
+    current['legalPrice'] = legalPrice;
+
     // ⚠️ الحفظ يمر عبر الإيدج بمفتاح الخدمة إلزامياً:
     // الكتابة المباشرة على app_config يرفضها السيرفر (42501) لأن anon لا يملك
     // UPDATE — فكان زر الحفظ معطّلاً فعلياً رغم رسالة النجاح. (أُصلح 2026-07-29)
@@ -621,6 +665,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'txts': txts,
           'socialPublishing': socialPublishing,
           'photoPrice': photoPrice,
+          'legalPrice': legalPrice,
         },
       });
       ok = (res is Map && res['success'] == true);

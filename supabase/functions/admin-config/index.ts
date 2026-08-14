@@ -127,7 +127,7 @@ serve(async (req) => {
       // ⇒ «حفظ» يفشل بصمت لمدير الهاتف (بلا JWT) — نفس درس §18 الموثق.
       const ALLOWED_SECTIONS = new Set([
         "pts", "com", "qta", "txts", "socialPublishing", "photoPrice",
-        "payChannels", "office",
+        "payChannels", "office", "legalPrice",
       ]);
       const entries = Object.entries(incoming as Record<string, unknown>);
       const rejected = entries.map(([k]) => k).filter((k) => !ALLOWED_SECTIONS.has(k));
@@ -192,6 +192,35 @@ serve(async (req) => {
             curAll[chKey] = curCh;
           }
           value[k] = curAll;
+          continue;
+        }
+
+        // ── legalPrice: أسعار الاستشارة القانونية ومدة المحادثة ──
+        // 2026-08-14: كانت 500/2000/15 ثابتة بالكود (11 موضع واجهة + 3 إيدج + RPC)
+        // ⇒ تعديلها مستحيل. القيم أعداد صحيحة موجبة فقط، والمدة ≥ 1 دقيقة.
+        if (k === "legalPrice") {
+          if (!v || typeof v !== "object" || Array.isArray(v)) {
+            return json({ success: false, error: "SECTION_MUST_BE_OBJECT", key: k }, 400);
+          }
+          const ALLOWED_LEGAL = new Set(["phone", "onsite", "renew", "durationMins"]);
+          const badLegal = Object.keys(v as Record<string, unknown>)
+            .filter((f) => !ALLOWED_LEGAL.has(f));
+          if (badLegal.length > 0) {
+            return json({ success: false, error: "LEGAL_FIELD_NOT_ALLOWED", keys: badLegal }, 403);
+          }
+          const curLegal = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))
+            ? { ...(value[k] as Record<string, unknown>) } : {};
+          for (const [f, fv] of Object.entries(v as Record<string, unknown>)) {
+            const n = Number(fv);
+            if (!Number.isInteger(n) || n < 0 || n > 100000000) {
+              return json({ success: false, error: "INVALID_LEGAL_PRICE", key: f }, 400);
+            }
+            if (f === "durationMins" && (n < 1 || n > 1440)) {
+              return json({ success: false, error: "INVALID_DURATION_MINS" }, 400);
+            }
+            curLegal[f] = n;
+          }
+          value[k] = curLegal;
           continue;
         }
 

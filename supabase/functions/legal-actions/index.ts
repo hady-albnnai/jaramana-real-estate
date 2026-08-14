@@ -23,6 +23,34 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
+/// ⚖️ أسعار الاستشارة ومدتها من app_config.main.legalPrice (أُضيف 2026-08-14).
+/// المصدر الوحيد للحقيقة — الواجهة تعرض والسيرفر يفرض من نفس المكان.
+/// القيم الافتراضية تطابق الأسعار التاريخية حتى لو غاب المفتاح.
+async function getLegalPrices(
+  supabaseAdmin: ReturnType<typeof createClient>,
+): Promise<{ phone: number; onsite: number; renew: number; durationMins: number }> {
+  const fallback = { phone: 500, onsite: 2000, renew: 500, durationMins: 15 };
+  try {
+    const { data } = await supabaseAdmin
+      .from("app_config").select("value").eq("key", "main").maybeSingle();
+    const cfg = (data?.value as Record<string, unknown>)?.legalPrice;
+    if (!cfg || typeof cfg !== "object") return fallback;
+    const c = cfg as Record<string, unknown>;
+    const num = (v: unknown, d: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : d;
+    };
+    return {
+      phone: num(c.phone, fallback.phone),
+      onsite: num(c.onsite, fallback.onsite),
+      renew: num(c.renew, fallback.renew),
+      durationMins: Math.max(1, num(c.durationMins, fallback.durationMins)),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
   const clean = base64.includes(",") ? base64.split(",").pop() ?? "" : base64;
   const binary = atob(clean);
@@ -578,9 +606,12 @@ serve(async (req) => {
       if (!subject) return json({ success: false, error: "SUBJECT_REQUIRED" }, 400);
       if (serviceType < 0 || serviceType > 1) return json({ success: false, error: "INVALID_SERVICE_TYPE" }, 400);
 
-      // الأسعار الرسمية: 0=هاتفية 500, 1=حضورية 2000
-      const officialPrices: Record<number, number> = { 0: 500, 1: 2000 };
-      const expectedPrice = officialPrices[serviceType] ?? 0;
+      // الأسعار الرسمية تُقرأ من app_config.main.legalPrice (قابلة لتعديل الإدارة).
+      // 2026-08-14: كانت ثابتة { 0: 500, 1: 2000 } بالكود ⇒ تعديل السعر مستحيل.
+      // ⚠️ التحقق يبقى خادمياً إلزاماً: العميل يرسل السعر ونقارنه بقيمة الإعدادات،
+      // وإلا صار بإمكان أي مستخدم دفع 1 ل.س بدل السعر الحقيقي.
+      const legalCfg = await getLegalPrices(supabaseAdmin);
+      const expectedPrice = serviceType === 1 ? legalCfg.onsite : legalCfg.phone;
       if (price !== expectedPrice) return json({ success: false, error: "INVALID_PRICE", expected: expectedPrice }, 400);
 
       // لا حد أقصى للمحادثات — المستخدم يقدر يحجز استشارات جديدة بحرية
@@ -813,21 +844,25 @@ serve(async (req) => {
       if (row.chat_started_at) return json({ success: false, error: "CHAT_ALREADY_STARTED" }, 400);
 
       const now = new Date().toISOString();
+      // 2026-08-14: المدة تُثبَّت من الإعدادات لحظة الفتح (كان الجدول يعتمد
+      // على default=15 فلا يتبع تعديل الإدارة).
+      const startCfg = await getLegalPrices(supabaseAdmin);
+      const startMins = startCfg.durationMins;
       await supabaseAdmin.from("legal_consultations").update({
-        chat_started_at: now, status: 1,
+        chat_started_at: now, status: 1, chat_duration_minutes: startMins,
       }).eq("id", consultId);
 
       // رسالة system
       await supabaseAdmin.from("consultation_chats").insert({
         consultation_id: consultId, sender_id: uid,
-        message_type: "system", content: "بدأت المحادثة — لديك 15 دقيقة للاستشارة",
+        message_type: "system", content: `بدأت المحادثة — لديك ${startMins} دقيقة للاستشارة`,
       });
 
       // إشعار الطالب
       if (row.user_uid) {
         await supabaseAdmin.from("notifications").insert({
           uid: row.user_uid, tp: 1, ttl: "💬 المحامي فتح المحادثة",
-          bdy: "يمكنك الآن بدء الاستشارة القانونية — لديك 15 دقيقة",
+          bdy: `يمكنك الآن بدء الاستشارة القانونية — لديك ${startMins} دقيقة`,
           ref_id: consultId, act: "chat_started", i_rd: 0, i_del: 0, ts_crt: now,
         });
         try {
@@ -1125,7 +1160,10 @@ serve(async (req) => {
         return json({ success: false, error: "CHAT_EXPIRED_7DAYS", message: "انتهت صلاحية المحادثة (7 أيام)" }, 400);
       }
 
-      const newDuration = (Number(row.chat_duration_minutes) || 15) + 15;
+      // 2026-08-14: المدة تُقرأ من الإعدادات بدل 15 الثابتة
+      const renewCfg = await getLegalPrices(supabaseAdmin);
+      const addMins = renewCfg.durationMins;
+      const newDuration = (Number(row.chat_duration_minutes) || addMins) + addMins;
       const newRenewCount = (Number(row.renew_count) || 0) + 1;
       await supabaseAdmin.from("legal_consultations").update({
         chat_duration_minutes: newDuration,
@@ -1135,7 +1173,7 @@ serve(async (req) => {
       // رسالة system
       await supabaseAdmin.from("consultation_chats").insert({
         consultation_id: consultId, sender_id: uid,
-        message_type: "system", content: `⏱️ تم تجديد المحادثة 15 دقيقة إضافية (التجديد رقم ${newRenewCount})`,
+        message_type: "system", content: `⏱️ تم تجديد المحادثة ${addMins} دقيقة إضافية (التجديد رقم ${newRenewCount})`,
       });
 
       // إشعار المحامي
@@ -1144,13 +1182,13 @@ serve(async (req) => {
       if (consult?.lawyer_uid) {
         await supabaseAdmin.from("notifications").insert({
           uid: consult.lawyer_uid, tp: 1, ttl: "⏱️ تم تجديد المحادثة",
-          bdy: `العميل جدد المحادثة 15 دقيقة إضافية`,
+          bdy: `العميل جدد المحادثة ${addMins} دقيقة إضافية`,
           ref_id: consultId, act: "chat_renewed", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
         });
         try {
           await supabaseAdmin.rpc("send_push_notification", {
             p_uid: consult.lawyer_uid, p_title: "⏱️ تجديد المحادثة",
-            p_body: "العميل جدد 15 دقيقة إضافية",
+            p_body: `العميل جدد ${addMins} دقيقة إضافية`,
             p_data: { act: "chat_renewed", ref_id: consultId },
           });
         } catch {}
@@ -1187,9 +1225,11 @@ serve(async (req) => {
       if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
       if (row.converted_to_onsite) return json({ success: false, error: "ALREADY_CONVERTED" }, 400);
 
-      // الخصم = سعر الاستشارة الهاتفية المدفوع
-      const discount = Number(row.price) || 500;
-      const remainingAmount = 2000 - discount;
+      // الخصم = سعر الاستشارة الهاتفية المدفوع · الفرق يُحسب من الإعدادات
+      // (2026-08-14: كان 2000 ثابتاً بالكود فلا يتبع تعديل الإدارة للسعر)
+      const priceCfg = await getLegalPrices(supabaseAdmin);
+      const discount = Number(row.price) || priceCfg.phone;
+      const remainingAmount = Math.max(0, priceCfg.onsite - discount);
 
       await supabaseAdmin.from("legal_consultations").update({
         converted_to_onsite: true,

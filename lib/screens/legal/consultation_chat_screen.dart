@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../services/storage_service.dart';
 
 class ConsultationChatScreen extends StatefulWidget {
@@ -27,6 +28,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   Map<String, dynamic> _chatInfo = {};
   bool _loading = true;
   bool _sending = false;
+
+  // ⚖️ سعر التجديد ومدة المحادثة من الإعدادات (2026-08-14) — كانا ثابتين نصاً
+  int get _renewPrice =>
+      context.read<ConfigProvider>().config?.legalRenewPrice ?? 500;
+  int get _durationMins =>
+      context.read<ConfigProvider>().config?.legalDurationMins ?? 15;
+  static String _fmtPrice(int v) => v.toString().replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
   String _lawyerAlias = 'محامي المكتب';
 
   Timer? _timer;
@@ -178,8 +187,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     setState(() => _sending = true);
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-      // أولاً: دفع 500 ل.س
-      // ثانياً: تجديد
+      // التجديد بسعر الإعدادات (legalPrice.renew) — لا رقم ثابت
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'renew_chat', 'user_uid': uid,
         'consultation_id': widget.consultationId,
@@ -188,12 +196,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       if (data != null && data['success'] == true) {
         setState(() {
           _timeUp = false;
-          _remainingSeconds = 15 * 60; // 15 دقيقة جديدة
+          _remainingSeconds = _durationMins * 60; // مدة جديدة من الإعدادات
           _renewCount = (data['renew_count'] ?? 0) as int;
         });
         _startTimer();
         await _loadMessages();
-        _showAlert('✅ تم تجديد المحادثة 15 دقيقة إضافية');
+        _showAlert('✅ تم تجديد المحادثة $_durationMins دقيقة إضافية');
       } else {
         _showAlert(data?['error']?.toString() ?? 'فشل التجديد');
       }
@@ -295,7 +303,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
           Expanded(child: ElevatedButton.icon(
             onPressed: _sending ? null : _renewChat,
             icon: const Icon(Icons.refresh, size: 16, color: Colors.black),
-            label: const Text('تجديد 15 دقيقة — 500 ل.س', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+            label: Text('تجديد $_durationMins دقيقة — ${_fmtPrice(_renewPrice)} ل.س', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
           )),
         ]),

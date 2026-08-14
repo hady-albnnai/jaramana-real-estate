@@ -233,7 +233,10 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                         context,
                         icon: Icons.gavel_rounded,
                         title: 'استشارة قانونية',
-                        subtitle: '⚖️ من 500 ل.س',
+                        // 2026-08-14: السعر من الإعدادات (كان 500 ثابتاً هنا،
+                        // وسبق أن تضارب مع باقي الشاشات — راجع كومِت التصحيح)
+                        subtitle:
+                            '⚖️ من ${context.watch<ConfigProvider>().config?.legalPhonePrice ?? 500} ل.س',
                         route: '/legal/consultations',
                       ),
                     ),
