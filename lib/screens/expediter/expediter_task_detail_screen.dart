@@ -127,6 +127,10 @@ class _ExpediterTaskDetailScreenState extends State<ExpediterTaskDetailScreen> {
     if (ok) {
       setState(() => _taskStatus = 2);
       _snack('✅ تم إتمام المهمة وإشعار المحامي');
+      // 2026-08-14: كان يبقى في التفاصيل بلا إشارة أن عمله انتهى — يعود
+      // للقائمة بعد لحظة ليرى المهمة انتقلت إلى «بانتظار المراجعة».
+      await Future.delayed(const Duration(milliseconds: 900));
+      if (mounted) Navigator.of(context).pop();
     } else {
       _snack(context.read<LegalProvider>().error ?? 'فشل إتمام المهمة');
     }
@@ -214,20 +218,49 @@ class _ExpediterTaskDetailScreenState extends State<ExpediterTaskDetailScreen> {
                     else
                       const Text('لم يتم إرفاق صورة بعد', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
                     AppTheme.gapHeightSmall,
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final file = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 82, maxWidth: 1600);
-                        if (file == null) return;
-                        final bytes = await file.readAsBytes();
-                        setDlg(() {
-                          attachmentBase64 = base64Encode(bytes);
-                          attachmentName = file.name;
-                        });
-                      },
-                      icon: const Icon(Icons.image_search, color: AppTheme.primaryGold),
-                      label: Text(existingImage.isNotEmpty || attachmentBase64.isNotEmpty ? 'استبدال الصورة' : 'إرفاق صورة من المعرض', style: const TextStyle(color: AppTheme.primaryGold)),
-                      style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
-                    ),
+                    // 📷 2026-08-14: كان المعرض الخيار الوحيد — والمعقّب ميداني
+                    // في الدوائر الحكومية: يستخرج السند فيريد تصويره ورفعه فوراً.
+                    // كان مضطراً للخروج للكاميرا ثم العودة والبحث في المعرض.
+                    Row(children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final file = await ImagePicker().pickImage(
+                                source: ImageSource.camera, imageQuality: 82, maxWidth: 1600);
+                            if (file == null) return;
+                            final bytes = await file.readAsBytes();
+                            setDlg(() {
+                              attachmentBase64 = base64Encode(bytes);
+                              attachmentName = file.name;
+                            });
+                          },
+                          icon: const Icon(Icons.photo_camera, color: Colors.black, size: 18),
+                          label: const Text('تصوير السند',
+                              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapWidthSmall,
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final file = await ImagePicker().pickImage(
+                                source: ImageSource.gallery, imageQuality: 82, maxWidth: 1600);
+                            if (file == null) return;
+                            final bytes = await file.readAsBytes();
+                            setDlg(() {
+                              attachmentBase64 = base64Encode(bytes);
+                              attachmentName = file.name;
+                            });
+                          },
+                          icon: const Icon(Icons.image_search, color: AppTheme.primaryGold, size: 18),
+                          label: const Text('من المعرض',
+                              style: TextStyle(color: AppTheme.primaryGold, fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppTheme.primaryGold)),
+                        ),
+                      ),
+                    ]),
                   ]),
                 ),
                 AppTheme.gapHeightMedium,
@@ -293,6 +326,34 @@ class _ExpediterTaskDetailScreenState extends State<ExpediterTaskDetailScreen> {
                   ],
                 ),
               ),
+            // 📝 2026-08-14: تعليمات المحامي العامة (lawyer_notes) كانت مخزّنة
+            // ولا تُعرض إطلاقاً — فيفوت المعقّب سياق المهمة («عاجل: العميل
+            // ينتظر لإتمام صفقة») ويؤجلها ظناً أنها عادية.
+            if (widget.task.lawyerNotes.trim().isNotEmpty) ...[
+              AppTheme.gapHeightLarge,
+              Container(
+                width: double.infinity,
+                padding: AppTheme.paddingAllMedium,
+                decoration: BoxDecoration(
+                  color: AppTheme.infoBlue.withOpacity(0.10),
+                  borderRadius: AppTheme.radiusMedium,
+                  border: Border.all(color: AppTheme.infoBlue.withOpacity(0.45)),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.sticky_note_2_outlined, color: AppTheme.infoBlue, size: 20),
+                  AppTheme.gapWidthSmall,
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('تعليمات المحامي',
+                          style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold, fontSize: AppTheme.fontSizeBody)),
+                      const SizedBox(height: 3),
+                      Text(widget.task.lawyerNotes,
+                          style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody, height: 1.5)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ],
             AppTheme.gapHeightLarge,
             const Text('📋 قائمة الوثائق الرسمية المطلوب استخراجها ميدانياً:', style: TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold)),
             AppTheme.gapHeightMedium,

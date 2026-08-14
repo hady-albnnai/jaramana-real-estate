@@ -1722,7 +1722,42 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
               child: DropdownButtonFormField<String>(value: _selectedExpediterUid, dropdownColor: AppTheme.surfaceBlack,
               style: const TextStyle(color: AppTheme.textWhite),
               decoration: const InputDecoration(labelText: 'اختر المعقب', prefixIcon: Icon(Icons.person_search, color: AppTheme.primaryGold)),
-              items: expediters.map((e) => DropdownMenuItem(value: e['id']?.toString(), child: Text('${e['nm']} (${e['ph']})'))).toList(),
+              // 2026-08-14: كان يعرض الاسم والهاتف فقط ⇒ المحامي يختار أعمى
+              // فيكدّس المهام على واحد وزميله فارغ. الآن: عدد المهام النشطة
+              // ووسم «الأقل انشغالاً»، والقائمة مرتّبة بالأقل أولاً (نفس أسس
+              // إسناد المحامين).
+              items: expediters.map((e) {
+                final busy = (e['active_tasks'] ?? 0) as int;
+                final least = e['is_least_busy'] == true;
+                return DropdownMenuItem(
+                  value: e['id']?.toString(),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text('${e['nm']}',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppTheme.textWhite)),
+                    ),
+                    if (least) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppTheme.successGreen.withOpacity(0.18),
+                          borderRadius: AppTheme.radiusXL,
+                        ),
+                        child: const Text('الأقل انشغالاً',
+                            style: TextStyle(color: AppTheme.successGreen, fontSize: 9, fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(width: 5),
+                    ],
+                    Text('$busy مهمة',
+                        style: TextStyle(
+                            color: busy == 0
+                                ? AppTheme.successGreen
+                                : busy >= 5 ? AppTheme.errorRed : AppTheme.textGrey,
+                            fontSize: 11, fontWeight: FontWeight.bold)),
+                  ]),
+                );
+              }).toList(),
               onChanged: (v) => setState(() => _selectedExpediterUid = v)),
             ),
       AppTheme.gapHeightLarge,
