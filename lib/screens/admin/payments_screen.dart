@@ -276,6 +276,23 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 ),
               ),
             ),
+          // ↩️ IMP-001 (2026-08-14): زر عكس الاعتماد للدفعات المقبولة.
+          // قبله لم يكن هناك أي مسار للتراجع — احتيال يُكتشف بعد الاعتماد
+          // كان يستلزم تعديل SQL يدوياً على قاعدة الإنتاج.
+          // مدير فقط (role=6): العكس أخطر من الاعتماد نفسه.
+          if (p.sts == 1 &&
+              (context.read<AuthProvider>().userModel?.role ?? 0) == 6) ...[
+            const Divider(color: Colors.white12, height: 18),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _reverse(p),
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('عكس الاعتماد'),
+                style: TextButton.styleFrom(foregroundColor: AppTheme.warningOrange),
+              ),
+            ),
+          ],
           if (p.sts == 0) ...[
             const Divider(color: Colors.white12, height: 18),
             Row(
@@ -385,6 +402,97 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       _snack('تم رفض الدفعة وإشعار المستخدم بالسبب');
       _load();
     }
+  }
+
+  /// ↩️ عكس اعتماد دفعة — تأكيد مزدوج + سبب إلزامي (IMP-001).
+  Future<void> _reverse(PaymentModel p) async {
+    final adminId = context.read<AuthProvider>().userModel?.uid ?? '';
+    final reason = await _askReverseReason(p);
+    if (reason == null || reason.trim().isEmpty) return;
+    if (!mounted) return;
+    if (await context.read<AdminProvider>().reversePayment(p.id, adminId, reason.trim())) {
+      _snack('تم عكس الاعتماد وإشعار المستخدم بالسبب');
+      _load();
+    } else {
+      _snack('تعذّر عكس الاعتماد');
+    }
+  }
+
+  /// سبب العكس — إلزامي، مع تحذير صريح بأن الأثر سيُلغى.
+  Future<String?> _askReverseReason(PaymentModel p) {
+    final ctrl = TextEditingController();
+    const presets = [
+      'إثبات دفع مزوّر',
+      'لم يصل المبلغ فعلياً',
+      'اعتماد بالخطأ',
+    ];
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('عكس اعتماد الدفعة',
+            style: TextStyle(color: AppTheme.warningOrange)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: AppTheme.paddingAllMedium,
+                decoration: BoxDecoration(
+                  color: AppTheme.deepBlack,
+                  borderRadius: AppTheme.radiusSmall,
+                  border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4)),
+                ),
+                child: const Text(
+                  '⚠️ سيُلغى أثر الدفعة: الباقة تعود للمجانية أو يُسحب الإعلان '
+                  'المميّز، ويصل المستخدم إشعار بالسبب. لا يمكن التراجع عن هذه '
+                  'الخطوة — يلزم اعتماد دفعة جديدة.',
+                  style: TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeCaption,
+                      height: 1.5),
+                ),
+              ),
+              AppTheme.gapHeightMedium,
+              Wrap(
+                spacing: 6,
+                children: presets
+                    .map((r) => ActionChip(
+                          label: Text(r,
+                              style: const TextStyle(
+                                  fontSize: AppTheme.fontSizeCaption)),
+                          onPressed: () => Navigator.pop(ctx, r),
+                        ))
+                    .toList(),
+              ),
+              AppTheme.gapHeightMedium,
+              TextField(
+                controller: ctrl,
+                maxLines: 2,
+                maxLength: 200,
+                style: const TextStyle(color: AppTheme.textWhite),
+                decoration: const InputDecoration(
+                  labelText: 'سبب آخر',
+                  filled: true,
+                  fillColor: AppTheme.deepBlack,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إلغاء',
+                  style: TextStyle(color: AppTheme.textGrey))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('تأكيد العكس',
+                  style: TextStyle(color: AppTheme.warningOrange))),
+        ],
+      ),
+    );
   }
 
   /// دايالوغ سبب الرفض — إلزامي، مع أسباب جاهزة + نص حر

@@ -393,6 +393,14 @@ class AdminProvider with ChangeNotifier {
     return ok;
   }
 
+  /// ↩️ عكس اعتماد دفعة (IMP-001) — مدير فقط + سبب إلزامي.
+  Future<bool> reversePayment(String paymentId, String adminId, String reason) async {
+    final ok = await _paymentsAdmin.reversePayment(paymentId, adminId, reason);
+    _syncPaymentsError();
+    if (ok) notifyListeners();
+    return ok;
+  }
+
   // ═══════════════════════════════════════
   // 6) التبليغات (إدارة)
   // ═══════════════════════════════════════

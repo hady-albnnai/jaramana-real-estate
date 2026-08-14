@@ -78,4 +78,18 @@ class PaymentsAdminService {
     });
     return data['success'] == true;
   }
+
+  /// ↩️ عكس اعتماد دفعة — مدير فقط، وسبب إلزامي (IMP-001، 2026-08-14).
+  ///
+  /// لم يكن هناك أي مسار للتراجع: احتيال يُكتشف بعد الاعتماد كان يستلزم
+  /// تعديل SQL يدوياً على قاعدة الإنتاج. السيرفر يتراجع عن الأثر أيضاً
+  /// (الباقة تُلغى · الإعلان المميّز يُسحب) ويُشعر المستخدم بالسبب.
+  Future<bool> reversePayment(String paymentId, String adminId, String reason) async {
+    final data = await _invokeAdminPayments('reverse', {
+      'admin_uid': adminId,
+      'payment_id': paymentId,
+      'reason': reason,
+    });
+    return data['success'] == true;
+  }
 }
