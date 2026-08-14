@@ -1725,13 +1725,28 @@ serve(async (req) => {
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, rating")
+        .select("id, user_uid, rating, status")
         .eq("id", consultId).eq("i_del", 0).maybeSingle();
       if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
 
       // فقط صاحب الاستشارة يقيّم
       if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
       if (row.rating) return json({ success: false, error: "ALREADY_RATED" }, 400);
+
+      // 🔒 BUG-029 (2026-08-14): لم يكن هناك فحص للحالة ⇒ المستخدم يقيّم
+      // استشارة **لم تُنجَز بعد** (status=1 «مؤكدة» أو حتى 0 «بانتظار
+      // المحامي»). أُكِّد حياً: تقييم 5 نجوم مرّ على استشارة قيد التنفيذ.
+      // والأثر مزدوج: (1) تقييم بلا خدمة يشوّه متوسط تقييم المحامي؛
+      // (2) التقييم يُقبل **مرة واحدة** (ALREADY_RATED) فيفقد المستخدم
+      // فرصته الحقيقية بعد انتهاء الخدمة فعلاً.
+      // القاعدة: التقييم بعد الإنجاز فقط (status = 2 «مكتملة»).
+      if (Number(row.status) !== 2) {
+        return json({
+          success: false,
+          error: "CONSULTATION_NOT_COMPLETED",
+          detail: "يمكن التقييم بعد اكتمال الاستشارة فقط.",
+        }, 409);
+      }
 
       await supabaseAdmin.from("legal_consultations").update({
         rating, rating_comment: comment || null,
