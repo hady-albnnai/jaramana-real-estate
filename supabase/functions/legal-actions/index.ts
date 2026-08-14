@@ -199,15 +199,22 @@ serve(async (req) => {
       const { data, error } = await supabaseAdmin.rpc("get_active_lawyers");
       if (error) return json({ success: false, error: error.message }, 400);
       const lawyers = (data ?? []) as Record<string, unknown>[];
-      // 🔒 إخفاء واتساب والعنوان عن المستخدم العادي (يظهر فقط للمحامي/الإدارة)
+      // 🔒 2026-08-14: كان يحجب الواتساب والعنوان فقط ويترك **الاسم الحقيقي
+      // والهاتف** — أي أن هوية المحامي تتسرّب للمستخدم رغم قرار الإخفاء.
+      // الآن: المستخدم العادي يرى اللقب والتخصص والانشغال فقط.
       const hidePrivate = !isLawyer(role) && !canManageLawyerProfiles(role);
       const safeLawyers = hidePrivate
-        ? lawyers.map((l) => {
-            const safe = { ...l };
-            delete safe.whatsapp_phone;
-            delete safe.office_address;
-            return safe;
-          })
+        ? await Promise.all(lawyers.map(async (l) => {
+            const { data: alias } = await supabaseAdmin
+              .rpc("lawyer_alias_for", { p_lawyer_uid: l.uid });
+            return {
+              uid: l.uid,
+              alias: (alias as string | null) ?? "محامي المكتب",
+              specialization: l.specialization,
+              active_tasks_count: l.active_tasks_count,
+              avl: l.avl,
+            };
+          }))
         : lawyers;
       return json({ success: true, lawyers: safeLawyers });
     }
