@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../services/storage_service.dart';
 
@@ -31,6 +32,12 @@ class _PaymentChannelsEditorScreenState
   Map<String, Map<String, TextEditingController>> _controllers = {};
   Map<String, bool> _enabled = {};
 
+  /// 📞 رقم المكتب الهاتفي — يُستخدم كوجهة تحويل رصيد الجوال
+  final _officePhoneCtrl = TextEditingController();
+
+  /// القنوات القابلة للتحرير من هذه الشاشة
+  static const _editableChannels = ['haram', 'sham_cash', 'syriatel_cash', 'balance', 'bank'];
+
   final _storage = StorageService();
 
   /// الحقول لكل قناة (ما عدا enabled, name, icon, instructions)
@@ -38,7 +45,9 @@ class _PaymentChannelsEditorScreenState
     'haram': ['recipient_name', 'recipient_phone'],
     'sham_cash': ['account_number'], // qr_image_url منفصل
     'syriatel_cash': ['number'],
-    'balance': ['syriatel_number', 'mtn_number'],
+    // 2026-08-14: قناة تحويل الرصيد صارت برقم واحد موحّد = رقم المكتب،
+    // ويُحرَّر من بطاقة «رقم المكتب» أعلى الشاشة لا من حقول القناة.
+    'balance': [],
     'bank': [
       'bank_name',
       'account_holder',
@@ -77,7 +86,16 @@ class _PaymentChannelsEditorScreenState
     _controllers = {};
     _enabled = {};
 
-    for (final key in ['haram', 'sham_cash', 'balance', 'bank']) {
+    // رقم المكتب: المصدر office.phone، وإن كان فارغاً نقرأ balance.number
+    final officeMap = Map<String, dynamic>.from(
+        (prov.config?.data['office'] as Map?) ?? <String, dynamic>{});
+    final balanceMap = Map<String, dynamic>.from(
+        (pay['balance'] as Map?) ?? <String, dynamic>{});
+    _officePhoneCtrl.text = (officeMap['phone'] ?? '').toString().trim().isNotEmpty
+        ? officeMap['phone'].toString()
+        : (balanceMap['number'] ?? '').toString();
+
+    for (final key in _editableChannels) {
       final data =
           Map<String, dynamic>.from(pay[key] ?? <String, dynamic>{});
       _channels[key] = data;
@@ -111,6 +129,7 @@ class _PaymentChannelsEditorScreenState
   @override
   void dispose() {
     _disposeControllers();
+    _officePhoneCtrl.dispose();
     super.dispose();
   }
 
@@ -150,30 +169,86 @@ class _PaymentChannelsEditorScreenState
     }
   }
 
+  /// تطبيع رقم سوري لصيغة محلية موحّدة 09xxxxxxxx
+  String _normalizeOfficePhone(String phone) {
+    final d = phone.replaceAll(RegExp(r'[^\d]'), '');
+    if (d.isEmpty) return '';
+    if (d.startsWith('963') && d.length == 12) return '0${d.substring(3)}';
+    if (d.startsWith('09') && d.length == 10) return d;
+    if (d.startsWith('9') && d.length == 9) return '0$d';
+    return d;
+  }
+
+  /// الحفظ عبر Edge Function `admin-config` (action: update_sections).
+  ///
+  /// ⚠️ 2026-08-14: كان الحفظ يمر بـ `ConfigProvider.updateConfig` = PATCH مباشر
+  /// على app_config بمفتاح anon، وسياسة RLS تشترط `auth.uid()` مع `role >= 6`،
+  /// فمدير الهاتف (staff session بلا JWT) كان حفظه **يفشل بصمت** رغم رسالة
+  /// النجاح — نفس الدرس الموثّق في §18 من دليل التطوير.
   Future<void> _save() async {
+    final officePhone = _normalizeOfficePhone(_officePhoneCtrl.text.trim());
+    if (officePhone.isNotEmpty && officePhone.length < 9) {
+      _snack('❌ رقم المكتب غير صالح — استخدم صيغة 09xxxxxxxx');
+      return;
+    }
+
     setState(() => _saving = true);
     final prov = context.read<ConfigProvider>();
-    final current = Map<String, dynamic>.from(prov.config?.data ?? {});
-    final payChannels =
-        Map<String, dynamic>.from(current['payChannels'] ?? {});
 
-    for (final key in ['haram', 'sham_cash', 'balance', 'bank']) {
-      final existing =
-          Map<String, dynamic>.from(payChannels[key] ?? _channels[key] ?? {});
+    final payChannels = <String, dynamic>{};
+    for (final key in _editableChannels) {
+      final existing = <String, dynamic>{};
       existing['enabled'] = _enabled[key] ?? true;
-      // نُبقي name و icon كما هي (للعرض)
       final ctrls = _controllers[key] ?? {};
       for (final entry in ctrls.entries) {
         existing[entry.key] = entry.value.text.trim();
       }
       payChannels[key] = existing;
     }
-    current['payChannels'] = payChannels;
 
-    final ok = await prov.updateConfig(current);
+    // 📞 رقم المكتب الهاتفي = مصدر واحد للحقيقة:
+    // يُكتب في office.phone وفي قناة «تحويل رصيد» (balance.number) معاً،
+    // فلا ينحرف ما يراه المستخدم عمّا سجّلته الإدارة.
+    final sections = <String, dynamic>{'payChannels': payChannels};
+    if (officePhone.isNotEmpty) {
+      final balance = Map<String, dynamic>.from(payChannels['balance'] as Map);
+      balance['number'] = officePhone;
+      if ((balance['instructions'] ?? '').toString().trim().isEmpty) {
+        balance['instructions'] =
+            'حوّل رصيد الجوال إلى رقم المكتب: $officePhone ثم أدخل رقم العملية وارفع صورة الإشعار.';
+      }
+      payChannels['balance'] = balance;
+      sections['office'] = {'phone': officePhone};
+    }
+
+    bool ok = false;
+    String err = '';
+    try {
+      final res = await SupabaseService().invokeFunction('admin-config', body: {
+        'action': 'update_sections',
+        'admin_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'sections': sections,
+      });
+      final data = res is Map ? Map<String, dynamic>.from(res) : null;
+      ok = data?['success'] == true;
+      if (ok && data?['value'] is Map) {
+        prov.applyServerConfig(Map<String, dynamic>.from(data!['value'] as Map));
+      } else {
+        err = data?['error']?.toString() ?? 'UNKNOWN_ERROR';
+      }
+    } catch (e) {
+      ok = false;
+      err = e.toString();
+    }
+
     if (!mounted) return;
     setState(() => _saving = false);
-    _snack(ok ? '✅ تم حفظ قنوات الدفع' : '❌ فشل الحفظ');
+    if (ok) {
+      _snack('✅ تم حفظ قنوات الدفع');
+      await _load();
+    } else {
+      _snack('❌ فشل الحفظ — $err');
+    }
   }
 
   void _snack(String m) {
@@ -206,7 +281,9 @@ class _PaymentChannelsEditorScreenState
                   children: [
                     _infoBanner(),
                     AppTheme.gapHeightLarge,
-                    for (final key in ['haram', 'sham_cash', 'balance', 'bank'])
+                    _officePhoneCard(),
+                    AppTheme.gapHeightLarge,
+                    for (final key in _editableChannels)
                       _channelCard(key),
                     AppTheme.gapHeightXL,
                     SizedBox(
@@ -266,6 +343,55 @@ class _PaymentChannelsEditorScreenState
         ),
       );
 
+  /// 📞 بطاقة رقم المكتب الهاتفي — وجهة تحويل رصيد الجوال (أُضيفت 2026-08-14)
+  Widget _officePhoneCard() => Container(
+        padding: AppTheme.paddingAllLarge,
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceBlack,
+          borderRadius: AppTheme.radiusMedium,
+          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.6)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.phone_in_talk, color: AppTheme.primaryGold),
+                AppTheme.gapWidthSmall,
+                Expanded(
+                  child: Text(
+                    'رقم المكتب الهاتفي',
+                    style: TextStyle(
+                        color: AppTheme.primaryGold,
+                        fontWeight: FontWeight.bold,
+                        fontSize: AppTheme.fontSizeSubtitle),
+                  ),
+                ),
+              ],
+            ),
+            AppTheme.gapHeightSmall,
+            const Text(
+              'هذا الرقم هو وجهة «تحويل رصيد الجوال» التي تظهر للمستخدم في كل شاشات الدفع '
+              '(الباقات • الإعلان المميز • الاستشارة القانونية). تعديله هنا يغيّره فوراً لكل المستخدمين.',
+              style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall, height: 1.5),
+            ),
+            AppTheme.gapHeightMedium,
+            TextFormField(
+              controller: _officePhoneCtrl,
+              keyboardType: TextInputType.phone,
+              style: const TextStyle(color: AppTheme.textWhite),
+              decoration: const InputDecoration(
+                labelText: 'رقم المكتب (09xxxxxxxx)',
+                hintText: '0958750199',
+                filled: true,
+                fillColor: AppTheme.scaffoldBackground,
+                prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),
+              ),
+            ),
+          ],
+        ),
+      );
+
   Widget _channelCard(String key) {
     final data = _channels[key] ?? {};
     final ctrls = _controllers[key] ?? {};
@@ -311,6 +437,32 @@ class _PaymentChannelsEditorScreenState
           // حقول القناة العامة
           for (final f in _channelFields[key] ?? <String>[])
             _textField(_fieldLabels[f] ?? f, ctrls[f]!),
+
+          // تحويل رصيد: الرقم يأتي من بطاقة «رقم المكتب» أعلى الشاشة
+          if (key == 'balance')
+            Container(
+              padding: AppTheme.paddingAllMedium,
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.infoBlue.withOpacity(0.08),
+                borderRadius: AppTheme.radiusSmall,
+                border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: AppTheme.infoBlue, size: 18),
+                  AppTheme.gapWidthSmall,
+                  Expanded(
+                    child: Text(
+                      'الرقم المعروض للمستخدم = رقم المكتب أعلى الشاشة'
+                      '${_officePhoneCtrl.text.trim().isEmpty ? '' : ' (${_officePhoneCtrl.text.trim()})'}.',
+                      style: const TextStyle(
+                          color: AppTheme.textWhite, fontSize: AppTheme.fontSizeSmall, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           // QR لشام كاش
           if (key == 'sham_cash') ...[

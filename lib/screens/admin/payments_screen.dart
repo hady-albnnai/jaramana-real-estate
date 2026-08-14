@@ -32,6 +32,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       final w = p.meta['weeks']?.toString() ?? '?';
       return '⭐ إعلان مميز — ' + w + ' أسبوع';
     }
+    // 2026-08-14: دفعات الاستشارة القانونية (tp=2) كانت تُعرض «باقة مجاني»
+    // لأنها سقطت لفرع الباقات وpkg=0 يقابل «المجانية» — تشخيص مضلل للإدارة.
+    if (p.tp == 2) {
+      final isRenew =
+          (p.meta['continue_chat'] ?? '').toString().isNotEmpty;
+      if (isRenew) return '🔄 تجديد محادثة قانونية';
+      return p.pkg == 1 ? '🏢 جلسة حضورية' : '⚖️ استشارة هاتفية';
+    }
     return 'باقة ' + (_pkgNames[p.pkg] ?? '—');
   }
   static const _stsNames = {0: 'معلّق', 1: 'مقبول', 2: 'مرفوض'};

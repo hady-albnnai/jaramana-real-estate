@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -53,6 +54,9 @@ class _State extends State<LegalConsultationBookingScreen> {
   XFile? _proofImage;
   bool _submitting = false;
 
+  /// true = شاشة النجاح معروضة لدفعة معلّقة سابقة (لا لدفعة أُرسلت للتو)
+  bool _viewingPending = false;
+
   static const _topicChips = ['عقد إيجار', 'نزاع عقاري', 'إرث', 'مخالفة مرورية', 'سند ملكية', 'عقد عمل', 'أخرى'];
 
   @override
@@ -85,7 +89,7 @@ class _State extends State<LegalConsultationBookingScreen> {
     try {
       // الدفعات
       final pays = await SupabaseService().client.from(DbTables.payments)
-          .select('id, sts, amt, pkg, channel, ref, ts_crt')
+          .select('id, sts, amt, pkg, channel, ref, ts_crt, meta')
           .eq('uid', uid).eq('tp', 2).order('ts_crt', ascending: false);
       
       Map<String, dynamic>? pending, approved;
@@ -158,8 +162,23 @@ class _State extends State<LegalConsultationBookingScreen> {
   }
 
   void _goTo(int s) => setState(() => _screen = s);
+
+  /// حارس الدفعة المعلّقة (أُضيف 2026-08-14).
+  ///
+  /// أي محاولة لبدء مسار جديد (هاتفية أو حضورية أو متابعة محادثة) بينما توجد
+  /// دفعة `tp=2` بحالة `sts=0` تُعترض وتُحوَّل لشاشة «الدفعة قيد الانتظار» —
+  /// وهي نفس شاشة ما بعد إرسال الدفع (فيها زر «العودة للرئيسية»).
+  /// يمنع ذلك إرسال دفعتين متتاليتين لنفس الخدمة قبل بتّ الإدارة بالأولى.
+  bool _guardPending() {
+    if (_pendingPayment == null) return false;
+    setState(() {
+      _viewingPending = true;
+      _screen = 6;
+    });
+    return true;
+  }
   void _resetWizard() {
-    _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null;
+    _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null; _viewingPending = false;
     _subjectCtrl.clear(); _attachments.clear(); _channel = ''; _proofImage = null; _refCtrl.clear(); _senderPhoneCtrl.clear();
   }
 
@@ -279,19 +298,15 @@ class _State extends State<LegalConsultationBookingScreen> {
   }
 
   Widget _buildHomeContent() {
-    // الحالة 1: دفعة معلقة → انتظر فقط
+    // الحالة 1: دفعة معلقة → بانر قابل للضغط + الأزرار تبقى ظاهرة (يعترضها الحارس)
     if (_pendingPayment != null) {
       return ListView(padding: AppTheme.paddingAllLarge, children: [
-        AppTheme.gapHeightXL,
-        const Center(child: Icon(Icons.hourglass_top, color: AppTheme.warningOrange, size: 64)),
         AppTheme.gapHeightLarge,
-        const Center(child: Text('دفعتك قيد المراجعة', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold))),
-        AppTheme.gapHeightSmall,
-        Center(child: Text('${(_pendingPayment!['amt'] as num).toStringAsFixed(0)} ل.س — ${(_pendingPayment!['pkg'] == 0) ? 'استشارة هاتفية' : 'جلسة حضورية'}', style: const TextStyle(color: AppTheme.textGrey, fontSize: 14))),
+        _pendingBanner(),
+        AppTheme.gapHeightXL,
+        const Divider(color: Colors.white12),
         AppTheme.gapHeightMedium,
-        const Center(child: Text('ستصلك إشعار عند تأكيد الإدارة', style: TextStyle(color: AppTheme.textGrey, fontSize: 13))),
-        AppTheme.gapHeightSmall,
-        const Center(child: Text('عادة خلال ساعة', style: TextStyle(color: AppTheme.textGrey, fontSize: 12))),
+        _buildNewButtons(),
       ]);
     }
 
@@ -373,10 +388,58 @@ class _State extends State<LegalConsultationBookingScreen> {
     ]);
   }
 
+  /// 🟠 بانر «لديك دفعة قيد الانتظار» — بالضغط عليه تُعرض شاشة حالة الدفعة
+  /// (نفس شاشة ما بعد إرسال الدفع). أُضيف 2026-08-14 ويعمل للنوعين:
+  /// الاستشارة الهاتفية والجلسة الحضورية، وكذلك دفعات تجديد المحادثة.
+  Widget _pendingBanner() {
+    final p = _pendingPayment!;
+    final amt = (p['amt'] as num?)?.toStringAsFixed(0) ?? '—';
+    final isPhone = (p['pkg'] ?? 0) == 0;
+    final dt = DateTime.tryParse(p['ts_crt']?.toString() ?? '');
+    final when = dt == null
+        ? ''
+        : '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
+            ' — ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+    return GestureDetector(
+      onTap: () => setState(() { _viewingPending = true; _screen = 6; }),
+      child: Container(
+        width: double.infinity,
+        padding: AppTheme.paddingAllMedium,
+        decoration: BoxDecoration(
+          color: AppTheme.warningOrange.withOpacity(0.12),
+          borderRadius: AppTheme.radiusMedium,
+          border: Border.all(color: AppTheme.warningOrange.withOpacity(0.6)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.hourglass_top, color: AppTheme.warningOrange, size: 32),
+          AppTheme.gapWidthMedium,
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('لديك دفعة قيد الانتظار',
+                  style: TextStyle(color: AppTheme.warningOrange, fontWeight: FontWeight.bold, fontSize: 15)),
+              const SizedBox(height: 3),
+              Text('$amt ل.س — ${isPhone ? 'استشارة هاتفية' : 'جلسة حضورية'}',
+                  style: const TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+              if (when.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(when, style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+              ],
+              const SizedBox(height: 4),
+              const Text('اضغط لعرض تفاصيل الطلب',
+                  style: TextStyle(color: AppTheme.primaryGold, fontSize: 11, fontWeight: FontWeight.bold)),
+            ]),
+          ),
+          const Icon(Icons.arrow_forward_ios, color: AppTheme.warningOrange, size: 16),
+        ]),
+      ),
+    );
+  }
+
   Widget _buildNewButtons() {
     return Row(children: [
       Expanded(child: GestureDetector(
-        onTap: () { _serviceType = 0; _goTo(1); },
+        onTap: () { if (_guardPending()) return; _serviceType = 0; _goTo(1); },
         child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.08), borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
           child: Column(children: [
             const Icon(Icons.phone_in_talk, color: AppTheme.primaryGold, size: 32),
@@ -390,7 +453,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           ])))),
       AppTheme.gapWidthMedium,
       Expanded(child: GestureDetector(
-        onTap: () { _serviceType = 1; _goTo(1); },
+        onTap: () { if (_guardPending()) return; _serviceType = 1; _goTo(1); },
         child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.08), borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
           child: Column(children: [
             const Icon(Icons.business, color: AppTheme.primaryGold, size: 32),
@@ -426,7 +489,8 @@ class _State extends State<LegalConsultationBookingScreen> {
           ])),
         AppTheme.gapHeightLarge,
         SizedBox(width: double.infinity, height: 50, child: ElevatedButton.icon(
-          onPressed: () => _goTo(_serviceType == 0 ? 3 : 4), // هاتفية → فحص قديمة / حضورية → موضوع مباشرة
+          // هاتفية → فحص قديمة / حضورية → موضوع مباشرة (مع حارس الدفعة المعلّقة)
+          onPressed: () { if (_guardPending()) return; _goTo(_serviceType == 0 ? 3 : 4); },
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           label: const Text('متابعة', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
@@ -459,7 +523,7 @@ class _State extends State<LegalConsultationBookingScreen> {
   }
 
   Widget _typeCard(IconData icon, String title, String sub, int sType) {
-    return GestureDetector(onTap: () { _serviceType = sType; _goTo(sType == 0 ? 3 : 4); },
+    return GestureDetector(onTap: () { if (_guardPending()) return; _serviceType = sType; _goTo(sType == 0 ? 3 : 4); },
       child: Container(width: double.infinity, padding: AppTheme.paddingAllLarge,
         decoration: BoxDecoration(color: AppTheme.surfaceBlack, borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
         child: Row(children: [
@@ -507,7 +571,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           }),
           AppTheme.gapHeightLarge,
           if (_continueChatId != null) SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
-            onPressed: () { _isContinuing = true; _goTo(5); }, // مباشر للدفع
+            onPressed: () { if (_guardPending()) return; _isContinuing = true; _goTo(5); }, // مباشر للدفع
             icon: const Icon(Icons.payment, color: Colors.black),
             label: const Text('متابعة — دفع 500 ل.س', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
@@ -515,7 +579,7 @@ class _State extends State<LegalConsultationBookingScreen> {
           AppTheme.gapHeightMedium,
         ],
         SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(
-          onPressed: () { _isContinuing = false; _continueChatId = null; _goTo(4); },
+          onPressed: () { if (_guardPending()) return; _isContinuing = false; _continueChatId = null; _goTo(4); },
           icon: const Icon(Icons.add, color: AppTheme.primaryGold),
           label: Text(chats.isNotEmpty ? 'لا — أريد استشارة جديدة' : 'بدء استشارة جديدة', style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
           style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
@@ -588,6 +652,12 @@ class _State extends State<LegalConsultationBookingScreen> {
             child: Row(children: [Text(icon, style: const TextStyle(fontSize: 16)), AppTheme.gapWidthSmall, Expanded(child: Text(name, style: TextStyle(color: sel ? AppTheme.primaryGold : AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 13))),
               Icon(sel ? Icons.check_circle : Icons.radio_button_unchecked, color: sel ? AppTheme.primaryGold : AppTheme.textGrey, size: 18)])));
         }),
+        // 2026-08-14: بطاقة بيانات القناة المختارة — كانت مفقودة كلياً من هذه
+        // الشاشة (المستخدم يختار «تحويل رصيد» ولا يرى أي رقم يحوّل إليه).
+        if (_channel.isNotEmpty) ...[
+          AppTheme.gapHeightMedium,
+          _channelDetailsCard(channels),
+        ],
         AppTheme.gapHeightMedium,
         if (_needsSenderPhone) ...[
           const Text('رقم الهاتف المحوَّل منه (اختياري):', style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
@@ -612,13 +682,131 @@ class _State extends State<LegalConsultationBookingScreen> {
       ])));
   }
 
+  /// بطاقة بيانات قناة الدفع المختارة (رقم التحويل + التعليمات).
+  /// أُضيفت 2026-08-14: قناة «تحويل رصيد» صارت تعتمد رقم المكتب الموحّد
+  /// (payChannels.balance.number) مع توافق عكسي للحقلين القديمين.
+  Widget _channelDetailsCard(List<MapEntry<String, Map<String, dynamic>>> channels) {
+    Map<String, dynamic>? data;
+    for (final e in channels) {
+      if (e.key == _channel) { data = e.value; break; }
+    }
+    if (data == null) return const SizedBox.shrink();
+
+    final rows = <(String, String)>[];
+    void add(String label, dynamic v) {
+      final s = (v ?? '').toString().trim();
+      if (s.isNotEmpty) rows.add((label, s));
+    }
+
+    switch (_channel) {
+      case 'balance':
+        if ((data['number'] ?? '').toString().trim().isNotEmpty) {
+          add('رقم المكتب', data['number']);
+        } else {
+          add('سيرياتل', data['syriatel_number']);
+          add('MTN', data['mtn_number']);
+        }
+        break;
+      case 'syriatel_cash':
+        add('رقم التحويل', data['number']);
+        break;
+      case 'sham_cash':
+        add('رقم الحساب', data['account_number']);
+        break;
+      case 'haram':
+        add('اسم المستقبل', data['recipient_name']);
+        add('رقم المستقبل', data['recipient_phone']);
+        break;
+      case 'bank':
+        add('البنك', data['bank_name']);
+        add('صاحب الحساب', data['account_holder']);
+        add('رقم الحساب', data['account_number']);
+        add('IBAN', data['iban']);
+        add('الفرع', data['branch']);
+        break;
+    }
+
+    final instructions = (data['instructions'] ?? '').toString().trim();
+
+    return Container(
+      width: double.infinity,
+      padding: AppTheme.paddingAllMedium,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceBlack,
+        borderRadius: AppTheme.radiusMedium,
+        border: Border.all(color: AppTheme.primaryGold.withOpacity(0.4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text((data['icon'] ?? '💳').toString(), style: const TextStyle(fontSize: 18)),
+          AppTheme.gapWidthSmall,
+          Text((data['name'] ?? _channel).toString(),
+              style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold, fontSize: 14)),
+        ]),
+        const Divider(color: Colors.white12, height: 16),
+        if (rows.isEmpty)
+          const Text('⚠️ لم يتم إعداد بيانات هذه القناة بعد. يرجى التواصل مع الإدارة.',
+              style: TextStyle(color: AppTheme.warningOrange, fontSize: 12))
+        else
+          ...rows.map((r) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(children: [
+                  Text('${r.$1}: ', style: const TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+                  Expanded(child: SelectableText(r.$2,
+                      style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 14))),
+                  IconButton(
+                    icon: const Icon(Icons.copy, color: AppTheme.primaryGold, size: 16),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'نسخ',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: r.$2));
+                      _snack('📋 تم نسخ ${r.$1}');
+                    },
+                  ),
+                ]),
+              )),
+        if (instructions.isNotEmpty) ...[
+          AppTheme.gapHeightSmall,
+          Text(instructions, style: const TextStyle(color: AppTheme.textGrey, fontSize: 11, height: 1.5)),
+        ],
+      ]),
+    );
+  }
+
   // ── النجاح ──
   Widget _buildSuccess() {
-    final isCont = _isContinuing;
-    return Scaffold(backgroundColor: AppTheme.scaffoldBackground, body: Center(child: SingleChildScrollView(padding: AppTheme.paddingAllLarge, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.check_circle, color: AppTheme.successGreen, size: 64),
+    // _viewingPending = وصلنا لهذه الشاشة من بانر «دفعة قيد الانتظار» أو من
+    // حارس الاعتراض، لا من إرسال دفعة جديدة للتو. المحتوى واحد والعنوان يختلف.
+    final pending = _viewingPending ? _pendingPayment : null;
+    // عند عرض دفعة معلّقة نستنتج نوعها من meta.continue_chat لا من حالة الـ wizard
+    final isCont = _viewingPending
+        ? ((pending?['meta'] as Map?)?['continue_chat'] ?? '').toString().isNotEmpty
+        : _isContinuing;
+
+    final String? pendingLine = pending == null
+        ? null
+        : '${(pending['amt'] as num?)?.toStringAsFixed(0) ?? '—'} ل.س'
+            ' — ${(pending['pkg'] ?? 0) == 0 ? 'استشارة هاتفية' : 'جلسة حضورية'}';
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        // زر الرجوع يعيد للرئيسية بدل الخروج من الشاشة بحالة وسيطة
+        _resetWizard();
+        _loadAll();
+      },
+      child: Scaffold(backgroundColor: AppTheme.scaffoldBackground, body: Center(child: SingleChildScrollView(padding: AppTheme.paddingAllLarge, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(pending != null ? Icons.hourglass_top : Icons.check_circle,
+          color: pending != null ? AppTheme.warningOrange : AppTheme.successGreen, size: 64),
       AppTheme.gapHeightLarge,
-      const Text('✅ تم إرسال الدفعة', style: TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+      Text(pending != null ? '⏳ دفعتك قيد المراجعة' : '✅ تم إرسال الدفعة',
+          style: const TextStyle(color: AppTheme.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+      if (pendingLine != null) ...[
+        AppTheme.gapHeightSmall,
+        Text(pendingLine, style: const TextStyle(color: AppTheme.textGrey, fontSize: 14)),
+      ],
       AppTheme.gapHeightMedium,
       Container(width: double.infinity, padding: AppTheme.paddingAllMedium, decoration: BoxDecoration(color: AppTheme.infoBlue.withOpacity(0.1), borderRadius: AppTheme.radiusMedium, border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -635,9 +823,19 @@ class _State extends State<LegalConsultationBookingScreen> {
         label: const Text('العودة للرئيسية', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
       )),
+      if (pending != null) ...[
+        AppTheme.gapHeightSmall,
+        SizedBox(width: double.infinity, height: 44, child: OutlinedButton.icon(
+          onPressed: () { _resetWizard(); _loadAll(); },
+          icon: const Icon(Icons.refresh, color: AppTheme.primaryGold),
+          label: const Text('تحديث الحالة', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
+          style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
+        )),
+      ],
       AppTheme.gapHeightMedium,
       const Text('ستصلك إشعار عند كل خطوة 👆', style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
-    ]))));
+    ])))),
+    );
   }
 
   void _snack(String m) { if (!mounted) return; AppTheme.showSnackBar(context, SnackBar(content: Text(m))); }

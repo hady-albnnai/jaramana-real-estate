@@ -540,11 +540,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
         }
         break;
       case 'balance':
-        if ((data['syriatel_number'] ?? '').toString().isNotEmpty) {
-          fields.add(_kv('سيرياتل', data['syriatel_number'].toString()));
-        }
-        if ((data['mtn_number'] ?? '').toString().isNotEmpty) {
-          fields.add(_kv('MTN', data['mtn_number'].toString()));
+        // 2026-08-14: رقم واحد موحّد = رقم المكتب الهاتفي (number).
+        // الحقلان القديمان يُقرآن فقط إن بقيا معبّأين (توافق عكسي).
+        if ((data['number'] ?? '').toString().isNotEmpty) {
+          fields.add(_kv('رقم المكتب', data['number'].toString()));
+        } else {
+          if ((data['syriatel_number'] ?? '').toString().isNotEmpty) {
+            fields.add(_kv('سيرياتل', data['syriatel_number'].toString()));
+          }
+          if ((data['mtn_number'] ?? '').toString().isNotEmpty) {
+            fields.add(_kv('MTN', data['mtn_number'].toString()));
+          }
         }
         break;
       case 'bank':

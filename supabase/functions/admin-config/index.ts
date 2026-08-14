@@ -122,8 +122,12 @@ serve(async (req) => {
         return json({ success: false, error: "SECTIONS_OBJECT_REQUIRED" }, 400);
       }
 
+      // 2026-08-14: أُضيف payChannels + office. السبب: محرّر قنوات الدفع كان
+      // يحفظ عبر PATCH مباشر بمفتاح anon فيرفضه RLS (يشترط auth.uid + role>=6)
+      // ⇒ «حفظ» يفشل بصمت لمدير الهاتف (بلا JWT) — نفس درس §18 الموثق.
       const ALLOWED_SECTIONS = new Set([
         "pts", "com", "qta", "txts", "socialPublishing", "photoPrice",
+        "payChannels", "office",
       ]);
       const entries = Object.entries(incoming as Record<string, unknown>);
       const rejected = entries.map(([k]) => k).filter((k) => !ALLOWED_SECTIONS.has(k));
@@ -151,6 +155,73 @@ serve(async (req) => {
           value[k] = p;
           continue;
         }
+        // ── payChannels: دمج على مستوى القناة (لا مستوى القسم) ──
+        // 2026-08-14: الدمج السطحي وحده يستبدل كائن القناة كاملاً فتضيع name/icon
+        // إن لم يرسلها العميل. هنا كل قناة تُدمج مع الموجود، وتُرفض أي قناة أو
+        // مفتاح خارج القوائم البيضاء، وتُنظَّف كل القيم النصية.
+        if (k === "payChannels") {
+          if (!v || typeof v !== "object" || Array.isArray(v)) {
+            return json({ success: false, error: "SECTION_MUST_BE_OBJECT", key: k }, 400);
+          }
+          const ALLOWED_CHANNELS = new Set(["haram", "sham_cash", "syriatel_cash", "balance", "bank"]);
+          const ALLOWED_CH_KEYS = new Set([
+            "enabled", "name", "icon", "instructions",
+            "recipient_name", "recipient_phone", "account_number", "qr_image_url",
+            "number", "syriatel_number", "mtn_number",
+            "bank_name", "account_holder", "iban", "branch",
+          ]);
+          const curAll = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))
+            ? { ...(value[k] as Record<string, unknown>) } : {};
+          for (const [chKey, chVal] of Object.entries(v as Record<string, unknown>)) {
+            if (!ALLOWED_CHANNELS.has(chKey)) {
+              return json({ success: false, error: "CHANNEL_NOT_ALLOWED", key: chKey }, 403);
+            }
+            if (!chVal || typeof chVal !== "object" || Array.isArray(chVal)) {
+              return json({ success: false, error: "CHANNEL_MUST_BE_OBJECT", key: chKey }, 400);
+            }
+            const badKeys = Object.keys(chVal as Record<string, unknown>)
+              .filter((f) => !ALLOWED_CH_KEYS.has(f));
+            if (badKeys.length > 0) {
+              return json({ success: false, error: "CHANNEL_FIELD_NOT_ALLOWED", keys: badKeys }, 403);
+            }
+            const curCh = (curAll[chKey] && typeof curAll[chKey] === "object" && !Array.isArray(curAll[chKey]))
+              ? { ...(curAll[chKey] as Record<string, unknown>) } : {};
+            for (const [f, fv] of Object.entries(chVal as Record<string, unknown>)) {
+              curCh[f] = (f === "enabled") ? (fv === true) : cleanText(fv);
+            }
+            curAll[chKey] = curCh;
+          }
+          value[k] = curAll;
+          continue;
+        }
+
+        // ── office: بيانات المكتب (الهاتف مصدرُ رقم تحويل الرصيد) ──
+        if (k === "office") {
+          if (!v || typeof v !== "object" || Array.isArray(v)) {
+            return json({ success: false, error: "SECTION_MUST_BE_OBJECT", key: k }, 400);
+          }
+          const ALLOWED_OFFICE = new Set(["phone", "address", "working_hours", "working_days"]);
+          const badOffice = Object.keys(v as Record<string, unknown>)
+            .filter((f) => !ALLOWED_OFFICE.has(f));
+          if (badOffice.length > 0) {
+            return json({ success: false, error: "OFFICE_FIELD_NOT_ALLOWED", keys: badOffice }, 403);
+          }
+          const curOffice = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))
+            ? { ...(value[k] as Record<string, unknown>) } : {};
+          for (const [f, fv] of Object.entries(v as Record<string, unknown>)) {
+            if (f === "working_days") {
+              if (!Array.isArray(fv) || fv.some((d) => !Number.isInteger(Number(d)))) {
+                return json({ success: false, error: "INVALID_WORKING_DAYS" }, 400);
+              }
+              curOffice[f] = fv.map((d) => Number(d));
+            } else {
+              curOffice[f] = cleanText(fv);
+            }
+          }
+          value[k] = curOffice;
+          continue;
+        }
+
         // دمج القسم مع الموجود بدل استبداله (حماية من فقدان مفاتيح)
         if (v && typeof v === "object" && !Array.isArray(v)) {
           const cur = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))

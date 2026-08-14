@@ -37,6 +37,12 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
     };
     final out = <(String, String)>[];
     for (final e in fields.entries) {
+      // 2026-08-14: عند وجود الرقم الموحّد (number) تُتجاهل الحقول القديمة
+      // لقناة تحويل الرصيد حتى لا يظهر الرقم مكرراً بمسميات مختلفة.
+      if ((e.key == 'syriatel_number' || e.key == 'mtn_number') &&
+          (ch['number'] ?? '').toString().isNotEmpty) {
+        continue;
+      }
       final v = (ch[e.key] ?? '').toString();
       if (v.isNotEmpty) out.add((e.value, v));
     }
