@@ -88,16 +88,29 @@ class _State extends State<LegalConsultationBookingScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      // الشاشة الرئيسية فقط: لا نقاطع كتابة الموضوع أو رفع الإثبات.
-      if (mounted && _screen == 0 && !_submitting) _loadAll();
+    // 🔄 SYNC-002 (2026-08-15) — بلاغ المالك: «قبول الإدارة/المحامي عم
+    // يتأخر ليظهر عندي».
+    // كان المؤقّت 30 ثانية ويعمل على **الشاشة الرئيسية فقط** ⇒ لو كان
+    // المستخدم في شاشة النجاح (6) أو التقويم ينتظر القبول، لا يصله شيء.
+    // الآن: كل 10 ثوانٍ، ويشمل شاشات **الانتظار** (0 الرئيسية · 6 النجاح)
+    // — ونستثني شاشات الإدخال (الموضوع 4 · الدفع 5) كي لا يُفقد ما يكتبه
+    // المستخدم أو يُعاد بناء الشاشة أثناء رفع الإثبات.
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted || _submitting) return;
+      const waitingScreens = {0, 6};
+      if (waitingScreens.contains(_screen)) _loadAll();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed && mounted && _screen == 0) {
+    // 🔄 SYNC-002: يشمل شاشة النجاح أيضاً — المستخدم يبدّل للواتساب
+    // وينتظر رد المحامي ثم يعود، فيجب أن يرى الحالة الجديدة فوراً.
+    if (state == AppLifecycleState.resumed &&
+        mounted &&
+        !_submitting &&
+        (_screen == 0 || _screen == 6)) {
       _loadAll();
     }
   }
@@ -264,6 +277,13 @@ class _State extends State<LegalConsultationBookingScreen>
       // 🎁 رصيد ممنوح من الإدارة (بديل الاسترداد) — يسمح بطلب بلا دفع
       final credits = await context.read<LegalProvider>().fetchMyCredits(uid);
 
+      // 🔄 SYNC-002: هل اعتُمدت دفعة كان المستخدم ينتظرها؟
+      // كان عليه أن يعود يدوياً للرئيسية ثم يضغط «إرسال الطلب للمحامي».
+      // الآن ننقله تلقائياً فور الاعتماد وهو على شاشة الانتظار.
+      final wasWaitingPayment = _screen == 6 && _pendingPayment != null;
+      final nowApproved = approved != null &&
+          (_pendingByType[(approved['pkg'] ?? 0) as int] == null);
+
       if (mounted) setState(() {
         _credits = credits;
         _pendingPayment = pending;
@@ -276,6 +296,22 @@ class _State extends State<LegalConsultationBookingScreen>
         _previousChats = previous;
         _loading = false;
       });
+
+      // 🔄 SYNC-002: اعتُمدت دفعته وهو ينتظر ⇒ ننقله لشاشة كتابة الموضوع
+      // مباشرةً بدل أن يبقى على «قيد المراجعة» ويكتشف بنفسه أن عليه
+      // العودة والضغط على «إرسال الطلب للمحامي».
+      if (mounted && wasWaitingPayment && nowApproved) {
+        final pkg = (approved['pkg'] ?? 0) as int;
+        setState(() {
+          _serviceType = pkg;
+          _viewingPending = false;
+          _screen = 4; // نموذج موضوع الاستشارة
+        });
+        AppTheme.showSnackBar(context, const SnackBar(
+          content: Text('✅ اعتُمدت دفعتك — اكتب موضوع استشارتك وأرسلها للمحامي'),
+          backgroundColor: AppTheme.successGreen,
+        ));
+      }
     } catch (_) { if (mounted) setState(() => _loading = false); }
     context.read<LegalProvider>().fetchActiveLawyers();
   }
@@ -1880,9 +1916,9 @@ class _State extends State<LegalConsultationBookingScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        // زر الرجوع يعيد للرئيسية بدل الخروج من الشاشة بحالة وسيطة
-        _resetWizard();
-        _loadAll();
+        // 🔙 NAV-001: كان `_resetWizard()` يصفّر كل شيء ويعود لمعالج جديد.
+        // الآن يعود لحالته الفعلية (محادثة مفتوحة / بطاقة انتظار).
+        _returnToCurrentState();
       },
       child: Scaffold(backgroundColor: AppTheme.scaffoldBackground, body: Center(child: SingleChildScrollView(padding: AppTheme.paddingAllLarge, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Icon(pending != null ? Icons.hourglass_top : Icons.check_circle,
