@@ -1518,7 +1518,14 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     final ok = await legal.updateConsultationStatus(
         id: id, status: status,
         actorUid: context.read<AuthProvider>().userModel?.uid ?? '');
-    if (!mounted) return;
+    // 🔧 BUILD-001 (2026-08-15): كان `return;` بلا قيمة داخل دالة
+    // `Future<bool>` ⇒ خطأ ترجمة يوقف البناء كلياً:
+    //   «A value must be explicitly returned from a non-void async function».
+    // لم يكشفه `dart format` لأنه يفحص **التركيب** لا **الأنواع**.
+    // الدلالة الصحيحة: الودجت خرجت من الشجرة أثناء انتظار الشبكة، لكن
+    // النداء **تمّ فعلاً** ⇒ نُرجع نتيجة السيرفر الحقيقية `ok` بدل ابتلاعها،
+    // وإلا ظنّ المستدعي أن العملية فشلت وهي نجحت (§13).
+    if (!mounted) return ok;
     if (ok) {
       _snack('✅ تم $action الاستشارة');
     } else {
