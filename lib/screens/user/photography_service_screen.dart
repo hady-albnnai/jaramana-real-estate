@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import 'add_offer_screen.dart';
+import '../../core/utils/error_utils.dart';
 
 /// ════════════════════════════════════════════════════════════════════
 /// شاشة خدمة التصوير العقاري — للمستخدمين العاديين والوسطاء (ليس للإدارة).
@@ -311,7 +312,7 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
         if (err == 'ACTIVE_PHOTOGRAPHY_REQUEST_EXISTS') {
           _snack('لديك طلب تصوير نشط بالفعل — سيتم التواصل معك قريباً');
         } else {
-          _snack('فشل إرسال طلب التصوير: $err');
+          _snack(ErrorUtils.arabicMessage(err));
         }
       }
     } catch (e) {

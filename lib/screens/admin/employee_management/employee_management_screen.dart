@@ -12,6 +12,7 @@ import 'add_employee_dialog.dart';
 import 'change_role_dialog.dart';
 import 'toggle_status_dialog.dart';
 import 'password_result_dialog.dart';
+import '../../../core/utils/error_utils.dart';
 
 /// شاشة إدارة الموظفين (الأولوية الأولى)
 /// مستوحاة من مشروع Final + ملتزمة بالدستور
@@ -217,7 +218,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     } catch (e) {
       if (mounted) {
         AppTheme.showSnackBar(context,
-          SnackBar(content: Text('خطأ: $e')),
+          SnackBar(content: Text(ErrorUtils.arabicMessage(e))),
         );
       }
     }
@@ -276,7 +277,7 @@ class _EmployeeManagementScreenState extends State<EmployeeManagementScreen> {
     } catch (e) {
       if (mounted) {
         AppTheme.showSnackBar(context,
-          SnackBar(content: Text('خطأ: $e')),
+          SnackBar(content: Text(ErrorUtils.arabicMessage(e))),
         );
       }
     }

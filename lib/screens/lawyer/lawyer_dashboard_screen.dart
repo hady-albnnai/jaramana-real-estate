@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/legal_provider.dart';
 import '../../models/expediting_task_model.dart';
 import '../../widgets/e2e.dart';
+import '../../core/utils/error_utils.dart';
 
 class LawyerDashboardScreen extends StatefulWidget {
   const LawyerDashboardScreen({super.key});
@@ -165,7 +166,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
               final d = res.data as Map?;
               if (d?['success'] == true) { Navigator.pop(ctx); _snack('✅ تم تغيير كلمة المرور'); }
               else { _snack(d?['error']?.toString() ?? 'فشل', bg: AppTheme.errorRed); }
-            } catch (e) { _snack('خطأ: $e', bg: AppTheme.errorRed); }
+            } catch (e) { _snack(ErrorUtils.arabicMessage(e), bg: AppTheme.errorRed); }
           }, child: const Text('حفظ')),
         ],
       ),
@@ -1249,7 +1250,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
         if (mounted) _snack(data?['error']?.toString() ?? 'فشل التمديد', bg: AppTheme.errorRed);
       }
     } catch (e) {
-      if (mounted) _snack('خطأ: $e', bg: AppTheme.errorRed);
+      if (mounted) _snack(ErrorUtils.arabicMessage(e), bg: AppTheme.errorRed);
     }
   }
 

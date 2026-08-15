@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import '../../providers/legal_provider.dart';
 import '../../providers/payment_provider.dart';
 import '../../models/payment_model.dart';
 import '../../services/storage_service.dart';
+import '../../core/utils/error_utils.dart';
 
 /// شاشة الاستشارة القانونية — تدفق بسيط ونظيف
 ///
@@ -31,7 +33,8 @@ class LegalConsultationBookingScreen extends StatefulWidget {
   State<LegalConsultationBookingScreen> createState() => _State();
 }
 
-class _State extends State<LegalConsultationBookingScreen> {
+class _State extends State<LegalConsultationBookingScreen>
+    with WidgetsBindingObserver {
   final _storage = StorageService();
   bool _loading = true;
 
@@ -68,17 +71,45 @@ class _State extends State<LegalConsultationBookingScreen> {
 
   static const _topicChips = ['عقد إيجار', 'نزاع عقاري', 'إرث', 'مخالفة مرورية', 'سند ملكية', 'عقد عمل', 'أخرى'];
 
+  /// 🔄 SYNC-001 (2026-08-15) — بلاغ المالك: «مؤكدة لكنها ما انعكست
+  /// بشكل مباشر عندي».
+  /// السبب: `_loadAll()` كانت تُستدعى **مرة واحدة فقط** عند فتح الشاشة،
+  /// فتأكيد المحامي (أو اعتماد الإدارة للدفعة) لا يظهر إلا بسحب يدوي
+  /// للتحديث أو إعادة فتح التطبيق.
+  /// الحل بطبقتين:
+  ///   ① `WidgetsBindingObserver`: تحديث فور عودة التطبيق للمقدمة
+  ///      (المستخدم يبدّل للواتساب ويعود ⇒ يرى الحالة الجديدة).
+  ///   ② مؤقّت دوري كل 30 ثانية أثناء بقائه على الشاشة الرئيسية فقط —
+  ///      لا يعمل داخل خطوات المعالج كي لا يُفقد ما يكتبه المستخدم.
+  Timer? _pollTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      // الشاشة الرئيسية فقط: لا نقاطع كتابة الموضوع أو رفع الإثبات.
+      if (mounted && _screen == 0 && !_submitting) _loadAll();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && mounted && _screen == 0) {
+      _loadAll();
+    }
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _subjectCtrl.dispose(); _refCtrl.dispose(); _senderPhoneCtrl.dispose();
     super.dispose();
   }
+
 
   // ── ⚖️ الأسعار والمدة من الإعدادات (2026-08-14) ──
   // كانت 500/2000/15 مضمّنة نصاً في 11 موضعاً بهذه الشاشة ⇒ تعديل الإدارة
@@ -384,7 +415,7 @@ class _State extends State<LegalConsultationBookingScreen> {
       } else {
         _snack('فشل تسجيل الدفعة');
       }
-    } catch (e) { _snack('خطأ: $e'); }
+    } catch (e) { _snack(ErrorUtils.arabicMessage(e)); }
     if (mounted) setState(() => _submitting = false);
   }
 
@@ -466,17 +497,70 @@ class _State extends State<LegalConsultationBookingScreen> {
         }
         // عند وجود طلب/دفعة سابقة: نحدّث القوائم فوراً ليرى المستخدم
         // بطاقة طلبه القائم بدل أن يبقى في شاشة الدفع حائراً.
+        // 🔙 NAV-001 (2026-08-15) — بلاغ المالك: «وقت أرجع لورا برجّعني
+        // لشاشة استشارة جديدة، والمفروض يرجّعني للمحادثة مع المحامي إن
+        // انقبل الطلب، أو لشاشة الانتظار إن لم يُقبل».
+        // كان `_resetWizard()` يصفّر الحالة ويعود للشاشة 0 ⇒ المستخدم
+        // يجد نفسه أمام «احجز استشارة جديدة» رغم أن لديه طلباً قائماً.
+        // الآن: نُحدّث من السيرفر ثم نعرض **حالته الفعلية** (بطاقة
+        // الاستشارة النشطة أو الدفعة المعلّقة) عبر `_returnToCurrentState`.
         if (err == 'PENDING_CONSULTATION_PAYMENT_EXISTS' ||
             err == 'OPEN_CONSULTATION_EXISTS') {
-          _resetWizard();
-          _loadAll();
+          await _returnToCurrentState();
         }
       }
-    } catch (e) { _snack('خطأ: $e'); }
+    } catch (e) { _snack(ErrorUtils.arabicMessage(e)); }
     if (mounted) setState(() => _submitting = false);
   }
 
   void _openChat(String id) => context.push('/legal/chat/$id');
+
+  /// 🔙 NAV-001: هل لديه طلب قائم فعلاً؟ (استشارة نشطة أو دفعة معلّقة)
+  bool _hasOngoing() =>
+      _activeConsultation != null ||
+      _needInfoConsultation != null ||
+      _pendingByType.isNotEmpty;
+
+  /// 🔙 NAV-001: يعيد المستخدم إلى **حالته الفعلية** لا إلى معالج جديد.
+  ///
+  /// القاعدة (قرار المالك):
+  ///   • استشارة مؤكَّدة ومحادثتها مفتوحة ⇒ ندخل المحادثة مباشرةً.
+  ///   • استشارة قائمة بلا محادثة ⇒ الشاشة الرئيسية حيث بطاقة «بانتظار
+  ///     المحامي» (الحضورية أيضاً: موعد بلا شات).
+  ///   • دفعة معلّقة ⇒ الرئيسية حيث بطاقة «قيد المراجعة».
+  /// في كل الحالات نُحدّث من السيرفر أولاً كي لا نعتمد ذاكرة قديمة.
+  Future<void> _returnToCurrentState() async {
+    await _loadAll();
+    if (!mounted) return;
+
+    final active = _activeConsultation;
+    if (active != null) {
+      final sType = (active['service_type'] ?? 0) as int;
+      final chatOpen = active['chat_started_at'] != null;
+      // الحضورية بلا محادثة إطلاقاً (قرار المالك) ⇒ تبقى على الرئيسية.
+      if (sType == 0 && chatOpen) {
+        setState(() { _screen = 0; _selectedSlot = null; _selectedDayKey = null; });
+        _openChat(active['id'].toString());
+        return;
+      }
+    }
+    // لا محادثة مفتوحة ⇒ الرئيسية: تعرض بطاقة الانتظار/الدفعة المعلّقة.
+    setState(() {
+      _screen = 0;
+      _viewingPending = false;
+      _isContinuing = false;
+      _continueChatId = null;
+      _selectedSlot = null;
+      _selectedDayKey = null;
+      _slotsFuture = null;
+      _subjectCtrl.clear();
+      _attachments.clear();
+      _channel = '';
+      _proofImage = null;
+      _refCtrl.clear();
+      _senderPhoneCtrl.clear();
+    });
+  }
 
   // ═══════════════════════════════════════
   // BUILD
@@ -1276,7 +1360,13 @@ class _State extends State<LegalConsultationBookingScreen> {
     return Scaffold(backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(backgroundColor: AppTheme.scaffoldBackground, elevation: 0,
         title: Text(_serviceType == 0 ? 'استشارة هاتفية' : 'جلسة حضورية', style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold), onPressed: () => _goTo(_serviceType == 0 ? 3 : 7))),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold),
+            // 🔙 NAV-001: إن كان لديه طلب قائم (استشارة أو دفعة معلّقة)
+            // نعيده لحالته لا لخطوة سابقة في معالج لن يُكمله.
+            onPressed: () => _hasOngoing()
+                ? _returnToCurrentState()
+                : _goTo(_serviceType == 0 ? 3 : 7))),
       body: SingleChildScrollView(padding: AppTheme.paddingAllLarge, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('موضوع الاستشارة:', style: TextStyle(color: AppTheme.primaryGold, fontSize: 15, fontWeight: FontWeight.bold)),
         AppTheme.gapHeightSmall,
@@ -1335,7 +1425,12 @@ class _State extends State<LegalConsultationBookingScreen> {
     return Scaffold(backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(backgroundColor: AppTheme.scaffoldBackground, elevation: 0,
         title: const Text('الدفع', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold), onPressed: () => _goTo(_isContinuing ? 3 : 4))),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold),
+            // 🔙 NAV-001: نفس القاعدة — لا نُرجعه لمعالج جديد وله طلب قائم.
+            onPressed: () => _hasOngoing()
+                ? _returnToCurrentState()
+                : _goTo(_isContinuing ? 3 : 4))),
       body: SingleChildScrollView(padding: AppTheme.paddingAllLarge, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: double.infinity, padding: AppTheme.paddingAllMedium, decoration: BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.1), borderRadius: AppTheme.radiusMedium, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
           child: Column(children: [

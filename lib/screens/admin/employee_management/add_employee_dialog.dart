@@ -7,6 +7,7 @@ import '../../../core/validation/input_validators.dart';
 import '../../../providers/admin_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../services/storage_service.dart';
+import '../../../core/utils/error_utils.dart';
 
 class AddEmployeeDialog extends StatefulWidget {
   const AddEmployeeDialog({super.key});
@@ -107,7 +108,7 @@ class _AddEmployeeDialogState extends State<AddEmployeeDialog> {
     } catch (e) {
       if (mounted) {
         AppTheme.showSnackBar(context,
-          SnackBar(content: Text('خطأ: $e')),
+          SnackBar(content: Text(ErrorUtils.arabicMessage(e))),
         );
       }
     } finally {

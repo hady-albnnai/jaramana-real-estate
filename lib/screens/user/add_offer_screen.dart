@@ -15,6 +15,7 @@ import '../../core/validation/input_validators.dart';
 import '../../widgets/location_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/network/supabase_service.dart';
+import '../../core/utils/error_utils.dart';
 
 class AddOfferScreen extends StatefulWidget {
   /// 📸 وضع طلب التصوير: يفتح شاشة إضافة العرض الكاملة مع تعديلات:
@@ -425,7 +426,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         _snack('تم إرسال العرض للمراجعة بنجاح ✅');
       }
     } catch (e) {
-      if (mounted) { setState(() => _submitting = false); _snack('خطأ في النشر: $e'); }
+      if (mounted) { setState(() => _submitting = false); _snack(ErrorUtils.arabicMessage(e)); }
     }
   }
 

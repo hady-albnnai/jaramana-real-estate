@@ -11,6 +11,7 @@ import '../../core/network/supabase_service.dart';
 import '../../core/constants/db_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
+import '../../core/utils/error_utils.dart';
 
 /// شاشة مراجعة العروض الجديدة للإدارة
 /// تعرض الصور + معلومات المرسل + التفاصيل + كشف العروض المكررة
@@ -849,7 +850,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         _snack(res.data?['error']?.toString() ?? 'فشل تغيير علامة الفيديو');
       }
     } catch (e) {
-      if (mounted) _snack('خطأ: $e');
+      if (mounted) _snack(ErrorUtils.arabicMessage(e));
     } finally {
       if (mounted) setState(() => _videoBusyIds.remove(o.id));
     }

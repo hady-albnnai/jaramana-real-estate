@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../providers/admin_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../models/user_model.dart';
+import '../../../core/utils/error_utils.dart';
 
 class ToggleStatusDialog extends StatefulWidget {
   final UserModel user;
@@ -58,7 +59,7 @@ class _ToggleStatusDialogState extends State<ToggleStatusDialog> {
       if (mounted) {
         Navigator.pop(context, false);
         AppTheme.showSnackBar(context,
-          SnackBar(content: Text('خطأ: $e')),
+          SnackBar(content: Text(ErrorUtils.arabicMessage(e))),
         );
       }
     } finally {

@@ -7,6 +7,7 @@ import '../../providers/offer_provider.dart';
 import '../../models/offer_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
+import '../../core/utils/error_utils.dart';
 
 /// شاشة ترقيات العرض (spd)
 /// 5 خيارات: تمديد/تجديد / تثبيت / Boost / خصم 5% / عرض مميّز
@@ -127,12 +128,12 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
         if (mounted) Navigator.pop(context, true);
       } else {
         final err = result?['error']?.toString() ?? 'UNKNOWN';
-        _snack('فشل: ${_errorText(err)}');
+        _snack(ErrorUtils.arabicMessage(err));
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _processing = false);
-      _snack('فشل: $e');
+      _snack(ErrorUtils.arabicMessage(e));
     }
   }
 

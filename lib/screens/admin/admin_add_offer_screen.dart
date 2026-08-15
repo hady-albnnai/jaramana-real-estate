@@ -14,6 +14,7 @@ import '../../models/user_model.dart';
 import '../../services/storage_service.dart';
 import '../../core/validation/input_validators.dart';
 import '../../widgets/location_picker.dart';
+import '../../core/utils/error_utils.dart';
 
 /// شاشة إضافة عرض من الإدارة
 /// - تختلف عن شاشة المستخدم في: اختيار صاحب العرض + حفظ added_by
@@ -310,7 +311,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _submitting = false);
-        _snack('فشل في إنشاء العرض: $e');
+        _snack(ErrorUtils.arabicMessage(e));
       }
       return;
     }
