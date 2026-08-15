@@ -11,6 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/constants/db_constants.dart';
 import '../../models/offer_model.dart';
 import '../../services/storage_service.dart';
+import '../../core/validation/input_validators.dart';
 
 /// شاشة تعديل عرض موجود
 class EditOfferScreen extends StatefulWidget {
