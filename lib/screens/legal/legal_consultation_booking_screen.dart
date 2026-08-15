@@ -311,12 +311,73 @@ class _State extends State<LegalConsultationBookingScreen> {
     );
     try {
       final ok = await context.read<PaymentProvider>().makePayment(payment);
-      if (ok) { _goTo(6); _snack('✅ تم إرسال الدفعة'); } else { _snack('فشل تسجيل الدفعة'); }
+      if (ok) {
+        // 🔒 UX-002 (2026-08-15) — السبب الجذري لبلاغ المالك:
+        // «بعد إرسال إثبات الدفع أستطيع حجز استشارة أخرى».
+        // كان الكود ينتقل للشاشة 6 مباشرةً **بلا إعادة تحميل**، فتبقى
+        // `_pendingByType` فارغة في الذاكرة ⇒ الحارس `_guardPending` يفحص
+        // قائمة قديمة ولا يجد شيئاً فيسمح بالمرور، ولا تظهر بطاقة «دفعة
+        // قيد المراجعة» عند العودة للرئيسية.
+        // الآن نُحدّث من السيرفر فور نجاح الدفع ⇒ الحارس يرى الدفعة
+        // والبطاقة تظهر. (الحارس الخادمي CONS-001 يبقى خط الدفاع الأخير.)
+        await _loadAll();
+        if (!mounted) return;
+        _goTo(6);
+        _snack('✅ تم إرسال الدفعة — بانتظار اعتماد الإدارة');
+      } else {
+        _snack('فشل تسجيل الدفعة');
+      }
     } catch (e) { _snack('خطأ: $e'); }
     if (mounted) setState(() => _submitting = false);
   }
 
   // إرسال الاستشارة
+  /// 🗣️ UX-001 (2026-08-15) — ترجمة أخطاء الحجز إلى عربية مفهومة.
+  ///
+  /// قاعدة: المستخدم لا يرى رمزاً إنجليزياً أبداً. كل رسالة تجيب سؤالين:
+  /// **لماذا فشل؟** و**ماذا أفعل الآن؟**
+  String _arabicBookingError(String code) {
+    switch (code) {
+      // ── حارس «نفس النوع» (CONS-001) ──
+      case 'PENDING_CONSULTATION_PAYMENT_EXISTS':
+        return 'لديك دفعة قيد المراجعة لهذا النوع من الاستشارة. '
+            'بانتظار اعتماد الإدارة (عادةً خلال 24 ساعة) — لا حاجة للدفع مرة أخرى.';
+      case 'OPEN_CONSULTATION_EXISTS':
+        return 'لديك استشارة قائمة من هذا النوع لم تنتهِ بعد. '
+            'أكملها أو انتظر إغلاقها قبل حجز استشارة جديدة.';
+      case 'INVALID_SERVICE_TYPE':
+        return 'نوع الاستشارة غير صالح — أعد اختيار (هاتفية أو حضورية).';
+
+      // ── المواعيد ──
+      case 'SLOT_NO_LONGER_AVAILABLE':
+        return 'اختار شخص آخر هذا الموعد — يرجى اختيار موعد بديل';
+      case 'SLOT_REQUIRED_FOR_ONSITE':
+        return 'يرجى اختيار موعد الجلسة أولاً';
+      case 'NO_LAWYER_AVAILABLE':
+        return 'لا يوجد محامٍ متاح حالياً — حاول لاحقاً أو راسل المكتب.';
+
+      // ── السعر والدفع ──
+      case 'INVALID_PRICE':
+        return 'تغيّر سعر الخدمة — أعد فتح الصفحة لتحديث السعر.';
+      case 'SUBJECT_REQUIRED':
+        return 'يرجى كتابة موضوع الاستشارة.';
+
+      // ── الحساب والجلسة ──
+      case 'AUTH_UID_MISMATCH':
+      case 'AUTH_REQUIRED':
+      case 'AUTH_TOKEN_REQUIRED':
+        return 'انتهت جلستك — سجّل الدخول من جديد.';
+      case 'USER_NOT_ACTIVE_OR_NOT_FOUND':
+        return 'حسابك غير نشط — راجع المكتب.';
+
+      default:
+        // §13: لا نبتلع المجهول ولا نعرضه خاماً — رسالة عربية مفهومة،
+        // والرمز يبقى في السجلات للتشخيص لا أمام المستخدم.
+        debugPrint('⚠️ [BOOKING] رمز خطأ غير مترجَم: $code');
+        return 'تعذّر إتمام الطلب — حاول مرة أخرى أو راسل المكتب.';
+    }
+  }
+
   Future<void> _submitConsultation() async {
     setState(() => _submitting = true);
     final atts = await _uploadAttachments();
@@ -335,10 +396,19 @@ class _State extends State<LegalConsultationBookingScreen> {
         _resetWizard(); _loadAll();
       } else {
         final err = (res.data as Map?)?['error']?.toString() ?? 'فشل';
-        _snack(err == 'SLOT_NO_LONGER_AVAILABLE'
-            ? 'اختار شخص آخر هذا الموعد — يرجى اختيار موعد بديل'
-            : err == 'SLOT_REQUIRED_FOR_ONSITE' ? 'يرجى اختيار موعد الجلسة أولاً' : err);
+        // 🗣️ UX-001 (2026-08-15): كان السطر يعرض **رمز الخطأ الإنجليزي الخام**
+        // لأي حالة غير معالَجة (بلاغ المالك: «الرسالة كلها إنجليزي، بدي
+        // رسالة يفهم ليش ما قدر يدفع مرة ثانية»). الآن كل رمز له نصّ عربي
+        // يشرح **السبب** و**ما العمل**، والرمز الخام لا يظهر إطلاقاً.
+        _snack(_arabicBookingError(err));
         if (err == 'SLOT_NO_LONGER_AVAILABLE') { setState(() => _selectedSlot = null); _goTo(7); }
+        // عند وجود طلب/دفعة سابقة: نحدّث القوائم فوراً ليرى المستخدم
+        // بطاقة طلبه القائم بدل أن يبقى في شاشة الدفع حائراً.
+        if (err == 'PENDING_CONSULTATION_PAYMENT_EXISTS' ||
+            err == 'OPEN_CONSULTATION_EXISTS') {
+          _resetWizard();
+          _loadAll();
+        }
       }
     } catch (e) { _snack('خطأ: $e'); }
     if (mounted) setState(() => _submitting = false);
