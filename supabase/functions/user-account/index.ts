@@ -773,6 +773,35 @@ serve(async (req) => {
       return json({ ...r, success: r.success === true });
     }
 
+    // ⭐ RATE-001 (2026-08-15): إرسال تقييم.
+    // كانت الواجهة تُدرج في جدول ratings مباشرةً عبر REST، وسياسة الإدراج
+    // هي `auth.uid() = reviewer_uid` — وجلستنا مخصّصة (staff_session_token)
+    // لا جلسة Supabase ⇒ auth.uid() = NULL ⇒ **كل تقييم يُرفض** (بلاغ
+    // المالك: «إرسال التقييم فشل»). الدالة create_rating_internal كانت
+    // موجودة أصلاً بلا أي فعل يستدعيها.
+    if (action === "create_rating") {
+      const targetUid = (body.target_uid ?? body.targetUid)?.toString() ?? "";
+      const stars = Number(body.stars ?? 0);
+      const comment = (body.comment ?? "").toString().trim();
+      if (!targetUid) return json({ success: false, error: "TARGET_UID_REQUIRED" }, 400);
+      if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+        return json({ success: false, error: "INVALID_STARS" }, 400);
+      }
+      const { data, error } = await supabaseAdmin.rpc("create_rating_internal", {
+        p_reviewer_uid: uid,
+        p_target_uid: targetUid,
+        p_stars: stars,
+        p_comment: comment.length > 0 ? comment.slice(0, 200) : null,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      // الدالة قد تُرجع jsonb أو صفاً — نوحّد الشكل ونُبقي رسالة الخطأ.
+      if (typeof r === "object" && r !== null && "success" in r) {
+        return json({ ...r, success: r.success === true }, r.success === true ? 200 : 400);
+      }
+      return json({ success: true, rating: data });
+    }
+
     if (action === "create_payment") {
       const paymentData = body.payment as Record<string, unknown>;
       if (!paymentData) return json({ success: false, error: "PAYMENT_DATA_REQUIRED" }, 400);

@@ -46,7 +46,8 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
         // استخدام nm أولاً، ثم usr كـ fallback، ثم تركه فارغاً
         final displayName = user.nm.isNotEmpty ? user.nm : (user.usr ?? '');
         if (displayName.isNotEmpty) _clientNameCtrl.text = displayName;
-        if (user.ph.isNotEmpty) _clientPhoneCtrl.text = user.ph;
+        // 📞 PHONE-001: تطبيع للصيغة المحلية (كان يظهر +963 مشوّهاً ويُرفض)
+        if (user.ph.isNotEmpty) _clientPhoneCtrl.text = InputValidators.toLocalSyrianPhone(user.ph);
       }
     });
   }
@@ -68,12 +69,13 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
       return;
     }
     final clientName = _clientNameCtrl.text.trim();
-    final clientPhone = InputValidators.normalizeDigits(_clientPhoneCtrl.text.trim());
+    // 📞 PHONE-001: تطبيع قبل الفحص والإرسال
+    final clientPhone = InputValidators.toLocalSyrianPhone(_clientPhoneCtrl.text.trim());
     if (clientName.isEmpty || clientPhone.isEmpty) {
       _snack('اسم العميل وهاتفه إلزاميان');
       return;
     }
-    if (!RegExp(r'^09[3-9]\d{7}$').hasMatch(clientPhone)) {
+    if (!InputValidators.isValidSyrianMobile(clientPhone)) {
       _snack('يرجى إدخال رقم هاتف سوري صحيح للعميل (09xxxxxxxx)');
       return;
     }

@@ -139,7 +139,7 @@ class _EditOfferScreenState extends State<EditOfferScreen> {
       _priceCtrl.text     = offer.prc.toStringAsFixed(0);
       _locCtrl.text       = (offer.loc['d'] ?? '').toString();
       _descCtrl.text      = offer.descript;
-      _contactPhCtrl.text = offer.contactPh;
+      _contactPhCtrl.text = InputValidators.toLocalSyrianPhone(offer.contactPh); // 📞 PHONE-001
       _specsCtrl.text     = (offer.specs['details'] ?? '').toString();
       _typ = offer.typ;
       _trx = offer.trx;

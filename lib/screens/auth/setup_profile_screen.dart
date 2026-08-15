@@ -177,8 +177,9 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
     }
 
     // 2) رقم الهاتف
-    final phone = InputValidators.normalizeDigits(_phoneController.text.trim());
-    if (!RegExp(r'^09[3-9]\d{7}$').hasMatch(phone)) {
+    // 📞 PHONE-001: تطبيع موحّد قبل الفحص
+    final phone = InputValidators.toLocalSyrianPhone(_phoneController.text.trim());
+    if (!InputValidators.isValidSyrianMobile(phone)) {
       _snack('يرجى إدخال رقم هاتف سوري صحيح (09xxxxxxxx)');
       return;
     }

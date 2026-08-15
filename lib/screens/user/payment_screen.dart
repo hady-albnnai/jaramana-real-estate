@@ -158,11 +158,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     // Bug #35: التحقق من رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
     String senderPhone = '';
+    // 📞 PHONE-002 (2026-08-15) — قرار المالك: «الهاتف الذي تم التحويل منه
+    // ليس إلزامياً». كان الحقل يوقف العملية كلياً إن تُرك فارغاً.
+    // الآن: يُقبل فارغاً، وإن كُتب يُطبَّع ويُرسل (يفيد الإدارة بمطابقة
+    // الحوالة). ولا نرفض رقماً قصيراً بصمت — نتجاهله فقط إن كان فارغاً.
     if (_needsSenderPhone) {
-      senderPhone = _normalizePhoneToLocalFormat(_senderPhoneCtrl.text.trim());
-      if (senderPhone.isEmpty || senderPhone.length < 9) {
-        _snack('يرجى إدخال رقم الهاتف الذي تم التحويل منه');
-        return;
+      final raw = _senderPhoneCtrl.text.trim();
+      if (raw.isNotEmpty) {
+        senderPhone = InputValidators.toLocalSyrianPhone(raw);
       }
     }
 
@@ -302,7 +305,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
                   // Bug #35: حقل رقم هاتف المُحوِّل للقنوات اللي بتحتاجه
                   if (_needsSenderPhone) ...[
-                    _sectionTitle('📱 رقم هاتفك (الذي تم التحويل منه)'),
+                    // 📞 PHONE-002: صار اختيارياً بقرار المالك
+                    _sectionTitle('📱 رقم هاتفك (الذي تم التحويل منه) — اختياري'),
                     TextField(
                       controller: _senderPhoneCtrl,
                       style: const TextStyle(color: AppTheme.textWhite),

@@ -155,9 +155,9 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
     setState(() {
       if (owner != null) _selectedOwner = owner;
       if ((widget.presetPhone ?? '').isNotEmpty && _contactPhCtrl.text.trim().isEmpty) {
-        _contactPhCtrl.text = widget.presetPhone!;
+        _contactPhCtrl.text = InputValidators.toLocalSyrianPhone(widget.presetPhone!); // 📞 PHONE-001
       } else if (owner != null && _contactPhCtrl.text.trim().isEmpty) {
-        _contactPhCtrl.text = owner.ph;
+        _contactPhCtrl.text = InputValidators.toLocalSyrianPhone(owner.ph); // 📞 PHONE-001
       }
       if ((widget.presetLocation ?? '').isNotEmpty && _locCtrl.text.trim().isEmpty) {
         _locCtrl.text = widget.presetLocation!;

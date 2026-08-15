@@ -159,7 +159,9 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       // تعبئة تلقائية لرقم الهاتف من حساب المستخدم
       final user = context.read<AuthProvider>().userModel;
       if (user != null && user.ph.isNotEmpty) {
-        _contactPhoneCtrl.text = user.ph;
+        // 📞 PHONE-001: القاعدة تخزّن +963… والتحقق يطلب 09… ⇒ نُطبّع
+        // عند التعبئة، وإلا رُفض الطلب دائماً بـ«هاتف سوري غير صحيح».
+        _contactPhoneCtrl.text = InputValidators.toLocalSyrianPhone(user.ph);
       }
     });
   }
@@ -308,8 +310,11 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       return;
     }
 
-    final effectivePhone = InputValidators.normalizeDigits(_contactPhoneCtrl.text.trim().isNotEmpty ? _contactPhoneCtrl.text.trim() : user.ph.trim());
-    if (!RegExp(r'^09[3-9]\d{7}$').hasMatch(effectivePhone)) { _snack('يرجى إدخال رقم هاتف سوري صحيح (09xxxxxxxx)'); return; }
+    // 📞 PHONE-001: التطبيع قبل الفحص — يقبل ما كتبه المستخدم بأي صيغة
+    // (+963 / 00963 / 963 / 09) ويحوّله للمحلية، فلا يُرفض رقم صحيح.
+    final effectivePhone = InputValidators.toLocalSyrianPhone(
+        _contactPhoneCtrl.text.trim().isNotEmpty ? _contactPhoneCtrl.text.trim() : user.ph);
+    if (!InputValidators.isValidSyrianMobile(effectivePhone)) { _snack('يرجى إدخال رقم هاتف سوري صحيح (09xxxxxxxx)'); return; }
 
     // حقول السيارة الإلزامية — اللوحة إلزامية بتسميتها لكن لم يكن هناك فرض برمجي، والمنطقة إلزامية بطلب المالك
     String? carCity;

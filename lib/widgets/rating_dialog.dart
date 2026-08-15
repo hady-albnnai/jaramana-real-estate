@@ -79,16 +79,25 @@ class _RatingDialogState extends State<RatingDialog> {
     setState(() => _sending = true);
     final auth = context.read<AuthProvider>();
     try {
-      // ✅ Secure direct insert — RLS allows when auth.uid() = reviewer_uid
-      // (confirmed in server audit — matches LOGIC_SPEC §5.3)
-      await SupabaseService().client.from('ratings').insert({
-        'reviewer_uid': auth.userModel!.uid,
+      // ⭐ RATE-001 (2026-08-15) — بلاغ المالك: «إرسال التقييم فشل».
+      // كان هنا إدراج REST مباشر في جدول `ratings`، وسياسة الإدراج هي
+      // `auth.uid() = reviewer_uid`. لكن التطبيق يسجّل الدخول **بجلسة
+      // مخصّصة** (staff_session_token) لا بجلسة Supabase ⇒ auth.uid()
+      // تساوي NULL ⇒ **كل تقييم كان يُرفض** مهما فعل المستخدم.
+      // (التعليق القديم ادّعى أن التدقيق أكّد سلامته — وهو غير صحيح.)
+      // الآن عبر Edge بمفتاح الخدمة الذي يتخطى RLS بعد التحقق من الجلسة.
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'create_rating',
+        'user_uid': auth.userModel!.uid,
         'target_uid': widget.targetUid,
         'stars': _stars,
-        'comment': _commentCtrl.text.trim().isEmpty
-            ? null
-            : _commentCtrl.text.trim(),
+        'comment': _commentCtrl.text.trim(),
       });
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+      if (data == null || data['success'] != true) {
+        // §13: نرمي بنصّ الخطأ الخادمي ليُترجَم في catch بدل ابتلاعه.
+        throw Exception(data?['error']?.toString() ?? 'RATING_FAILED');
+      }
 
       if (!mounted) return;
 
@@ -141,17 +150,25 @@ class _RatingDialogState extends State<RatingDialog> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🧱 UI-OVF-002 (2026-08-15): بلاغ المالك «أوفرفلو من اليمين».
+          // العنوان صف بلا Expanded ⇒ اسم طويل يدفع النص خارج الحوار.
           const Row(children: [
             Icon(Icons.star_rate, color: AppTheme.primaryGold),
             AppTheme.gapWidthSmall,
-            Text('تقييم تجربتك',
-                style: TextStyle(color: AppTheme.textWhite)),
+            Expanded(
+              child: Text('تقييم تجربتك',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: AppTheme.textWhite)),
+            ),
           ]),
           AppTheme.gapHeightXS,
           Text(
             widget.refLabel != null
                 ? '${widget.refLabel} • مع: ${widget.targetName}'
                 : 'مع: ${widget.targetName}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall),
           ),
         ],
@@ -161,21 +178,28 @@ class _RatingDialogState extends State<RatingDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // نجوم تفاعلية
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (i) {
-              final filled = i < _stars;
-              return IconButton(
-                onPressed: _sending ? null : () => setState(() => _stars = i + 1),
-                icon: Icon(
-                  filled ? Icons.star : Icons.star_border,
-                  color: filled ? AppTheme.primaryGold : AppTheme.textGrey,
-                  size: 36,
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                constraints: const BoxConstraints(),
-              );
-            }),
+          // 🧱 UI-OVF-002: 5 نجوم × (36px + هوامش) تتجاوز عرض الحوار على
+          // الشاشات الضيقة أو مع تكبير الخط ⇒ فيضان أفقي.
+          // FittedBox يُصغّر الصف بالتناسب بدل أن يفيض (نفس مبدأ FitTile).
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (i) {
+                final filled = i < _stars;
+                return IconButton(
+                  onPressed: _sending ? null : () => setState(() => _stars = i + 1),
+                  icon: Icon(
+                    filled ? Icons.star : Icons.star_border,
+                    color: filled ? AppTheme.primaryGold : AppTheme.textGrey,
+                    size: 36,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  constraints: const BoxConstraints(),
+                );
+              }),
+            ),
           ),
           AppTheme.gapHeightXS,
           Center(
