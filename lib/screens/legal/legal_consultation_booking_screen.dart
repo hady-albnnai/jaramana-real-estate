@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/network/supabase_service.dart';
-import '../../core/constants/db_constants.dart';
 import '../../core/validation/input_validators.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
@@ -110,11 +109,55 @@ class _State extends State<LegalConsultationBookingScreen> {
     final uid = context.read<AuthProvider>().userModel?.uid ?? '';
     if (uid.isEmpty) { setState(() => _loading = false); return; }
     try {
-      // الدفعات
-      final pays = await SupabaseService().client.from(DbTables.payments)
-          .select('id, sts, amt, pkg, channel, ref, ts_crt, meta')
-          .eq('uid', uid).eq('tp', 2).order('ts_crt', ascending: false);
-      
+      // ═══════════════════════════════════════════════════════════════
+      // 🔴 UX-003 (2026-08-15) — السبب الجذري الحقيقي لبلاغ المالك
+      // ═══════════════════════════════════════════════════════════════
+      // «ما طلعلي إنو في طلب دفع قيد المراجعة» رغم وجود الدفعة فعلاً.
+      //
+      // كان الجلب عبر REST مباشرةً: `.from(payments).eq('uid', uid)`.
+      // لكن سياسة RLS على الجدول هي `auth.uid() = uid`، وتطبيقنا يسجّل
+      // الدخول **بجلسة مخصّصة** (staff_session_token) لا بجلسة Supabase
+      // ⇒ `auth.uid()` تساوي **NULL** ⇒ الاستعلام يُرجع **صفر صفوف دائماً**
+      // بلا أي خطأ ظاهر (فشل صامت كامل — أخطر أنواع الأعطال، §13).
+      //
+      // النتيجة المتسلسلة: `_pendingByType` فارغة أبداً ⇒ لا بطاقة «دفعة
+      // قيد المراجعة»، ولا يعمل حارس `_guardPending`، فيمرّ المستخدم
+      // لشاشة دفع جديدة ويُفاجأ برفض السيرفر.
+      //
+      // الحل: نفس مسار بقية الشاشات — Edge Function بمفتاح الخدمة يتخطّى
+      // RLS بعد التحقق من الجلسة (`user_payments` → get_user_payments_internal).
+      final payRes = await SupabaseService().invokeFunction('user-account',
+          body: {'action': 'user_payments', 'user_uid': uid});
+      final payMap = payRes.data is Map
+          ? Map<String, dynamic>.from(payRes.data as Map)
+          : <String, dynamic>{};
+      final allPays = (payMap['payments'] as List?) ?? const [];
+      // نُبقي دفعات الاستشارة فقط (tp=2) بترتيب الأحدث أولاً — كان
+      // الفلتر والترتيب في الاستعلام، وصارا هنا بعد تغيير المصدر.
+      final pays = allPays
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((m) => (m['tp'] ?? 0) == 2)
+          .toList()
+        ..sort((a, b) =>
+            (b['ts_crt'] ?? '').toString().compareTo((a['ts_crt'] ?? '').toString()));
+
+      // 🔴 UX-003: الاستشارات تُجلب **قبل** حلقة الدفعات لأن الحلقة تحتاج
+      // معرفة الدفعات المرتبطة باستشارة. (كانت تُجلب بعدها، فاضطر الكود
+      // لاستعلام REST مكسور داخل الحلقة.)
+      final consultRes = await SupabaseService().invokeFunction('legal-actions',
+          body: {'action': 'list_my_consultations', 'user_uid': uid});
+      final cData = consultRes.data as Map<String, dynamic>?;
+      final all = cData != null && cData['success'] == true
+          ? List<Map<String, dynamic>>.from((cData['consultations'] as List?) ?? [])
+          : <Map<String, dynamic>>[];
+
+      // معرّفات الدفعات التي لها استشارة مرتبطة فعلاً.
+      final linkedPaymentIds = all
+          .map((c) => c['payment_id']?.toString())
+          .whereType<String>()
+          .toSet();
+
       // 2026-08-14: الدفعات تُصنَّف **حسب النوع** (pkg: 0 هاتفية · 1 حضورية)
       // تنفيذاً لقاعدة المالك: المنع لنفس النوع فقط. وتُلتقط المرفوضة أيضاً
       // (sts=2) — كانت الشاشة تتجاهلها تماماً فيبقى المستخدم بلا تفسير.
@@ -127,22 +170,19 @@ class _State extends State<LegalConsultationBookingScreen> {
           pendingByType.putIfAbsent(pk, () => m);
           pending ??= m;
         } else if (m['sts'] == 1 && approved == null) {
-          // تأكد ما في استشارة مربوطة
-          final cRes = await SupabaseService().client.from('legal_consultations')
-              .select('id').eq('payment_id', m['id']).limit(1);
-          if ((cRes as List).isEmpty) approved = m;
+          // 🔴 UX-003: كان هنا استعلام REST مباشر على legal_consultations
+          // بسياسة `auth.uid() = user_uid` — و`auth.uid()` تساوي NULL مع
+          // جلستنا المخصّصة ⇒ يُرجع فارغاً **دائماً** ⇒ كل دفعة مقبولة
+          // تُحسب «بلا استشارة مربوطة» فتظهر بطاقة «أرسل طلبك» خطأً.
+          // الآن نستخدم `payment_id` من قائمة الاستشارات المحمَّلة أعلاه
+          // عبر الإيدج (بمفتاح الخدمة) — بلا نداء شبكي إضافي أصلاً.
+          if (!linkedPaymentIds.contains(m['id']?.toString())) approved = m;
         } else if (m['sts'] == 2 && rejected == null) {
           rejected = m;
         }
       }
 
-      // الاستشارات النشطة
-      final consultRes = await SupabaseService().invokeFunction('legal-actions',
-          body: {'action': 'list_my_consultations', 'user_uid': uid});
-      final cData = consultRes.data as Map<String, dynamic>?;
-      final all = cData != null && cData['success'] == true
-          ? List<Map<String, dynamic>>.from((cData['consultations'] as List?) ?? []) : <Map<String, dynamic>>[];
-      
+      // الاستشارات النشطة (حُمِّلت أعلاه قبل حلقة الدفعات — UX-003)
       Map<String, dynamic>? active;
       Map<String, dynamic>? rejectedConsult; // status=4 رفض نهائي
       Map<String, dynamic>? needInfo;        // status=5 بانتظار استكمال بيانات
