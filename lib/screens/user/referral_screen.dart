@@ -27,26 +27,105 @@ class _ReferralScreenState extends State<ReferralScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  @override
+  void dispose() {
+    _codeCtrl.dispose(); // 🎁 REF-001: منع تسريب الذاكرة
+    super.dispose();
+  }
+
   Future<void> _load() async {
     final auth = context.read<AuthProvider>();
     final user = auth.userModel;
     if (user == null) return;
     try {
-      final res = await SupabaseService()
-          .client
-          .from('users')
-          .select('ref_cnt')
-          .eq('id', user.uid)
-          .maybeSingle();
+      // 🔴 REF-002 (2026-08-15): كان يقرأ `users` عبر REST مباشرةً، وسياسة
+      // القراءة `auth.uid() = id` — وجلستنا مخصّصة ⇒ auth.uid()=NULL ⇒
+      // النتيجة **null دائماً** فيظهر عدّاد الإحالات صفراً أبداً.
+      // الآن عبر الإيدج (مفتاح خدمة) — نفس نمط بقية الشاشات.
+      final res = await SupabaseService().invokeFunction('user-account',
+          body: {'action': 'get_full_profile', 'user_uid': user.uid});
+      final m = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+      final prof = m?['profile'] is Map
+          ? Map<String, dynamic>.from(m!['profile'] as Map)
+          : null;
       if (!mounted) return;
       setState(() {
-        _referralCount = (res?['ref_cnt'] as int?) ?? 0;
+        _referralCount = (prof?['ref_cnt'] as int?) ?? 0;
+        _alreadyReferred = (prof?['ref_by'] != null);
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  // 🎁 REF-001: حالة إدخال كود المُحيل
+  final _codeCtrl = TextEditingController();
+  bool _applying = false;
+  bool _alreadyReferred = false;
+
+  /// تطبيق كود المُحيل — يمرّ عبر Edge `user-rewards` (مفتاح خدمة) الذي
+  /// يستدعي `apply_referral` بعد التحقق من الجلسة.
+  Future<void> _applyCode() async {
+    final raw = _codeCtrl.text.trim().replaceAll('-', '').toUpperCase();
+    if (raw.length < 6) {
+      _snack('أدخل كود دعوة صحيح (6 أحرف على الأقل)');
+      return;
+    }
+    final user = context.read<AuthProvider>().userModel;
+    if (user == null) return;
+    if (raw == _refCode(user.uid)) {
+      _snack('لا يمكنك استخدام كودك أنت 🙂');
+      return;
+    }
+
+    setState(() => _applying = true);
+    try {
+      final res = await SupabaseService().invokeFunction('user-rewards', body: {
+        'action': 'referral',
+        'user_uid': user.uid,
+        'payload': {'referrer_code': raw},
+      });
+      final m = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+      // الدالة تُرجع bool: false تعني كوداً غير صالح أو إحالة مستهلَكة.
+      final applied = m?['success'] == true && m?['data'] == true;
+      if (!mounted) return;
+      setState(() => _applying = false);
+      if (applied) {
+        _codeCtrl.clear();
+        await context.read<AuthProvider>().refreshUser();
+        if (!mounted) return;
+        _snack('🎉 تم تفعيل الكود — أُضيفت النقاط لك وللمُحيل');
+        _load();
+      } else {
+        // §13: نُترجم سبب الرفض بدل رسالة عامة.
+        final err = (m?['error'] ?? '').toString();
+        _snack(_referralError(err));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _applying = false);
+      _snack(_referralError(e.toString()));
+    }
+  }
+
+  String _referralError(String raw) {
+    if (raw.contains('Same device')) {
+      return 'لا يمكن استخدام كود من نفس الجهاز';
+    }
+    if (raw.contains('Same IP')) {
+      return 'لا يمكن استخدام كود من نفس الشبكة';
+    }
+    if (raw.contains('RATE_LIMIT')) {
+      return 'صاحب الكود بلغ حد الدعوات لهذه الساعة — جرّب لاحقاً';
+    }
+    return 'الكود غير صالح أو سبق أن استخدمت كود دعوة';
+  }
+
+  void _snack(String m) {
+    if (!mounted) return;
+    AppTheme.showSnackBar(context, SnackBar(content: Text(m)));
   }
 
   String _refCode(String uid) {
@@ -125,12 +204,125 @@ class _ReferralScreenState extends State<ReferralScreen> {
             AppTheme.gapHeightXL,
             _codeCard(code),
             AppTheme.gapHeightXL,
+            // 🎁 REF-001: حقل إدخال كود المُحيل — كان **غائباً كلياً**،
+            // فالميزة معلنة (1500 نقطة) ولم تعمل ولا مرة (صفر إحالة بالإنتاج).
+            _enterCodeCard(refPts),
+            AppTheme.gapHeightXL,
             _statsCard(refPts),
             AppTheme.gapHeightXL,
             _howItWorksCard(refPts),
           ],
         ),
       ),
+    );
+  }
+
+  /// 🎁 REF-001 — بطاقة إدخال كود المُحيل.
+  ///
+  /// كانت الميزة معلنة للمستخدم («اربح 1500 نقطة») بلا أي مكان لإدخال
+  /// الكود ⇒ صفر إحالة في تاريخ التطبيق كله (مؤكَّد حياً).
+  /// تختفي البطاقة بعد استخدام كود — الإحالة تُستهلك مرة واحدة فقط.
+  Widget _enterCodeCard(int refPts) {
+    if (_alreadyReferred) {
+      return Container(
+        padding: AppTheme.paddingAllLarge,
+        decoration: BoxDecoration(
+          color: AppTheme.successGreen.withOpacity(0.08),
+          borderRadius: AppTheme.radiusLarge,
+          border: Border.all(color: AppTheme.successGreen.withOpacity(0.35)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.verified, color: AppTheme.successGreen),
+          AppTheme.gapWidthSmall,
+          const Expanded(
+            child: Text('سبق أن استخدمت كود دعوة ✅',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: AppTheme.textWhite, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+      );
+    }
+
+    return Container(
+      padding: AppTheme.paddingAllLarge,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceBlack,
+        borderRadius: AppTheme.radiusLarge,
+        border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.redeem, color: AppTheme.primaryGold, size: 20),
+          AppTheme.gapWidthSmall,
+          Expanded(
+            child: Text('لديك كود دعوة؟ أدخله واربح $refPts نقطة',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontWeight: FontWeight.bold,
+                    fontSize: AppTheme.fontSizeBody)),
+          ),
+        ]),
+        AppTheme.gapHeightSmall,
+        const Text('يُستخدم مرة واحدة فقط، وتُضاف النقاط لك ولصاحب الكود.',
+            style: TextStyle(
+                color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
+        AppTheme.gapHeightMedium,
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _codeCtrl,
+              enabled: !_applying,
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 8,
+              style: const TextStyle(
+                  color: AppTheme.textWhite, letterSpacing: 2, fontSize: 16),
+              decoration: InputDecoration(
+                counterText: '',
+                hintText: 'مثال: A1B2C3D4',
+                hintStyle: const TextStyle(color: AppTheme.textGrey),
+                filled: true,
+                fillColor: AppTheme.scaffoldBackground,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                border: OutlineInputBorder(
+                    borderRadius: AppTheme.radiusMedium,
+                    borderSide: BorderSide(
+                        color: AppTheme.primaryGold.withOpacity(0.3))),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: AppTheme.radiusMedium,
+                    borderSide: BorderSide(
+                        color: AppTheme.primaryGold.withOpacity(0.3))),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: AppTheme.radiusMedium,
+                    borderSide: const BorderSide(color: AppTheme.primaryGold)),
+              ),
+            ),
+          ),
+          AppTheme.gapWidthSmall,
+          SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _applying ? null : _applyCode,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGold,
+                foregroundColor: AppTheme.deepBlack,
+              ),
+              child: _applying
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppTheme.deepBlack))
+                  : const Text('تفعيل',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ]),
+      ]),
     );
   }
 

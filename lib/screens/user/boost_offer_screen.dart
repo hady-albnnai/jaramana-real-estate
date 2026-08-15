@@ -378,24 +378,42 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
         ),
         borderRadius: AppTheme.radiusMedium,
       ),
-      child: Row(
+      // 💡 PTS-001 (2026-08-15) بطلب المالك: تنويه تحت الرصيد يشرح للمستخدم
+      // أن النقاط تُكتسب باستخدام التطبيق — كان الرقم يظهر بلا أي سياق.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.stars, color: Colors.black, size: 28),
-          AppTheme.gapWidthSmall,
-          const Text('رصيدك من النقاط:',
-              style: TextStyle(
-                  color: Colors.black87,
-                  fontWeight: FontWeight.bold,
-                  fontSize: AppTheme.fontSizeMedium)),
-          const Spacer(),
-          Text('$pts',
-              style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold)),
-          AppTheme.gapWidthXS,
-          const Text('نقطة',
-              style: TextStyle(color: Colors.black87, fontSize: AppTheme.fontSizeSmall)),
+          Row(
+            children: [
+              const Icon(Icons.stars, color: Colors.black, size: 28),
+              AppTheme.gapWidthSmall,
+              const Text('رصيدك من النقاط:',
+                  style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      fontSize: AppTheme.fontSizeMedium)),
+              const Spacer(),
+              Text('$pts',
+                  style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold)),
+              AppTheme.gapWidthXS,
+              const Text('نقطة',
+                  style: TextStyle(
+                      color: Colors.black87, fontSize: AppTheme.fontSizeSmall)),
+            ],
+          ),
+          AppTheme.gapHeightXS,
+          const Text(
+            '💡 يمكنك اكتساب النقاط عن طريق استخدام التطبيق: إضافة العروض، '
+            'الدخول اليومي، دعوة الأصدقاء، والتفاعل مع المنصة.',
+            style: TextStyle(
+                color: Colors.black87,
+                fontSize: AppTheme.fontSizeCaption,
+                height: 1.5),
+          ),
         ],
       ),
     );

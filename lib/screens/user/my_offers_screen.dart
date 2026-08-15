@@ -62,6 +62,102 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     return offers.where((o) => o.sts == status).toList();
   }
 
+  /// 📊 CNT-001 (2026-08-15) بطلب المالك: «العدّاد بالنسبة لعروضي المنشورة
+  /// غير ظاهر». الحساب كان محبوساً داخل `_tryAddOffer` فلا يراه المستخدم
+  /// إلا عند بلوغ الحد. استُخرج هنا ليُعرض دائماً كشريط أعلى القائمة.
+  ///
+  /// يطابق منطق `create_offer_internal` تماماً: يَعُدّ الحالات
+  /// {مسودة، مراجعة، منشور، محجوز} · يُعفي الطاقم (role>=4) · السقف من
+  /// الباقة الفعالة (+ pkg_xoff المتراكم) وإلا 5 للوسيط و1 لغيره.
+  ({int used, int limit, bool exempt}) get _quota {
+    final user = context.read<AuthProvider>().userModel;
+    final config = context.read<ConfigProvider>().config;
+    if (user == null) return (used: 0, limit: 0, exempt: true);
+    if (user.role >= 4) return (used: 0, limit: 0, exempt: true);
+
+    const counted = {
+      OfferStatus.draft,
+      OfferStatus.review,
+      OfferStatus.published,
+      OfferStatus.reserved
+    };
+    final used =
+        _myOffers.where((o) => o.iDel == 0 && counted.contains(o.sts)).length;
+
+    final now = DateTime.now();
+    var effectivePkg = 0;
+    if (user.bPkg != 0 &&
+        ((user.pkgEnd?.isAfter(now) ?? false) ||
+            (user.pkgGrace?.isAfter(now) ?? false))) {
+      effectivePkg = user.bPkg;
+    }
+    final pkgMap = config?.data['pkg'];
+    final pkgEntry = pkgMap is Map ? pkgMap['$effectivePkg'] : null;
+    final base = (pkgEntry is Map ? (pkgEntry['o'] as num?)?.toInt() : null) ??
+        (user.role == 1 ? 5 : 1);
+    // pkg_xoff: السقف المتراكم من الترقيات (نموذج التجميع)
+    return (used: used, limit: base + (user.pkgXoff), exempt: false);
+  }
+
+  /// شريط العدّاد أعلى القائمة.
+  Widget _quotaBar() {
+    final q = _quota;
+    if (q.exempt) return const SizedBox.shrink();
+    final full = q.used >= q.limit;
+    final ratio = q.limit == 0 ? 1.0 : (q.used / q.limit).clamp(0.0, 1.0);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: AppTheme.paddingAllMedium,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceBlack,
+        borderRadius: AppTheme.radiusMedium,
+        border: Border.all(
+            color: (full ? AppTheme.errorRed : AppTheme.primaryGold)
+                .withOpacity(0.35)),
+      ),
+      child: Column(children: [
+        Row(children: [
+          Icon(Icons.inventory_2_outlined,
+              size: 18, color: full ? AppTheme.errorRed : AppTheme.primaryGold),
+          AppTheme.gapWidthSmall,
+          const Expanded(
+            child: Text('عروضك المستخدمة من السقف',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: AppTheme.textWhite,
+                    fontSize: AppTheme.fontSizeSmall,
+                    fontWeight: FontWeight.w600)),
+          ),
+          Text('${q.used} / ${q.limit}',
+              style: TextStyle(
+                  color: full ? AppTheme.errorRed : AppTheme.primaryGold,
+                  fontWeight: FontWeight.bold,
+                  fontSize: AppTheme.fontSizeBody)),
+        ]),
+        AppTheme.gapHeightXS,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 6,
+            backgroundColor: Colors.white12,
+            valueColor: AlwaysStoppedAnimation(
+                full ? AppTheme.errorRed : AppTheme.primaryGold),
+          ),
+        ),
+        if (full) ...[
+          AppTheme.gapHeightXS,
+          const Text('بلغت الحد — اشترك بباقة لرفع السقف',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: AppTheme.errorRed, fontSize: AppTheme.fontSizeCaption)),
+        ],
+      ]),
+    );
+  }
+
   /// بوابة قبولية مسبقة بطلب المالك: المنع يظهر عند الضغط على «إضافة عرض» مباشرةً،
   /// لا بعد تعبئة البيانات — مع فتح شاشة الاشتراك بالباقات فوراً.
   /// ⚠️ الحارس الحقيقي يبقى سيرفرياً (create_offer_internal) — هذه البوابة تحسين تجربة
@@ -165,16 +261,22 @@ class _MyOffersScreenState extends State<MyOffersScreen>
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryGold),
             )
-          : RefreshIndicator(
-              color: AppTheme.primaryGold,
-              onRefresh: _refresh,
-              child: TabBarView(
-                controller: _tab,
-                children: _filters
-                    .map((f) => _offersList(_filterOffers(_myOffers, f.status)))
-                    .toList(),
+          : Column(children: [
+              // 📊 CNT-001: العدّاد ظاهر دائماً فوق القائمة
+              _quotaBar(),
+              Expanded(
+                child: RefreshIndicator(
+                  color: AppTheme.primaryGold,
+                  onRefresh: _refresh,
+                  child: TabBarView(
+                    controller: _tab,
+                    children: _filters
+                        .map((f) => _offersList(_filterOffers(_myOffers, f.status)))
+                        .toList(),
+                  ),
+                ),
               ),
-            ),
+            ]),
     );
   }
 
