@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Internet & Network -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -43,6 +44,20 @@
       المقابل في الكود: LocationAccuracy.medium في location_picker.dart.
     -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!--
+      🔒 GP-002/b (2026-08-15): حذف FINE من مانيفستنا **لا يكفي**.
+      حزمة `geolocator` تُعلن ACCESS_FINE_LOCATION في مانيفستها الخاص،
+      و«دامج المانيفست» (Manifest Merger) في Gradle يجمع أذونات كل الحزم
+      مع أذوناتنا ⇒ الإذن كان **سيعود تلقائياً** إلى الـAPK النهائي رغم
+      حذفنا له، فيتناقض مع إقرار Data Safety («موقع تقريبي») ويستدعي
+      تدقيقاً أشدّ من مراجعي Google بلا فائدة.
+      `tools:node="remove"` يأمر الدامج بإسقاطه نهائياً بعد الدمج.
+      ⚠️ للتحقق بعد البناء (المصدر الوحيد الموثوق هو المانيفست المدموج):
+         android/app/build/intermediates/merged_manifests/release/AndroidManifest.xml
+      يجب ألّا يحتوي ACCESS_FINE_LOCATION إطلاقاً.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        tools:node="remove"/>
 
     <application
         android:label="المكتب العقاري الالكتروني"
