@@ -49,6 +49,8 @@ class _State extends State<LegalConsultationBookingScreen> {
   // الـ Wizard
   int _screen = 0; // 0=رئيسية 1=ارشادات 2=نوع 3=قديمة 4=موضوع 5=دفع 6=نجاح 7=اختيار موعد
   String? _selectedSlot;        // موعد الجلسة الحضورية المختار
+  String? _selectedDayKey;      // 📅 UI-CAL-001: اليوم المختار في شريط التقويم
+  Future<Map<String, dynamic>>? _slotsFuture; // يمنع إعادة الجلب مع كل setState
   String _slotLawyerAlias = ''; // لقب المحامي (بلا هويته)
   int _serviceType = 0;
   bool _isContinuing = false; // متابعة محادثة قديمة
@@ -273,6 +275,9 @@ class _State extends State<LegalConsultationBookingScreen> {
   }
   void _resetWizard() {
     _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null; _viewingPending = false; _selectedSlot = null;
+    // 📅 UI-CAL-001: تصفير حالة التقويم وكاش المواعيد — وإلا عُرضت مواعيد
+    // قديمة (وربما محجوزة الآن) عند بدء حجز جديد.
+    _selectedDayKey = null; _slotsFuture = null;
     _subjectCtrl.clear(); _attachments.clear(); _channel = ''; _proofImage = null; _refCtrl.clear(); _senderPhoneCtrl.clear();
   }
 
@@ -441,7 +446,12 @@ class _State extends State<LegalConsultationBookingScreen> {
         // رسالة يفهم ليش ما قدر يدفع مرة ثانية»). الآن كل رمز له نصّ عربي
         // يشرح **السبب** و**ما العمل**، والرمز الخام لا يظهر إطلاقاً.
         _snack(_arabicBookingError(err));
-        if (err == 'SLOT_NO_LONGER_AVAILABLE') { setState(() => _selectedSlot = null); _goTo(7); }
+        if (err == 'SLOT_NO_LONGER_AVAILABLE') {
+          // 📅 UI-CAL-001: نُبطل الكاش ليُعاد الجلب — الموعد صار محجوزاً
+          // فعرضه ثانيةً يُوقع المستخدم في نفس الخطأ.
+          setState(() { _selectedSlot = null; _slotsFuture = null; });
+          _goTo(7);
+        }
         // عند وجود طلب/دفعة سابقة: نحدّث القوائم فوراً ليرى المستخدم
         // بطاقة طلبه القائم بدل أن يبقى في شاشة الدفع حائراً.
         if (err == 'PENDING_CONSULTATION_PAYMENT_EXISTS' ||
@@ -1447,11 +1457,24 @@ class _State extends State<LegalConsultationBookingScreen> {
   // العميل يرى **فقط** الأوقات التي فتحها المحامي وغير المحجوزة —
   // فلا تفاوض ولا انتظار موافقة، ولا جلسة بلا موعد كما كان سابقاً.
   // ═══════════════════════════════════════════════════════════════
+  /// 📅 UI-CAL-001 (2026-08-15) — نمط التقويم بدل القائمة الطويلة.
+  ///
+  /// بلاغ المالك: «بالأوقات في الاستشارة الحضورية بفضّل نمط التقويم لأن
+  /// الشاشة فوضوية هيك».
+  ///
+  /// كانت الشاشة تسرد **كل** المواعيد دفعةً واحدة: 14 يوماً × 8 مواعيد
+  /// = حتى **80 زراً** في تمرير واحد، فيضيع المستخدم ولا يرى بنية الأيام.
+  ///
+  /// التصميم الجديد — خطوتان واضحتان:
+  ///   ① شريط أيام أفقي (اليوم/غداً/اسم اليوم + رقم) مع عدّاد المتاح لكل يوم.
+  ///   ② أوقات اليوم المختار وحده في شبكة مرتّبة.
+  /// الأيام بلا مواعيد لا تظهر إطلاقاً — لا نعرض ما لا يمكن اختياره.
   Widget _buildSlotPicker() {
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
-        backgroundColor: AppTheme.scaffoldBackground, elevation: 0,
+        backgroundColor: AppTheme.scaffoldBackground,
+        elevation: 0,
         title: const Text('اختر موعد الجلسة',
             style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
         leading: IconButton(
@@ -1460,7 +1483,7 @@ class _State extends State<LegalConsultationBookingScreen> {
         ),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
-        future: context.read<LegalProvider>().fetchFreeSlots(days: 14),
+        future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(days: 14),
         builder: (_, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold));
@@ -1468,119 +1491,259 @@ class _State extends State<LegalConsultationBookingScreen> {
           final slots = (snap.data?['slots'] as List?)?.cast<String>() ?? <String>[];
           _slotLawyerAlias = (snap.data?['lawyer_alias'] ?? '').toString();
 
-          if (slots.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: AppTheme.paddingAllXL,
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.event_busy, size: 60, color: AppTheme.warningOrange),
-                  AppTheme.gapHeightLarge,
-                  const Text('لا توجد مواعيد متاحة حالياً',
-                      style: TextStyle(color: AppTheme.textWhite, fontSize: 17, fontWeight: FontWeight.bold)),
-                  AppTheme.gapHeightSmall,
-                  const Text('جميع المواعيد محجوزة أو خارج أوقات الدوام.\nجرّب لاحقاً أو اختر استشارة هاتفية.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppTheme.textGrey, fontSize: 13, height: 1.6)),
-                  AppTheme.gapHeightXL,
-                  SizedBox(width: double.infinity, height: 46, child: OutlinedButton.icon(
-                    onPressed: () { setState(() { _serviceType = 0; }); _goTo(3); },
-                    icon: const Icon(Icons.phone_in_talk, color: AppTheme.primaryGold),
-                    label: Text('استشارة هاتفية بدلاً منها (${_fmt(_phonePrice)} ل.س)',
-                        style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
-                  )),
-                ]),
-              ),
-            );
-          }
+          if (slots.isEmpty) return _noSlotsView();
 
-          // تجميع السلوتات حسب اليوم
+          // تجميع حسب اليوم مع الحفاظ على الترتيب الزمني
           final byDay = <String, List<DateTime>>{};
           for (final s in slots) {
             final dt = DateTime.tryParse(s)?.toLocal();
             if (dt == null) continue;
-            final key = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+            final key = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-'
+                '${dt.day.toString().padLeft(2, '0')}';
             byDay.putIfAbsent(key, () => []).add(dt);
           }
-          const dayNames = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+          final dayKeys = byDay.keys.toList()..sort();
+          if (dayKeys.isEmpty) return _noSlotsView();
 
-          return ListView(padding: AppTheme.paddingAllLarge, children: [
-            Container(
-              padding: AppTheme.paddingAllMedium,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryGold.withOpacity(0.08),
-                borderRadius: AppTheme.radiusMedium,
-                border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
+          // اليوم المختار: أول يوم متاح ما لم يكن المستخدم اختار غيره
+          final activeDay = (_selectedDayKey != null && byDay.containsKey(_selectedDayKey))
+              ? _selectedDayKey!
+              : dayKeys.first;
+          final dayTimes = byDay[activeDay] ?? const <DateTime>[];
+
+          return Column(children: [
+            // ── رأس: نوع الجلسة وسعرها والمحامي ──
+            Padding(
+              padding: AppTheme.paddingAllLarge,
+              child: Container(
+                padding: AppTheme.paddingAllMedium,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGold.withOpacity(0.08),
+                  borderRadius: AppTheme.radiusMedium,
+                  border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.business, color: AppTheme.primaryGold, size: 20),
+                  AppTheme.gapWidthSmall,
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('جلسة حضورية — ${_fmt(_onsitePrice)} ل.س',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 14)),
+                      if (_slotLawyerAlias.isNotEmpty)
+                        Text('⚖️ $_slotLawyerAlias',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12)),
+                    ]),
+                  ),
+                ]),
               ),
-              child: Row(children: [
-                const Icon(Icons.business, color: AppTheme.primaryGold, size: 20),
-                AppTheme.gapWidthSmall,
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('جلسة حضورية — ${_fmt(_onsitePrice)} ل.س',
-                      style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 14)),
-                  if (_slotLawyerAlias.isNotEmpty)
-                    Text('⚖️ $_slotLawyerAlias',
-                        style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12)),
-                ])),
-              ]),
             ),
-            AppTheme.gapHeightMedium,
-            const Text('اختر الوقت المناسب لك:',
-                style: TextStyle(color: AppTheme.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
-            AppTheme.gapHeightSmall,
-            ...byDay.entries.map((e) {
-              final first = e.value.first;
-              final dayLabel = '${dayNames[first.weekday - 1]}  ${first.day}/${first.month}';
-              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                AppTheme.gapHeightSmall,
-                Text(dayLabel,
-                    style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold, fontSize: 13)),
-                const SizedBox(height: 6),
-                Wrap(spacing: 8, runSpacing: 8, children: e.value.map((dt) {
-                  final iso = dt.toUtc().toIso8601String();
-                  final sel = _selectedSlot != null &&
-                      DateTime.tryParse(_selectedSlot!)?.toUtc() == dt.toUtc();
+
+            // ── ① شريط الأيام ──
+            SizedBox(
+              height: 88,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: dayKeys.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final k = dayKeys[i];
+                  final d = byDay[k]!.first;
+                  final isActive = k == activeDay;
                   return GestureDetector(
-                    onTap: () => setState(() => _selectedSlot = iso),
+                    onTap: () => setState(() {
+                      _selectedDayKey = k;
+                      _selectedSlot = null; // تغيير اليوم يُلغي اختيار الوقت
+                    }),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      width: 68,
                       decoration: BoxDecoration(
-                        color: sel ? AppTheme.primaryGold : AppTheme.surfaceBlack,
+                        color: isActive ? AppTheme.primaryGold : AppTheme.surfaceBlack,
                         borderRadius: AppTheme.radiusMedium,
-                        border: Border.all(color: sel ? AppTheme.primaryGold : Colors.white24),
+                        border: Border.all(
+                            color: isActive ? AppTheme.primaryGold : Colors.white24),
                       ),
-                      child: Text(
-                        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                            color: sel ? Colors.black : AppTheme.textWhite,
-                            fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Text(_dayLabel(d),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: isActive ? Colors.black : AppTheme.textGrey,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text('${d.day}/${d.month}',
+                            style: TextStyle(
+                                color: isActive ? Colors.black : AppTheme.textWhite,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 3),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? Colors.black.withOpacity(0.15)
+                                : AppTheme.primaryGold.withOpacity(0.18),
+                            borderRadius: AppTheme.radiusSmall,
+                          ),
+                          child: Text('${byDay[k]!.length} موعد',
+                              style: TextStyle(
+                                  color: isActive ? Colors.black : AppTheme.primaryGold,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ]),
                     ),
                   );
-                }).toList()),
-              ]);
-            }),
-            AppTheme.gapHeightXL,
-            SizedBox(width: double.infinity, height: 50, child: ElevatedButton.icon(
-              onPressed: _selectedSlot == null ? null : () => _goTo(4),
-              icon: const Icon(Icons.arrow_back, color: Colors.black),
-              label: Text(_selectedSlot == null ? 'اختر موعداً للمتابعة' : 'متابعة',
-                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
-            )),
-            AppTheme.gapHeightSmall,
-            const Center(
-              child: Text('💡 الجلسة الحضورية موعد في المكتب — لا محادثة فيها',
-                  style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                },
+              ),
             ),
-            const SizedBox(height: 20),
+
+            const Divider(color: Colors.white12, height: 20),
+
+            // ── ② أوقات اليوم المختار ──
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  Text('أوقات ${_fullDayLabel(dayTimes.first)}',
+                      style: const TextStyle(
+                          color: AppTheme.primaryGold, fontWeight: FontWeight.bold, fontSize: 13)),
+                  AppTheme.gapHeightSmall,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: dayTimes.map((dt) {
+                      final iso = dt.toUtc().toIso8601String();
+                      final sel = _selectedSlot != null &&
+                          DateTime.tryParse(_selectedSlot!)?.toUtc() == dt.toUtc();
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedSlot = iso),
+                        child: Container(
+                          width: 88,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: sel ? AppTheme.primaryGold : AppTheme.surfaceBlack,
+                            borderRadius: AppTheme.radiusMedium,
+                            border: Border.all(color: sel ? AppTheme.primaryGold : Colors.white24),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${dt.hour.toString().padLeft(2, '0')}:'
+                              '${dt.minute.toString().padLeft(2, '0')}',
+                              style: TextStyle(
+                                  color: sel ? Colors.black : AppTheme.textWhite,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  AppTheme.gapHeightLarge,
+                  const Center(
+                    child: Text('💡 الجلسة الحضورية موعد في المكتب — لا محادثة فيها',
+                        style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+
+            // ── زر المتابعة مثبَّت أسفل الشاشة (لا يضيع بالتمرير) ──
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _selectedSlot == null ? null : () => _goTo(4),
+                    icon: const Icon(Icons.arrow_back, color: Colors.black),
+                    label: Text(
+                        _selectedSlot == null
+                            ? 'اختر موعداً للمتابعة'
+                            : 'متابعة — ${_selectedSlotLabel()}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+                  ),
+                ),
+              ),
+            ),
           ]);
         },
       ),
     );
   }
 
-  // ── النجاح ──
+  /// تسمية مختصرة لبطاقة اليوم في الشريط.
+  String _dayLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final that = DateTime(d.year, d.month, d.day);
+    final diff = that.difference(today).inDays;
+    if (diff == 0) return 'اليوم';
+    if (diff == 1) return 'غداً';
+    const names = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    return names[d.weekday - 1];
+  }
+
+  /// تسمية كاملة لعنوان قسم الأوقات.
+  String _fullDayLabel(DateTime d) {
+    const names = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    return '${names[d.weekday - 1]} ${d.day}/${d.month}';
+  }
+
+  /// الوقت المختار مختصراً لعرضه على زر المتابعة.
+  String _selectedSlotLabel() {
+    final dt = DateTime.tryParse(_selectedSlot ?? '')?.toLocal();
+    if (dt == null) return '';
+    return '${_dayLabel(dt)} ${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// حالة «لا مواعيد» — مفصولة لتُستدعى من موضعين بلا تكرار.
+  Widget _noSlotsView() {
+    return Center(
+      child: Padding(
+        padding: AppTheme.paddingAllXL,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.event_busy, size: 60, color: AppTheme.warningOrange),
+          AppTheme.gapHeightLarge,
+          const Text('لا توجد مواعيد متاحة حالياً',
+              style: TextStyle(color: AppTheme.textWhite, fontSize: 17, fontWeight: FontWeight.bold)),
+          AppTheme.gapHeightSmall,
+          const Text('جميع المواعيد محجوزة أو خارج أوقات الدوام.\nجرّب لاحقاً أو اختر استشارة هاتفية.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textGrey, fontSize: 13, height: 1.6)),
+          AppTheme.gapHeightXL,
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: () { setState(() { _serviceType = 0; }); _goTo(3); },
+              icon: const Icon(Icons.phone_in_talk, color: AppTheme.primaryGold),
+              label: Text('استشارة هاتفية بدلاً منها (${_fmt(_phonePrice)} ل.س)',
+                  style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+
   Widget _buildSuccess() {
     // _viewingPending = وصلنا لهذه الشاشة من بانر «دفعة قيد الانتظار» أو من
     // حارس الاعتراض، لا من إرسال دفعة جديدة للتو. المحتوى واحد والعنوان يختلف.
