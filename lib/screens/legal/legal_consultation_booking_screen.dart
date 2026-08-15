@@ -261,6 +261,18 @@ class _State extends State<LegalConsultationBookingScreen> {
   bool _hasCredit(int serviceType) =>
       _credits.any((c) => (c['service_type'] ?? 0) == serviceType);
 
+  /// 💳 PAY-001: هل لديه دفعة **مقبولة** لهذا النوع لم تُربط باستشارة بعد؟
+  ///
+  /// `_load()` يملأ `_approvedPayment` بدفعة sts=1 غير موجودة في
+  /// `linkedPaymentIds` — أي دُفعت واعتُمدت ولم يُرسَل طلبها بعد.
+  /// وجودها يعني أن المستخدم **دفع فعلاً**، فمطالبته بالدفع ثانيةً خطأ.
+  /// نقارن النوع (pkg) كي لا تُستهلك دفعة هاتفية في حجز حضوري أغلى.
+  bool _hasApprovedPaymentFor(int serviceType) {
+    final p = _approvedPayment;
+    if (p == null) return false;
+    return ((p['pkg'] ?? 0) as int) == serviceType;
+  }
+
   /// يمنع البدء **لنفس النوع فقط** (قاعدة المالك 2026-08-14):
   /// هاتفية معلّقة لا تمنع الحضورية والعكس. والدفعة المقبولة لا تمنع شيئاً.
   bool _guardPending(int serviceType) {
@@ -1294,10 +1306,21 @@ class _State extends State<LegalConsultationBookingScreen> {
             if (_subjectCtrl.text.trim().length < 10) { _snack('اكتب وصف أطول (10 أحرف)'); return; }
             // 🎁 رصيد ممنوح ⇒ لا شاشة دفع، يُرسل الطلب مباشرة
             if (_hasCredit(_serviceType)) { _submitConsultation(); return; }
+            // 💳 PAY-001 (2026-08-15) — بلاغ المالك: «بعد ما انقبلت الدفعة
+            // وصلت للإرسال للمحامي رجع عطاني إنو لازم أدفع».
+            // السبب: هذه الشاشة كانت تفحص الرصيد المجاني **فقط** وتتجاهل
+            // `_approvedPayment` — وهي دفعة **مقبولة من الإدارة وغير مرتبطة
+            // بأي استشارة بعد** (يحسبها `_load` عبر linkedPaymentIds).
+            // فكان المستخدم يُدفع لشاشة الدفع مرة ثانية بعد أن دفع فعلاً.
+            // الآن: الدفعة المقبولة لنفس النوع تُرسل الطلب مباشرةً.
+            if (_hasApprovedPaymentFor(_serviceType)) { _submitConsultation(); return; }
             _goTo(5);
           },
           icon: const Icon(Icons.arrow_back, color: Colors.black),
-          label: Text(_hasCredit(_serviceType) ? 'إرسال الطلب (مجاناً 🎁)' : 'متابعة للدفع',
+          label: Text(
+              (_hasCredit(_serviceType) || _hasApprovedPaymentFor(_serviceType))
+                  ? 'إرسال الطلب للمحامي'
+                  : 'متابعة للدفع',
               style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
         )),

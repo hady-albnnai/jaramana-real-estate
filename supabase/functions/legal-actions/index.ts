@@ -668,6 +668,47 @@ serve(async (req) => {
       const consultation = Array.isArray(data) ? data[0] : data;
       const consultId = consultation?.id?.toString() ?? "";
 
+      // ═══════════════════════════════════════════════════════════════
+      // 💳 PAY-001 (2026-08-15): ربط الاستشارة بالدفعة المقبولة
+      // ═══════════════════════════════════════════════════════════════
+      // بلاغ المالك: «بعد ما انقبلت الدفعة وصلت للإرسال للمحامي رجع
+      // عطاني إنو لازم أدفع».
+      // العطل الثاني (بعد إصلاح الواجهة): `payment_id` في
+      // legal_consultations **لم يكن يُضبط إطلاقاً** في أي مسار.
+      // الأثر: الشاشة تحسب «دفعة مقبولة بلا استشارة» عبر مقارنة
+      // payment_id ⇒ تبقى البطاقة ظاهرة للأبد بعد إرسال الطلب، ويمكن
+      // استهلاك نفس الدفعة مراراً لحجز استشارات متعددة مجاناً.
+      //
+      // الربط خادمي لا عميلي: العميل لا يُرسل payment_id (فيزوّره)،
+      // بل نبحث نحن عن أقدم دفعة مقبولة (sts=1) لنفس النوع غير مرتبطة.
+      // ⚠️ الرصيد المجاني (consultation_credits) مسار منفصل بلا دفعة.
+      if (consultId && !usingCredit) {
+        const { data: freePay } = await supabaseAdmin
+          .from("payments")
+          .select("id")
+          .eq("uid", uid)
+          .eq("tp", 2)
+          .eq("sts", 1)
+          .eq("pkg", serviceType)
+          .order("ts_crt", { ascending: true });
+        if (freePay && freePay.length > 0) {
+          const { data: linked } = await supabaseAdmin
+            .from("legal_consultations")
+            .select("payment_id")
+            .not("payment_id", "is", null);
+          const used = new Set(
+            (linked ?? []).map((r: Record<string, unknown>) => String(r.payment_id)),
+          );
+          const match = freePay.find((p: Record<string, unknown>) => !used.has(String(p.id)));
+          if (match) {
+            await supabaseAdmin
+              .from("legal_consultations")
+              .update({ payment_id: match.id, payment_status: 1 })
+              .eq("id", consultId);
+          }
+        }
+      }
+
       // تحديد lawyer_alias (محامي المكتب الأول/الثاني/الثالث)
       const lawyerUid = consultation?.lawyer_uid?.toString() ?? "";
       let lawyerAlias = "محامي المكتب";
