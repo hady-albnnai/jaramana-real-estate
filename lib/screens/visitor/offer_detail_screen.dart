@@ -1192,14 +1192,28 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           ),
                           AppTheme.gapHeightMedium,
 
-                          // ✅ Fix for Bug #10: عرض الفيديو مباشرة بدون حجز موعد
+                          // 🎬 VID-001 (2026-08-15): كان الزر يمرّر `offer.vdo`
+                          // مباشرةً لمشغّل الفيديو. لكن `vdo` **ليس دائماً
+                          // رابطاً**: حين يختار المُعلِن «أريد إرفاق فيديو»
+                          // يُحفظ العَلَم النصّي `"wa"` (مؤكَّد حياً: العرضان
+                          // 3 و14 قيمتهما "wa" حرفياً). فكان المشغّل يستقبل
+                          // `Uri.parse("wa")` ويفشل ⇒ **إشارة تعجب** بلا أي
+                          // تفسير للمستخدم (بلاغ المالك).
+                          // الآن: العَلَم يفتح واتساب المكتب برسالة تلقائية
+                          // فيها رقم العرض، والرابط الحقيقي يشغّل المشغّل.
                           if (auth.isLoggedIn)
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: () => _playVideo(offer.vdo),
-                                icon: const Icon(Icons.play_circle_outline),
-                                label: const Text('مشاهدة الفيديو'),
+                                onPressed: () => _isVideoOnRequest(offer.vdo)
+                                    ? _requestVideoViaWhatsApp(offer)
+                                    : _playVideo(offer.vdo),
+                                icon: Icon(_isVideoOnRequest(offer.vdo)
+                                    ? Icons.smart_display_outlined
+                                    : Icons.play_circle_outline),
+                                label: Text(_isVideoOnRequest(offer.vdo)
+                                    ? 'اطلب الفيديو عبر واتساب'
+                                    : 'مشاهدة الفيديو'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryGold,
                                   foregroundColor: AppTheme.deepBlack,
@@ -1785,6 +1799,65 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => OfferVideoPlayer(videoUrl: videoUrl),
     ));
+  }
+
+  /// 🎬 VID-001: هل `vdo` عَلَم «الفيديو عند الطلب» لا رابطاً؟
+  ///
+  /// عند إنشاء العرض، اختيار «أريد إرفاق فيديو» يحفظ العَلَم النصّي `"wa"`
+  /// بدل رابط. أي قيمة ليست رابط `http(s)` تُعامَل كطلب عبر واتساب — وهذا
+  /// أأمن من فحص `== 'wa'` وحده: أي قيمة قديمة أو مشوّهة لن تصل للمشغّل
+  /// فتنهار عليه، بل تُوجَّه للمسار الآمن.
+  bool _isVideoOnRequest(String vdo) {
+    final v = vdo.trim();
+    if (v.isEmpty) return false;
+    return !v.startsWith('http://') && !v.startsWith('https://');
+  }
+
+  /// 🎬 VID-001: يفتح واتساب المكتب برسالة تلقائية فيها رقم العرض.
+  ///
+  /// ⚠️ قاعدة المالك الصارمة: لا معلومات تواصل لصاحب العرض أبداً — الطلب
+  /// يذهب لواتساب **المكتب** (`txts.videoRequestWhatsApp`) لا للمُعلِن.
+  Future<void> _requestVideoViaWhatsApp(OfferModel offer) async {
+    final config = context.read<ConfigProvider>().config;
+    final raw = (config?.videoRequestWhatsApp ?? '').trim();
+
+    // §13: لا نبتلع نقص الإعداد — نعلنه بالعربية بدل فشل صامت.
+    if (raw.isEmpty) {
+      if (!mounted) return;
+      AppTheme.showSnackBar(context, const SnackBar(
+        content: Text('خدمة طلب الفيديو غير متاحة حالياً — يرجى مراسلة المكتب'),
+      ));
+      return;
+    }
+
+    // تطبيع الرقم للصيغة الدولية التي يقبلها wa.me (بلا + ولا أصفار بادئة).
+    var digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('00')) digits = digits.substring(2);
+    if (digits.startsWith('0')) digits = '963${digits.substring(1)}';
+    if (!digits.startsWith('963')) digits = '963$digits';
+
+    final num0 = offer.offerNumber ?? 0;
+    final msg = '🎬 طلب مشاهدة فيديو\n'
+        'رقم العرض: #$num0\n'
+        'العنوان: ${offer.ttl}';
+    final uri = Uri.parse(
+        'https://wa.me/$digits?text=${Uri.encodeComponent(msg)}');
+
+    try {
+      // نستخدم wa.me لا whatsapp:// — يعمل حتى لو تعذّر فتح التطبيق
+      // (يفتح المتصفح ثم يحوّل)، فلا يفشل الطلب بصمت.
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        AppTheme.showSnackBar(context, const SnackBar(
+          content: Text('تعذّر فتح واتساب — تأكد من تثبيته'),
+        ));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      AppTheme.showSnackBar(context, const SnackBar(
+        content: Text('تعذّر فتح واتساب — تأكد من تثبيته'),
+      ));
+    }
   }
 
   Widget _spec(IconData icon, String label, String value) {
