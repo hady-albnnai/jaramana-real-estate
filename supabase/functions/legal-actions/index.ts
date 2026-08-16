@@ -1464,10 +1464,22 @@ serve(async (req) => {
     // ─── 🕐 السلوتات الحرة لمحامٍ (للعميل قبل حجز الجلسة الحضورية) ───
     if (action === "get_free_slots") {
       const lawyerUid = (body.lawyer_uid ?? "").toString();
-      const days = Math.min(30, Math.max(1, Number(body.days ?? 14)));
+      const parentId = (body.parent_consultation_id ?? "").toString();
+      const days = Math.min(30, Math.max(1, Number(body.days ?? 30)));
+
+      // التحويل الحضوري يلتزم بالمحامي نفسه، دون كشف هويته للعميل.
+      let target = lawyerUid;
+      if (parentId) {
+        const { data: parent } = await supabaseAdmin.from("legal_consultations")
+          .select("user_uid,lawyer_uid").eq("id", parentId).eq("i_del", 0).maybeSingle();
+        if (!parent) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+        if (parent.user_uid !== uid && parent.lawyer_uid !== uid && !canManageLawyerProfiles(role)) {
+          return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+        }
+        target = parent.lawyer_uid?.toString() ?? "";
+      }
 
       // بلا تحديد محامٍ: نأخذ التالي بالدور (متاح ← الأقل انشغالاً ← الأقدم)
-      let target = lawyerUid;
       if (!target) {
         const { data: picked, error: pickError } = await supabaseAdmin.rpc(
           "pick_next_lawyer",

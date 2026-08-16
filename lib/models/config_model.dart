@@ -38,6 +38,9 @@ class ConfigModel {
     return 3; // fallback آمن
   }
 
+  Map<String, dynamic> get features => _getNestedMap('features', {});
+  bool get consultationFlowV2 => features['consultationFlowV2'] == true;
+
   Map<String, dynamic> get texts => _getNestedMap('txts', {});
   /// 💱 PRICE-UNIT-001 (2026-08-15): سعر صرف الدولار مقابل الليرة.
   ///

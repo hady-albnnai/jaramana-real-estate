@@ -326,7 +326,13 @@ class AppRouter {
       GoRoute(path: '/admin/config', builder: (context, state) => const ConfigEditorScreen()),
       GoRoute(path: '/admin/analytics', builder: (context, state) => const AnalyticsScreen()),
       GoRoute(path: '/admin/completion-requests', builder: (context, state) => const CompletionRequestsScreen()),
-      GoRoute(path: '/legal/consultations', builder: (context, state) => const LegalConsultationBookingScreen()),
+      GoRoute(
+        path: '/legal/consultations',
+        builder: (context, state) => LegalConsultationBookingScreen(
+          initialFlow: state.uri.queryParameters['flow'] ?? '',
+          parentConsultationId: state.uri.queryParameters['parent'] ?? '',
+        ),
+      ),
       GoRoute(path: '/legal/chat/:id', builder: (context, state) {
         final id = state.pathParameters['id']!;
         return ConsultationChatScreen(consultationId: id);

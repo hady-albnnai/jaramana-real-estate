@@ -43,6 +43,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   bool _hasMore = false;
   bool _recording = false;
   bool _realtimeConnected = false;
+  Map<String, dynamic>? _v2Session;
+  int _joinWindowSeconds = 0;
+  bool _endDialogShown = false;
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
   String? _playingMessageId;
@@ -76,10 +79,11 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _subscribeRealtime();
       _restoreDraft();
-      _loadMessages();
+      await _loadMessages();
+      await _loadV2Session();
     });
   }
 
@@ -103,6 +107,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadMessages();
+      _loadV2Session();
     }
   }
 
@@ -124,6 +129,50 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                 status == RealtimeSubscribeStatus.subscribed;
           });
         });
+  }
+
+  Future<void> _loadV2Session() async {
+    if (context.read<ConfigProvider>().config?.consultationFlowV2 != true) return;
+    try {
+      final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'get_chat_session_v2',
+        'user_uid': uid,
+        'consultation_id': widget.consultationId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      final session = data?['session'] is Map
+          ? Map<String, dynamic>.from(data!['session'] as Map)
+          : null;
+      if (session == null || !mounted) return;
+      final isLawyer = context.read<AuthProvider>().isLawyer;
+      if (session['status'] == 'join_window' && !isLawyer) {
+        final joined = await SupabaseService().invokeFunction('legal-actions', body: {
+          'action': 'join_chat_session_v2',
+          'user_uid': uid,
+          'consultation_id': widget.consultationId,
+          'idempotency_key': _newClientMessageId(),
+        });
+        final joinedData = joined.data as Map<String, dynamic>?;
+        if (joinedData?['success'] == true) {
+          await _loadMessages();
+          return _loadV2Session();
+        }
+      }
+      final status = (session['status'] ?? '').toString();
+      setState(() {
+        _v2Session = session;
+        _joinWindowSeconds = (data?['seconds_until_auto_start'] ?? 0) as int;
+        _remainingSeconds = (data?['remaining_seconds'] ?? 0) as int;
+        _timeUp = status == 'ended';
+      });
+      if (_timeUp && !isLawyer && !_endDialogShown) {
+        _endDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _showEndOptions());
+      }
+    } catch (_) {
+      // تبقى قراءة الرسائل القديمة مساراً احتياطياً أثناء الانتقال.
+    }
   }
 
   Future<void> _loadMessages({bool older = false}) async {
@@ -174,7 +223,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     if (_timeUp || _remainingSeconds <= 0) { setState(() => _timeUp = true); return; }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) { _timer?.cancel(); return; }
+      var refreshV2 = false;
       setState(() {
+        if (_joinWindowSeconds > 0) {
+          _joinWindowSeconds--;
+          refreshV2 = _joinWindowSeconds == 0;
+        }
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
           if (_remainingSeconds == 180) _showAlert('⏱️ بقي 3 دقائق على انتهاء الوقت الحالي');
@@ -184,6 +238,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           _timer?.cancel();
         }
       });
+      if (refreshV2) unawaited(_loadV2Session());
     });
   }
 
@@ -408,6 +463,40 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     return sent;
   }
 
+  Future<void> _showEndOptions() async {
+    if (!mounted) return;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('انتهى وقت الاستشارة',
+            style: TextStyle(color: AppTheme.primaryGold)),
+        content: const Text(
+          'يمكنك متابعة المحادثة مع المحامي نفسه، أو تحويل القضية إلى جلسة حضورية، أو إنهاؤها وتقييم الخدمة.',
+          style: TextStyle(color: AppTheme.textWhite, height: 1.5),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'later'),
+              child: const Text('لاحقاً')),
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, 'onsite'),
+              child: const Text('تحويل إلى حضورية')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, 'renew'),
+              child: const Text('تجديد المحادثة')),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'rate'),
+              child: const Text('إنهاء وتقييم')),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'renew') {
+      context.push('/legal/consultations?flow=phone_renew&parent=${widget.consultationId}');
+    } else if (choice == 'onsite') {
+      context.push('/legal/consultations?flow=onsite_convert&parent=${widget.consultationId}');
+    } else if (choice == 'rate') {
+      _showRatingDialog();
+    }
+  }
+
   Future<void> _renewChat() async {
     final proceed = await showDialog<bool>(
       context: context,
@@ -432,7 +521,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         ],
       ),
     );
-    if (proceed == true && mounted) context.push('/legal/consultations');
+    if (proceed == true && mounted) {
+      context.push('/legal/consultations?flow=phone_renew&parent=${widget.consultationId}');
+    }
   }
 
   Future<void> _showReportDialog() async {
@@ -534,7 +625,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(isLawyer ? 'الاستشارة' : _lawyerAlias, style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold, fontSize: 15)),
           Row(children: [
-            if (!_timeUp && _remainingSeconds > 0) ...[
+            if (_v2Session?['status'] == 'join_window') ...[
+              const Icon(Icons.hourglass_top, size: 12, color: AppTheme.warningOrange),
+              const SizedBox(width: 4),
+              Text('مهلة الانضمام ${_formatTime(_joinWindowSeconds)}',
+                  style: const TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
+            ] else if (!_timeUp && _remainingSeconds > 0) ...[
               Icon(Icons.timer, size: 12, color: _remainingSeconds <= 180 ? AppTheme.warningOrange : AppTheme.textGrey),
               const SizedBox(width: 4),
               Text(_formatTime(_remainingSeconds), style: TextStyle(color: _remainingSeconds <= 180 ? AppTheme.warningOrange : AppTheme.textGrey, fontSize: 11)),
@@ -615,6 +711,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                     style: TextStyle(color: AppTheme.infoBlue, fontSize: 12),
                   ),
                 )
+              else if (_v2Session?['status'] == 'ready')
+                _buildSessionWaitingBar('بانتظار استعداد المحامي لبدء الجلسة')
+              else if (_v2Session?['status'] == 'join_window')
+                _buildSessionWaitingBar(
+                  'بانتظار انضمام العميل — يبدأ العداد تلقائياً خلال ${_formatTime(_joinWindowSeconds)}',
+                )
               else if (_timeUp && !isLawyer)
                 _buildRenewBar()
               else if (_timeUp && isLawyer)
@@ -622,6 +724,21 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
               else
                 _buildInputBar(),
             ]),
+    );
+  }
+
+  Widget _buildSessionWaitingBar(String message) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        12, 12, 12, 12 + MediaQuery.of(context).padding.bottom,
+      ),
+      color: AppTheme.surfaceBlack,
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: AppTheme.warningOrange, fontSize: 12),
+      ),
     );
   }
 

@@ -47,6 +47,8 @@ class NotificationRouter {
     'legal_consultation_nudge': [UserRole.lawyer],
     'legal_appointment_nudge': [UserRole.lawyer],
     'consultation_reactivated': [UserRole.lawyer],
+    'legal_user_joined': [UserRole.lawyer],
+    'legal_renewal_paid_ready': [UserRole.lawyer],
     'legal_consultation_admin': [UserRole.deputy, UserRole.manager],
     'legal_consultation_escalated': [UserRole.deputy, UserRole.manager],
   };
@@ -84,6 +86,12 @@ class NotificationRouter {
       case 'chat_message':
       case 'chat_renewed':
       case 'chat_extended':
+      case 'legal_lawyer_ready':
+      case 'legal_user_joined':
+      case 'legal_session_auto_started':
+      case 'legal_session_started':
+      case 'legal_session_ended':
+      case 'legal_renewal_paid_ready':
         return refId.isEmpty
             ? const NotificationTarget('/legal/consultations')
             : NotificationTarget('/legal/chat/$refId');
@@ -107,7 +115,14 @@ class NotificationRouter {
         return const NotificationTarget('/legal/consultations');
 
       case 'legal_appointment_update':
-        return const NotificationTarget('/user/my-appointments');
+      case 'legal_onsite_confirmed':
+        return role == UserRole.lawyer
+            ? const NotificationTarget('/lawyer/dashboard')
+            : const NotificationTarget('/user/my-appointments');
+
+      case 'legal_waitlist_available':
+      case 'legal_payment_needs_new_slot':
+        return const NotificationTarget('/legal/consultations');
 
       case 'legal_appointment_nudge':
         return const NotificationTarget('/lawyer/dashboard');

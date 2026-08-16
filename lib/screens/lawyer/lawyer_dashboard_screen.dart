@@ -1424,7 +1424,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
       final data = res.data as Map<String, dynamic>?;
       if (!mounted) return;
       if (data != null && data['success'] == true) {
-        _snack('✅ بدأت المحادثة');
+        _snack(data['waiting_for_user'] == true
+            ? '✅ تم إشعار العميل — يبدأ العداد عند انضمامه أو بعد دقيقتين'
+            : '✅ بدأت المحادثة');
         await context.read<LegalProvider>().fetchLawyerConsultations();
       } else {
         final err = data?['error']?.toString() ?? '';

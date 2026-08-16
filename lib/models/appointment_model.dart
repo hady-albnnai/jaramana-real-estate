@@ -31,6 +31,7 @@ class AppointmentModel {
   // ضمن «مواعيدي» بصيغة صف موعد ويضع kind='photography'، وحقول العرض
   // والمالك فيها فارغة — فيجب تمييزها لئلا تُعامَل معاملة موعد معاينة.
   final String kind;
+  final String consultationId;
 
   AppointmentModel({
     required this.id,
@@ -61,6 +62,7 @@ class AppointmentModel {
     this.supervisorUid,
     this.neog = const [],
     this.kind = 'appointment',
+    this.consultationId = '',
   });
 
   factory AppointmentModel.fromSupabase(Map<String, dynamic> data, String id) {
@@ -96,6 +98,7 @@ class AppointmentModel {
               (data['neog'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
           : [],
       kind: (data['kind'] ?? 'appointment').toString(),
+      consultationId: (data['consultation_id'] ?? '').toString(),
     );
   }
 
@@ -127,12 +130,15 @@ class AppointmentModel {
       'ts_crt': tsCrt.toIso8601String(),
       'supervisor_uid': supervisorUid,
       'neog': neog,
+      'kind': kind,
+      'consultation_id': consultationId.isEmpty ? null : consultationId,
     };
   }
 
-  /// 🩹 APPT-002: هل هذا الصف موعد تصوير مدموج (لا عرض ولا مالك له)؟
-  /// نعتمد الوسم أولاً، ثم غياب معرّف العرض كشبكة أمان لو غاب الوسم.
-  bool get isPhotography => kind == 'photography' || offId.trim().isEmpty;
+  /// نوع الموعد يأتي من السيرفر؛ غياب العرض لم يعد يعني تصويراً لأن الجلسة
+  /// القانونية أيضاً بلا عرض.
+  bool get isPhotography => kind == 'photography';
+  bool get isLegal => kind == 'legal';
 
   /// عدد جولات التراشق المنجزة
   int get neogRounds => neog.length;

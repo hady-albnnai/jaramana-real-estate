@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -28,7 +29,13 @@ import '../../core/utils/error_utils.dart';
 /// 3. إذا في استشارة نشطة → "فتح المحادثة"
 /// 4. أزرار "استشارة جديدة" / "جلسة حضورية"
 class LegalConsultationBookingScreen extends StatefulWidget {
-  const LegalConsultationBookingScreen({super.key});
+  final String initialFlow;
+  final String parentConsultationId;
+  const LegalConsultationBookingScreen({
+    super.key,
+    this.initialFlow = '',
+    this.parentConsultationId = '',
+  });
   @override
   State<LegalConsultationBookingScreen> createState() => _State();
 }
@@ -58,6 +65,10 @@ class _State extends State<LegalConsultationBookingScreen>
   int _serviceType = 0;
   bool _isContinuing = false; // متابعة محادثة قديمة
   String? _continueChatId;
+  String? _v2IntentId;
+  String _v2Flow = '';
+  String? _v2IdempotencyKey;
+  num? _v2QuotedAmount;
   final _subjectCtrl = TextEditingController();
   final List<XFile> _attachments = [];
   String _channel = '';
@@ -79,7 +90,30 @@ class _State extends State<LegalConsultationBookingScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
+  }
+
+  Future<void> _initialize() async {
+    await _loadAll();
+    if (!mounted ||
+        context.read<ConfigProvider>().config?.consultationFlowV2 != true ||
+        widget.initialFlow.isEmpty) return;
+    _v2Flow = widget.initialFlow;
+    _continueChatId = widget.parentConsultationId.isEmpty
+        ? null
+        : widget.parentConsultationId;
+    if (_v2Flow == 'phone_renew') {
+      _isContinuing = true;
+      _serviceType = 0;
+      setState(() => _screen = 5);
+    } else if (_v2Flow == 'onsite_convert') {
+      _isContinuing = false;
+      _serviceType = 1;
+      setState(() {
+        _slotsFuture = null;
+        _screen = 7;
+      });
+    }
   }
 
   @override
@@ -120,6 +154,15 @@ class _State extends State<LegalConsultationBookingScreen>
 
   bool get _isLateNight => DateTime.now().hour >= 23 || DateTime.now().hour < 9;
   bool get _needsSenderPhone => _channel == 'balance' || _channel == 'syriatel_cash';
+
+  String _newUuid() {
+    final b = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    final h = b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+    return '${h.substring(0, 8)}-${h.substring(8, 12)}-'
+        '${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
+  }
 
   String _normPhone(String p) {
     final d = p.replaceAll(RegExp(r'[^\d]'), '');
@@ -332,7 +375,9 @@ class _State extends State<LegalConsultationBookingScreen>
     return true;
   }
   void _resetWizard() {
-    _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null; _viewingPending = false; _selectedSlot = null;
+    _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null;
+    _v2IntentId = null; _v2Flow = ''; _v2IdempotencyKey = null;
+    _v2QuotedAmount = null; _viewingPending = false; _selectedSlot = null;
     // 📅 UI-CAL-001: تصفير حالة التقويم وكاش المواعيد — وإلا عُرضت مواعيد
     // قديمة (وربما محجوزة الآن) عند بدء حجز جديد.
     _selectedDayKey = null; _slotsFuture = null;
@@ -421,13 +466,97 @@ class _State extends State<LegalConsultationBookingScreen>
     } catch (_) { return null; }
   }
 
+  Future<void> _payV2(String ref) async {
+    setState(() => _submitting = true);
+    final user = context.read<AuthProvider>().userModel!;
+    final flow = _v2Flow.isNotEmpty
+        ? _v2Flow
+        : (_isContinuing
+            ? 'phone_renew'
+            : (_serviceType == 1 ? 'onsite_new' : 'phone_new'));
+    final attachments = _v2IntentId == null &&
+            (flow == 'phone_new' || flow == 'onsite_new')
+        ? await _uploadAttachments()
+        : <String>[];
+    if (attachments == null) {
+      if (mounted) setState(() => _submitting = false);
+      return;
+    }
+    try {
+      _v2IdempotencyKey ??= _newUuid();
+      if (_v2IntentId == null) {
+        final prep = await SupabaseService().invokeFunction('legal-actions', body: {
+          'action': 'prepare_consultation_intent_v2',
+          'user_uid': user.uid,
+          'flow': flow,
+          'parent_consultation_id': _continueChatId,
+          'subject': _subjectCtrl.text.trim(),
+          'attachments': attachments,
+          if (_serviceType == 1) 'slot': _selectedSlot,
+          'idempotency_key': _v2IdempotencyKey,
+        });
+        final p = prep.data as Map<String, dynamic>?;
+        if (p?['success'] != true) {
+          _snack(ErrorUtils.arabicMessage(p?['error']));
+          if (mounted) setState(() => _submitting = false);
+          return;
+        }
+        _v2IntentId = p?['intent_id']?.toString();
+        _v2QuotedAmount = p?['quoted_amount'] as num?;
+      }
+      final proof = await _uploadProof(user.uid);
+      if (proof == null) {
+        _snack('فشل رفع إثبات الدفع');
+        if (mounted) setState(() => _submitting = false);
+        return;
+      }
+      String sender = '';
+      if (_needsSenderPhone) sender = _normPhone(_senderPhoneCtrl.text.trim());
+      final quoted = _v2QuotedAmount ??
+          (flow == 'phone_renew'
+              ? _renewPrice
+              : flow == 'onsite_convert'
+                  ? (_onsitePrice - _phonePrice).clamp(0, _onsitePrice)
+                  : _priceFor(_serviceType));
+      final pay = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'create_consultation_payment_v2',
+        'user_uid': user.uid,
+        'intent_id': _v2IntentId,
+        'payment': {
+          'channel': _channel,
+          'proof': proof,
+          'ref': ref,
+          'amt': quoted,
+          if (sender.isNotEmpty) 'sender_phone': sender,
+        },
+      });
+      final data = pay.data as Map<String, dynamic>?;
+      if (data?['success'] == true) {
+        await _loadAll();
+        if (!mounted) return;
+        _goTo(6);
+        _snack('✅ تم إرسال الدفعة — بانتظار اعتماد الإدارة');
+      } else {
+        _snack(ErrorUtils.arabicMessage(data?['error']));
+      }
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+    }
+    if (mounted) setState(() => _submitting = false);
+  }
+
   // الدفع
   Future<void> _pay() async {
-    if (_subjectCtrl.text.trim().length < 10 && !_isContinuing) { _snack('اكتب موضوع الاستشارة (10 أحرف على الأقل)'); return; }
+    final noSubjectNeeded = _isContinuing || _v2Flow == 'onsite_convert';
+    if (_subjectCtrl.text.trim().length < 10 && !noSubjectNeeded) { _snack('اكتب موضوع الاستشارة (10 أحرف على الأقل)'); return; }
     if (_channel.isEmpty) { _snack('اختر قناة الدفع'); return; }
     if (_proofImage == null) { _snack('ارفع إثبات الدفع'); return; }
     final ref = InputValidators.normalizeDigits(_refCtrl.text.trim());
     if (ref.isEmpty) { _snack('أدخل رقم العملية'); return; }
+    if (context.read<ConfigProvider>().config?.consultationFlowV2 == true) {
+      await _payV2(ref);
+      return;
+    }
 
     setState(() => _submitting = true);
     final user = context.read<AuthProvider>().userModel!;
@@ -1478,7 +1607,11 @@ class _State extends State<LegalConsultationBookingScreen>
   Widget _buildPaymentForm() {
     final config = context.watch<ConfigProvider>().config;
     final channels = config?.enabledPayChannels ?? [];
-    final price = _isContinuing ? _renewPrice : _priceFor(_serviceType);
+    final price = _isContinuing
+        ? _renewPrice
+        : _v2Flow == 'onsite_convert'
+            ? (_onsitePrice - _phonePrice).clamp(0, _onsitePrice)
+            : _priceFor(_serviceType);
     return Scaffold(backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(backgroundColor: AppTheme.scaffoldBackground, elevation: 0,
         title: const Text('الدفع', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
@@ -1658,7 +1791,11 @@ class _State extends State<LegalConsultationBookingScreen>
         ),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
-        future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(days: 30),
+        future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(
+          days: 30,
+          parentConsultationId:
+              _v2Flow == 'onsite_convert' ? (_continueChatId ?? '') : '',
+        ),
         builder: (_, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold));
@@ -1842,7 +1979,9 @@ class _State extends State<LegalConsultationBookingScreen>
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: _selectedSlot == null ? null : () => _goTo(4),
+                    onPressed: _selectedSlot == null
+                        ? null
+                        : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
                     icon: const Icon(Icons.arrow_back, color: Colors.black),
                     label: Text(
                         _selectedSlot == null

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/appointment_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/offer_provider.dart';
@@ -172,15 +173,18 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
 
     // 🩹 APPT-002: صفوف مهام التصوير المدموجة لا عرض لها ولا مالك.
     final isPhoto = appt.isPhotography;
+    final isLegal = appt.isLegal;
 
-    // ✅ Fix for Bug #18: جلب معلومات العرض
+    // الجلسة القانونية والتصوير لا يرتبطان بعرض.
     final offerProv = context.read<OfferProvider>();
-    final offer = isPhoto ? null : offerProv.getOfferById(appt.offId);
+    final offer = isPhoto || isLegal ? null : offerProv.getOfferById(appt.offId);
     // عنوان مهمة التصوير محفوظ ضمن الملاحظة الإدارية بصيغة «📸 موعد تصوير — العنوان»
     final photoTitle = (appt.adminNt ?? '').trim();
     final offerTitle = isPhoto
         ? (photoTitle.isNotEmpty ? photoTitle : '📸 موعد تصوير')
-        : (offer?.ttl ?? 'عرض');
+        : isLegal
+            ? '⚖️ جلسة قانونية حضورية'
+            : (offer?.ttl ?? 'عرض');
     // 🩹 APPT-002: كان `appt.offId.substring(0, 8)` ينهار بـ RangeError
     // على المعرّف الفارغ. الآن: حارس طول + لا رقم عرض لمواعيد التصوير.
     final rawOfferId = appt.offId.trim();
@@ -211,7 +215,11 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Icon(isPhoto ? Icons.photo_camera : Icons.event,
+              Icon(isPhoto
+                      ? Icons.photo_camera
+                      : isLegal
+                          ? Icons.gavel
+                          : Icons.event,
                   color: AppTheme.primaryGold, size: 22),
               AppTheme.gapWidthSmall,
               Expanded(
@@ -231,7 +239,11 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                     const SizedBox(height: 2),
                     // 🩹 APPT-002: مواعيد التصوير لا رقم عرض لها
                     Text(
-                      isPhoto ? 'خدمة تصوير عقاري' : 'عرض رقم #$offerNumber',
+                      isPhoto
+                          ? 'خدمة تصوير عقاري'
+                          : isLegal
+                              ? 'موعد مؤكد في المكتب'
+                              : 'عرض رقم #$offerNumber',
                       style: const TextStyle(
                           color: AppTheme.textGrey,
                           fontSize: 13),
@@ -397,7 +409,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
 
             // إلغاء (للمواعيد المعلقة والمؤكدة)
             // 🩹 APPT-003: مواعيد التصوير لا تُلغى من هنا (لا صف لها بجدول المواعيد)
-            if (sts <= 1 && !pendingCounter && !isPhoto) ...[
+            if (sts <= 1 && !pendingCounter && !isPhoto && !isLegal) ...[
               AppTheme.gapHeightMedium,
               SizedBox(
                 width: double.infinity,
@@ -412,9 +424,23 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               ),
             ],
 
+            if (sts == 2 && isLegal && appt.consultationId.isNotEmpty) ...[
+              AppTheme.gapHeightMedium,
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => context.push('/legal/consultations'),
+                  icon: const Icon(Icons.star_rate, color: AppTheme.deepBlack),
+                  label: const Text('تقييم الجلسة القانونية ⭐',
+                      style: TextStyle(color: AppTheme.deepBlack,
+                          fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+
             // تقييم للموعد المنتهي
             // 🩹 APPT-003: كان يمرّر ownId فارغاً لمواعيد التصوير ⇒ فشل صامت
-            if (sts == 2 && !isPhoto && appt.ownId.trim().isNotEmpty) ...[
+            if (sts == 2 && !isPhoto && !isLegal && appt.ownId.trim().isNotEmpty) ...[
               AppTheme.gapHeightMedium,
               SizedBox(
                 width: double.infinity,

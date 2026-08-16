@@ -392,12 +392,18 @@ class LegalProvider with ChangeNotifier {
   }
 
   /// السلوتات الحرة (للعميل قبل حجز الجلسة الحضورية)
-  Future<Map<String, dynamic>> fetchFreeSlots({String lawyerUid = '', int days = 14}) async {
+  Future<Map<String, dynamic>> fetchFreeSlots({
+    String lawyerUid = '',
+    String parentConsultationId = '',
+    int days = 30,
+  }) async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'get_free_slots',
         'user_uid': _actorUid,
         if (lawyerUid.isNotEmpty) 'lawyer_uid': lawyerUid,
+        if (parentConsultationId.isNotEmpty)
+          'parent_consultation_id': parentConsultationId,
         'days': days,
       });
       final data = res.data as Map<String, dynamic>?;
