@@ -277,6 +277,7 @@ class ErrorUtils {
     'CONSULTATION_INTENT_ID_REQUIRED': 'بيانات طلب الاستشارة ناقصة.',
     'CONSULTATION_INTENT_NOT_FOUND': 'طلب الاستشارة غير موجود أو انتهت صلاحيته.',
     'CONSULTATION_INTENT_NOT_PAYABLE': 'لا يمكن إنشاء دفعة لهذا الطلب في حالته الحالية.',
+    'CONSULTATION_INTENT_NOT_RESCHEDULABLE': 'لا يمكن تغيير موعد هذا الطلب في حالته الحالية.',
     'INVALID_CONSULTATION_FLOW': 'مسار الاستشارة غير صالح.',
     'IDEMPOTENCY_KEY_REQUIRED': 'تعذّر تجهيز العملية بأمان — أعد فتح الشاشة.',
     'SLOT_HOLD_EXPIRED': 'انتهت مهلة حجز الموعد — اختر موعداً جديداً دون تكرار بياناتك.',

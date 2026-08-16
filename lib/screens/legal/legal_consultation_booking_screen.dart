@@ -46,6 +46,7 @@ class _State extends State<LegalConsultationBookingScreen>
 
   // البيانات
   Map<String, dynamic>? _pendingPayment;    // دفعة قيد المراجعة (أقدم نوع)
+  Map<String, dynamic>? _pendingV2Intent;
   Map<int, Map<String, dynamic>> _pendingByType = {}; // دفعة معلّقة لكل نوع
   Map<String, dynamic>? _rejectedPayment;   // دفعة مرفوضة من الإدارة (sts=2)
   Map<String, dynamic>? _rejectedConsultation; // استشارة مرفوضة نهائياً (4)
@@ -299,6 +300,20 @@ class _State extends State<LegalConsultationBookingScreen>
       // 🎁 رصيد ممنوح من الإدارة (بديل الاسترداد) — يسمح بطلب بلا دفع
       final credits = await context.read<LegalProvider>().fetchMyCredits(uid);
 
+      Map<String, dynamic>? pendingV2Intent;
+      final pendingIntentId = pending?['consultation_intent_id']?.toString() ?? '';
+      if (pendingIntentId.isNotEmpty) {
+        final intentRes = await SupabaseService().invokeFunction('legal-actions', body: {
+          'action': 'get_consultation_intent_v2',
+          'user_uid': uid,
+          'intent_id': pendingIntentId,
+        });
+        final intentData = intentRes.data as Map<String, dynamic>?;
+        if (intentData?['success'] == true && intentData?['intent'] is Map) {
+          pendingV2Intent = Map<String, dynamic>.from(intentData!['intent'] as Map);
+        }
+      }
+
       // 🔄 SYNC-002: هل اعتُمدت دفعة كان المستخدم ينتظرها؟
       // كان عليه أن يعود يدوياً للرئيسية ثم يضغط «إرسال الطلب للمحامي».
       // الآن ننقله تلقائياً فور الاعتماد وهو على شاشة الانتظار.
@@ -309,6 +324,7 @@ class _State extends State<LegalConsultationBookingScreen>
       if (mounted) setState(() {
         _credits = credits;
         _pendingPayment = pending;
+        _pendingV2Intent = pendingV2Intent;
         _pendingByType = pendingByType;
         _rejectedPayment = rejected;
         _approvedPayment = approved;
@@ -1985,7 +2001,10 @@ class _State extends State<LegalConsultationBookingScreen>
                   child: ElevatedButton.icon(
                     onPressed: _selectedSlot == null
                         ? null
-                        : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
+                        : (_v2IntentId != null &&
+                                _pendingV2Intent?['status'] == 'payment_needs_slot')
+                            ? _replaceV2Reservation
+                            : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
                     icon: const Icon(Icons.arrow_back, color: Colors.black),
                     label: Text(
                         _selectedSlot == null
@@ -2030,6 +2049,50 @@ class _State extends State<LegalConsultationBookingScreen>
     if (dt == null) return '';
     return '${_dayLabel(dt)} ${dt.hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _startReplaceV2Reservation() {
+    final intent = _pendingV2Intent;
+    if (intent == null) return;
+    setState(() {
+      _v2IntentId = intent['id']?.toString();
+      _v2Flow = intent['flow']?.toString() ?? 'onsite_new';
+      _continueChatId = intent['parent_consultation_id']?.toString();
+      _serviceType = 1;
+      _allowOtherLawyer = false;
+      _slotsFuture = null;
+      _selectedSlot = null;
+      _selectedDayKey = null;
+      _screen = 7;
+    });
+  }
+
+  Future<void> _replaceV2Reservation() async {
+    if (_v2IntentId == null || _selectedSlot == null) return;
+    setState(() => _submitting = true);
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'replace_consultation_reservation_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'intent_id': _v2IntentId,
+        'slot': _selectedSlot,
+        'allow_other_lawyer': _allowOtherLawyer,
+        'idempotency_key': _newUuid(),
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['success'] == true) {
+        await _loadAll();
+        if (mounted) {
+          _goTo(6);
+          _snack('✅ تم تثبيت الموعد الجديد على دفعتك الحالية');
+        }
+      } else {
+        _snack(ErrorUtils.arabicMessage(data?['error']));
+      }
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+    }
+    if (mounted) setState(() => _submitting = false);
   }
 
   Future<void> _joinSameLawyerWaitlist() async {
@@ -2180,6 +2243,32 @@ class _State extends State<LegalConsultationBookingScreen>
           Text(isCont ? '2️⃣ بعد التأكيد → تُفتح المحادثة تلقائياً' : '2️⃣ بعد التأكيد → ترسل الطلب للمحامي', style: const TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
           if (!isCont) const Text('3️⃣ المحامي يدرس ويفتح المحادثة', style: TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
         ])),
+      if (_pendingV2Intent?['status'] == 'payment_needs_slot') ...[
+        AppTheme.gapHeightMedium,
+        Container(
+          width: double.infinity,
+          padding: AppTheme.paddingAllMedium,
+          decoration: BoxDecoration(
+            color: AppTheme.warningOrange.withOpacity(0.12),
+            borderRadius: AppTheme.radiusMedium,
+            border: Border.all(color: AppTheme.warningOrange),
+          ),
+          child: const Text(
+            'انتهت مهلة الموعد المؤقت. اختر موعداً جديداً وستبقى الدفعة نفسها دون دفع ثانٍ.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.warningOrange),
+          ),
+        ),
+        AppTheme.gapHeightSmall,
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _startReplaceV2Reservation,
+            icon: const Icon(Icons.event_repeat),
+            label: const Text('اختيار موعد جديد'),
+          ),
+        ),
+      ],
       AppTheme.gapHeightXL,
       SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
         onPressed: () { _resetWizard(); _loadAll(); },

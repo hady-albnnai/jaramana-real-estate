@@ -369,6 +369,18 @@ serve(async (req) => {
       return json({ success: true, intent: data, reservation });
     }
 
+    if (action === "replace_consultation_reservation_v2") {
+      const { data, error } = await supabaseAdmin.rpc("replace_consultation_reservation_v2", {
+        p_user_uid: uid,
+        p_intent_id: body.intent_id,
+        p_slot: body.slot,
+        p_allow_other_lawyer: body.allow_other_lawyer === true,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
     if (action === "join_consultation_waitlist_v2") {
       const { data, error } = await supabaseAdmin.rpc("join_consultation_waitlist_v2", {
         p_user_uid: uid,

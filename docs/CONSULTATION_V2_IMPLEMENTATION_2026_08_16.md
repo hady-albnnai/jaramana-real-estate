@@ -1,0 +1,86 @@
+# تنفيذ نظام الاستشارة القانونية V2 — 2026-08-16
+
+## الحالة
+
+- `features.consultationFlowV2 = true` حياً.
+- بيانات الاستشارات/دفعاتها/جلساتها/حجوزاتها أعيدت إلى صفر بعد E2E.
+- المحامي الأول أعيد إلى جدوله الأحد–الخميس 09:00–17:00.
+- المحامي الثاني أعيد إلى `avl={}` بعد اختبار النقل الصريح.
+
+## ما نُفذ
+
+### المواعيد
+- حذف overload القديم الملتبس لـ`pick_next_lawyer`.
+- الاستدعاءات صريحة وتفحص خطأ RPC.
+- 30 يوماً بدلاً من 14.
+- فصل خطأ التحميل عن عدم وجود موعد.
+- `lawyer_time_reservations` + GiST EXCLUDE يمنعان أي تداخل ذري.
+- hold لمدة 6 ساعات.
+- الموعد القانوني `kind=legal` ومؤكد تلقائياً بعد الدفع.
+- التريغرات العقارية والإحصاءات لا تعمل على الموعد القانوني.
+- Flutter لا يصنف الموعد القانوني تصويراً.
+
+### الدفع
+- `consultation_intents` يحفظ الطلب قبل الدفع.
+- `payments.consultation_intent_id` FK حقيقي.
+- تحقق وجود إثبات الدفع والقناة المفعلة.
+- اعتماد V4 ذري، وV1 يفوض للمسار القديم.
+- رفض الدفع يحرر الحجز ويضع intent في failed.
+- عكس الدفع يعوض الجلسة/الموعد/الحجز/التحويل حسب الحالة، ويرفض بعد استهلاك الخدمة.
+
+### المحادثة
+- `consultation_chat_sessions` لكل جلسة أساسية/تجديد.
+- القبول وإنشاء الجلسة الأساسية معاملة واحدة.
+- التجديد المعتمد ينشئ session=ready ولا يبدأ الوقت.
+- المحامي يضغط جاهز؛ `join_deadline=now+2m`.
+- دخول المستخدم قبل المهلة يبدأ الوقت فوراً.
+- عدم دخوله يبدأ الوقت تلقائياً بسبب `grace_expired`.
+- تمديد مجاني ذري 5 دقائق.
+- modal نهاية: تجديد/حضورية/إنهاء وتقييم/لاحقاً.
+
+### التحويل والانتظار
+- الحضورية Child عبر `parent_consultation_id`، والهاتفية الأصلية لا تتغير.
+- خصم الهاتفية الأساسية فقط.
+- نفس المحامي أولاً.
+- عند انعدام 30 يوماً: waitlist أو محامٍ آخر بموافقة صريحة أو هاتفية.
+- `other_lawyer_consent=true` مثبت خادمياً.
+
+### الإشعارات
+- Acts جديدة ومساراتها مضافة للراوتر.
+- `consultation_event_outbox` + worker كل دقيقة + retries.
+- Push لا يعتمد على نجاح transaction الخارجية، ولا يتكرر عبر event_key.
+
+### الأمان
+- جداول V2 service_role فقط.
+- consultation_files service_role فقط، 8MB، صور + audio/mp4.
+- عدم كشف lawyer_uid للعميل؛ اللقب فقط.
+
+## نتيجة E2E الحية
+
+نجح:
+1. هاتفية: intent→payment→approve→consultation.
+2. قبول المحامي ذرياً وإنشاء session ready.
+3. جاهزية المحامي ومهلة دقيقتين.
+4. دخول هناء المبكر ⇒ `user_joined`.
+5. رسالة + تمديد مجاني.
+6. نهاية session.
+7. تجديد مدفوع ⇒ ready بلا بدء.
+8. استئناف وتجديد وانضمام.
+9. عدم انضمام ⇒ `grace_expired`, `user_joined_at=null`.
+10. تحويل حضوري: 2000-500=1500، نفس المحامي، appointment legal مؤكد.
+11. لا إشعار عقاري خاطئ (`act=appointment` صفر).
+12. عكس التحويل: payment=3, appointment=3, reservation=cancelled, child=3, parent converted=false.
+13. رفض دفعة: intent=failed, reservation=released, payment=2.
+14. محامٍ بديل: صفر مواعيد للأول، عرض الثاني، consent، اعتماد V4.
+15. waitlist: active→notified عند توفر slot.
+16. Outbox: 8 أحداث أرسلت، failed=0.
+17. جلسات الاختبار ألغيت، والبيانات أعيدت إلى صفر.
+
+## الملفات المرجعية
+
+- `docs/CONSULTATION_SUBATOMIC_QUANTUM_ANALYSIS_2026_08_16.md`
+- migrations: `2026_08_16_consultation_v2_*`
+- `supabase/functions/legal-actions/index.ts`
+- `supabase/functions/admin-payments/index.ts`
+- `lib/screens/legal/legal_consultation_booking_screen.dart`
+- `lib/screens/legal/consultation_chat_screen.dart`
