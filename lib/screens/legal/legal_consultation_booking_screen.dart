@@ -66,6 +66,7 @@ class _State extends State<LegalConsultationBookingScreen>
   String? _continueChatId;
   String? _v2IntentId;
   String _v2Flow = '';
+  bool _allowOtherLawyer = false;
   String? _v2IdempotencyKey;
   num? _v2QuotedAmount;
   final _subjectCtrl = TextEditingController();
@@ -375,7 +376,8 @@ class _State extends State<LegalConsultationBookingScreen>
   }
   void _resetWizard() {
     _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null;
-    _v2IntentId = null; _v2Flow = ''; _v2IdempotencyKey = null;
+    _v2IntentId = null; _v2Flow = ''; _allowOtherLawyer = false;
+    _v2IdempotencyKey = null;
     _v2QuotedAmount = null; _viewingPending = false; _selectedSlot = null;
     // 📅 UI-CAL-001: تصفير حالة التقويم وكاش المواعيد — وإلا عُرضت مواعيد
     // قديمة (وربما محجوزة الآن) عند بدء حجز جديد.
@@ -493,6 +495,7 @@ class _State extends State<LegalConsultationBookingScreen>
           'attachments': attachments,
           if (_serviceType == 1) 'slot': _selectedSlot,
           'idempotency_key': _v2IdempotencyKey,
+          if (_allowOtherLawyer) 'allow_other_lawyer': true,
         });
         final p = prep.data as Map<String, dynamic>?;
         if (p?['success'] != true) {
@@ -1793,7 +1796,9 @@ class _State extends State<LegalConsultationBookingScreen>
         future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(
           days: 30,
           parentConsultationId:
-              _v2Flow == 'onsite_convert' ? (_continueChatId ?? '') : '',
+              _v2Flow == 'onsite_convert' && !_allowOtherLawyer
+                  ? (_continueChatId ?? '')
+                  : '',
         ),
         builder: (_, snap) {
           if (snap.connectionState != ConnectionState.done) {
@@ -2027,6 +2032,33 @@ class _State extends State<LegalConsultationBookingScreen>
         '${dt.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _joinSameLawyerWaitlist() async {
+    final parent = _continueChatId ?? '';
+    if (parent.isEmpty) return;
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'join_consultation_waitlist_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'parent_consultation_id': parent,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      _snack(data?['success'] == true
+          ? '✅ سنشعرك عند توفر موعد مع محاميك'
+          : ErrorUtils.arabicMessage(data?['error']));
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+    }
+  }
+
+  void _showAlternateLawyerSlots() {
+    setState(() {
+      _allowOtherLawyer = true;
+      _slotsFuture = null;
+      _selectedSlot = null;
+      _selectedDayKey = null;
+    });
+  }
+
   Widget _slotsLoadErrorView(String code) {
     return Center(
       child: Padding(
@@ -2069,6 +2101,27 @@ class _State extends State<LegalConsultationBookingScreen>
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textGrey, fontSize: 13, height: 1.6)),
           AppTheme.gapHeightXL,
+          if (_v2Flow == 'onsite_convert' && !_allowOtherLawyer) ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _joinSameLawyerWaitlist,
+                icon: const Icon(Icons.notifications_active),
+                label: const Text('أعلمني عند توفر موعد مع محاميّ'),
+              ),
+            ),
+            AppTheme.gapHeightSmall,
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _showAlternateLawyerSlots,
+                icon: const Icon(Icons.swap_horiz, color: AppTheme.primaryGold),
+                label: const Text('عرض مواعيد محامٍ آخر بموافقتي',
+                    style: TextStyle(color: AppTheme.primaryGold)),
+              ),
+            ),
+            AppTheme.gapHeightSmall,
+          ],
           SizedBox(
             width: double.infinity,
             height: 46,

@@ -293,15 +293,28 @@ serve(async (req) => {
         return json({ success: false, error: "CONSULTATION_V2_NOT_ENABLED" }, 409);
       }
       const attachments = Array.isArray(body.attachments) ? body.attachments.map(String) : [];
-      const { data, error } = await supabaseAdmin.rpc("prepare_consultation_intent_v2", {
-        p_user_uid: uid,
-        p_flow: (body.flow ?? "").toString(),
-        p_parent_consultation_id: body.parent_consultation_id || null,
-        p_subject: (body.subject ?? "").toString(),
-        p_attachments: attachments,
-        p_slot: body.slot || null,
-        p_idempotency_key: body.idempotency_key,
-      });
+      const alternate = body.allow_other_lawyer === true &&
+        (body.flow ?? "").toString() === "onsite_convert";
+      const rpcName = alternate
+        ? "prepare_alternate_onsite_intent_v2"
+        : "prepare_consultation_intent_v2";
+      const params = alternate
+        ? {
+          p_user_uid: uid,
+          p_parent_consultation_id: body.parent_consultation_id,
+          p_slot: body.slot,
+          p_idempotency_key: body.idempotency_key,
+        }
+        : {
+          p_user_uid: uid,
+          p_flow: (body.flow ?? "").toString(),
+          p_parent_consultation_id: body.parent_consultation_id || null,
+          p_subject: (body.subject ?? "").toString(),
+          p_attachments: attachments,
+          p_slot: body.slot || null,
+          p_idempotency_key: body.idempotency_key,
+        };
+      const { data, error } = await supabaseAdmin.rpc(rpcName, params);
       if (error) return json({ success: false, error: error.message }, 400);
       return json(data as Record<string, unknown>);
     }
@@ -339,6 +352,15 @@ serve(async (req) => {
         reservation = hold as Record<string, unknown> | null;
       }
       return json({ success: true, intent: data, reservation });
+    }
+
+    if (action === "join_consultation_waitlist_v2") {
+      const { data, error } = await supabaseAdmin.rpc("join_consultation_waitlist_v2", {
+        p_user_uid: uid,
+        p_parent_consultation_id: body.parent_consultation_id,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
     }
 
     if (action === "lawyer_ready_chat_v2") {
