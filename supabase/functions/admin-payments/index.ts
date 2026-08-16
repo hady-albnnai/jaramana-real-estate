@@ -126,7 +126,7 @@ serve(async (req) => {
     if (action === "approve") {
       const paymentId = (body.payment_id ?? body.paymentId)?.toString() ?? "";
       if (!paymentId) return json({ success: false, error: "PAYMENT_ID_REQUIRED" }, 400);
-      const { data, error } = await supabaseAdmin.rpc("approve_payment_final", {
+      const { data, error } = await supabaseAdmin.rpc("approve_payment_final_v2", {
         p_payment_id: paymentId,
         p_admin_id: adminUid,
       });

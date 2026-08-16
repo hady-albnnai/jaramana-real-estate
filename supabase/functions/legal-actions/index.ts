@@ -76,6 +76,51 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+function readM4aDurationSeconds(bytes: Uint8Array): number | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const typeAt = (offset: number) => String.fromCharCode(
+    bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7],
+  );
+  const scan = (start: number, end: number): number | null => {
+    let offset = start;
+    while (offset + 8 <= end) {
+      let size = view.getUint32(offset, false);
+      const type = typeAt(offset);
+      let header = 8;
+      if (size === 1) {
+        if (offset + 16 > end) return null;
+        const large = view.getBigUint64(offset + 8, false);
+        if (large > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+        size = Number(large);
+        header = 16;
+      } else if (size === 0) {
+        size = end - offset;
+      }
+      if (size < header || offset + size > end) return null;
+      if (type === "mvhd") {
+        const content = offset + header;
+        const version = bytes[content];
+        const timescaleOffset = content + (version === 1 ? 20 : 12);
+        const durationOffset = content + (version === 1 ? 24 : 16);
+        if (durationOffset + (version === 1 ? 8 : 4) > offset + size) return null;
+        const timescale = view.getUint32(timescaleOffset, false);
+        if (!timescale) return null;
+        const duration = version === 1
+          ? Number(view.getBigUint64(durationOffset, false))
+          : view.getUint32(durationOffset, false);
+        return duration / timescale;
+      }
+      if (["moov", "trak", "mdia"].includes(type)) {
+        const nested = scan(offset + header, offset + size);
+        if (nested != null) return nested;
+      }
+      offset += size;
+    }
+    return null;
+  };
+  try { return scan(0, bytes.length); } catch { return null; }
+}
+
 function safeImageContentType(value: unknown): string {
   const contentType = typeof value === "string" ? value.toLowerCase() : "image/jpeg";
   return ["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(contentType)
@@ -749,15 +794,8 @@ serve(async (req) => {
       const expectedPrice = serviceType === 1 ? legalCfg.onsite : legalCfg.phone;
       if (price !== expectedPrice) return json({ success: false, error: "INVALID_PRICE", expected: expectedPrice }, 400);
 
-      // 🎁 رصيد استشارة ممنوح من الإدارة: يُستهلك بدل الدفع (المبلغ سبق أن دخل
-      // الخزينة في الطلب المتعذّر) — يُفحص هنا قبل الإنشاء ويُستهلك بعده.
-      const { data: openCredit } = await supabaseAdmin
-        .from("consultation_credits")
-        .select("id").eq("user_uid", uid).eq("service_type", serviceType)
-        .eq("consumed", false).limit(1).maybeSingle();
-      const usingCredit = !!openCredit?.id;
-
-      // لا حد أقصى للمحادثات — المستخدم يقدر يحجز استشارات جديدة بحرية
+      // الدفعة أو الرصيد يُتحقق منه ويُحجز ذرياً داخل RPC؛ الواجهة ليست مصدراً للثقة.
+      // لا حد أقصى للمحادثات — المستخدم يقدر يحجز استشارات جديدة بحرية.
 
       const { data, error } = await supabaseAdmin.rpc("create_legal_consultation_internal", {
         p_user_uid: uid,
@@ -770,46 +808,9 @@ serve(async (req) => {
       const consultation = Array.isArray(data) ? data[0] : data;
       const consultId = consultation?.id?.toString() ?? "";
 
-      // ═══════════════════════════════════════════════════════════════
-      // 💳 PAY-001 (2026-08-15): ربط الاستشارة بالدفعة المقبولة
-      // ═══════════════════════════════════════════════════════════════
-      // بلاغ المالك: «بعد ما انقبلت الدفعة وصلت للإرسال للمحامي رجع
-      // عطاني إنو لازم أدفع».
-      // العطل الثاني (بعد إصلاح الواجهة): `payment_id` في
-      // legal_consultations **لم يكن يُضبط إطلاقاً** في أي مسار.
-      // الأثر: الشاشة تحسب «دفعة مقبولة بلا استشارة» عبر مقارنة
-      // payment_id ⇒ تبقى البطاقة ظاهرة للأبد بعد إرسال الطلب، ويمكن
-      // استهلاك نفس الدفعة مراراً لحجز استشارات متعددة مجاناً.
-      //
-      // الربط خادمي لا عميلي: العميل لا يُرسل payment_id (فيزوّره)،
-      // بل نبحث نحن عن أقدم دفعة مقبولة (sts=1) لنفس النوع غير مرتبطة.
-      // ⚠️ الرصيد المجاني (consultation_credits) مسار منفصل بلا دفعة.
-      if (consultId && !usingCredit) {
-        const { data: freePay } = await supabaseAdmin
-          .from("payments")
-          .select("id")
-          .eq("uid", uid)
-          .eq("tp", 2)
-          .eq("sts", 1)
-          .eq("pkg", serviceType)
-          .order("ts_crt", { ascending: true });
-        if (freePay && freePay.length > 0) {
-          const { data: linked } = await supabaseAdmin
-            .from("legal_consultations")
-            .select("payment_id")
-            .not("payment_id", "is", null);
-          const used = new Set(
-            (linked ?? []).map((r: Record<string, unknown>) => String(r.payment_id)),
-          );
-          const match = freePay.find((p: Record<string, unknown>) => !used.has(String(p.id)));
-          if (match) {
-            await supabaseAdmin
-              .from("legal_consultations")
-              .update({ payment_id: match.id, payment_status: 1 })
-              .eq("id", consultId);
-          }
-        }
-      }
+      // ربط الدفعة أو استهلاك رصيد الاستشارة أصبح ذرياً داخل
+      // create_legal_consultation_internal؛ لا توجد نافذة لإنشاء طلب مجاني
+      // أو لاستهلاك الدفعة نفسها مرتين.
 
       // تحديد lawyer_alias (محامي المكتب الأول/الثاني/الثالث)
       const lawyerUid = consultation?.lawyer_uid?.toString() ?? "";
@@ -903,6 +904,9 @@ serve(async (req) => {
           .select("id").single();
         if (apptErr) {
           await supabaseAdmin.from("legal_consultations").delete().eq("id", consultId);
+          await supabaseAdmin.from("consultation_credits").update({
+            consumed: false, consumed_at: null, consultation_id: null,
+          }).eq("consultation_id", consultId);
           return json({ success: false, error: apptErr.message }, 400);
         }
         apptId = appt?.id?.toString() ?? null;
@@ -916,15 +920,7 @@ serve(async (req) => {
         await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: lawyerUid });
       }
 
-      // استهلاك الرصيد بعد نجاح الإنشاء (ذرّي عبر SKIP LOCKED)
-      let creditUsed = false;
-      if (usingCredit) {
-        const { data: consumed } = await supabaseAdmin.rpc("consume_consultation_credit", {
-          p_user_uid: uid, p_service_type: serviceType, p_consultation_id: consultId,
-        });
-        creditUsed = consumed === true;
-      }
-
+      const creditUsed = !consultation?.payment_id;
       return json({
         success: true, consultation_id: consultId,
         lawyer_assigned: !!lawyerUid, appointment_id: apptId,
@@ -1586,11 +1582,16 @@ serve(async (req) => {
         }, 409);
       }
 
-      const { error: updErr } = await supabaseAdmin
+      const { data: updatedRows, error: updErr } = await supabaseAdmin
         .from("legal_consultations")
         .update({ status: newStatus, notes: updateNotes || undefined, ts_upd: new Date().toISOString() })
-        .eq("id", consultId);
+        .eq("id", consultId)
+        .eq("status", currentStatus)
+        .select("id");
       if (updErr) return json({ success: false, error: updErr.message }, 400);
+      if (!updatedRows || updatedRows.length !== 1) {
+        return json({ success: false, error: "CONSULTATION_CONCURRENTLY_UPDATED" }, 409);
+      }
 
       // 🔔 إشعار المستخدم بتحديث الحالة
       const statusLabels: Record<number, string> = { 1: "تم تأكيد", 2: "تم إتمام", 3: "تم إلغاء", 4: "تم رفض" };
@@ -1641,8 +1642,10 @@ serve(async (req) => {
         return json({ success: false, error: "ONSITE_HAS_NO_CHAT" }, 400);
       }
 
-      // فقط المحامي المُسند أو الإدارة يفتح المحادثة
-      if (isLawyer(role) && row.lawyer_uid !== uid && !canManageLawyerProfiles(role)) {
+      // فقط المحامي المُسند أو الإدارة المخوّلة يفتح المحادثة.
+      const assignedLawyer = isLawyer(role) && row.lawyer_uid === uid;
+      const managingAdmin = canManageLawyerProfiles(role);
+      if (!assignedLawyer && !managingAdmin) {
         return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
       }
       if (Number(row.status) !== 1) return json({ success: false, error: "CONSULTATION_NOT_CONFIRMED" }, 400);
@@ -1653,9 +1656,17 @@ serve(async (req) => {
       // على default=15 فلا يتبع تعديل الإدارة).
       const startCfg = await getLegalPrices(supabaseAdmin);
       const startMins = startCfg.durationMins;
-      await supabaseAdmin.from("legal_consultations").update({
-        chat_started_at: now, status: 1, chat_duration_minutes: startMins,
-      }).eq("id", consultId);
+      const { data: startedRows, error: startErr } = await supabaseAdmin
+        .from("legal_consultations")
+        .update({ chat_started_at: now, status: 1, chat_duration_minutes: startMins })
+        .eq("id", consultId)
+        .eq("status", 1)
+        .is("chat_started_at", null)
+        .select("id");
+      if (startErr) return json({ success: false, error: startErr.message }, 400);
+      if (!startedRows || startedRows.length !== 1) {
+        return json({ success: false, error: "CHAT_ALREADY_STARTED" }, 409);
+      }
 
       // رسالة system
       await supabaseAdmin.from("consultation_chats").insert({
@@ -1739,11 +1750,37 @@ serve(async (req) => {
       // AAC/M4A: صندوق ftyp يبدأ عند البايت الرابع.
       const isM4a = String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
       if (!isM4a) return json({ success: false, error: "INVALID_AUDIO_CONTENT" }, 400);
+      const actualDuration = readM4aDurationSeconds(bytes);
+      if (actualDuration == null || actualDuration < 0.5 || actualDuration > 61.5) {
+        return json({ success: false, error: "INVALID_AUDIO_DURATION" }, 400);
+      }
+      if (Math.abs(actualDuration - duration) > 3) {
+        return json({ success: false, error: "AUDIO_DURATION_MISMATCH" }, 400);
+      }
       const path = `${uid}/chat/${consultId}/${crypto.randomUUID()}.m4a`;
       const { error } = await supabaseAdmin.storage.from("consultation_files")
         .upload(path, bytes, { contentType: "audio/mp4", cacheControl: "3600", upsert: false });
       if (error) return json({ success: false, error: "CHAT_VOICE_UPLOAD_FAILED" }, 400);
       return json({ success: true, path });
+    }
+
+    // ─── تنظيف ملف محادثة رُفع لكن فشل ربطه برسالة ───
+    if (action === "discard_chat_upload") {
+      const consultId = (body.consultation_id ?? "").toString();
+      const path = (body.path ?? "").toString();
+      if (!consultId || !path.startsWith(`${uid}/chat/${consultId}/`) || path.includes("..")) {
+        return json({ success: false, error: "INVALID_FILE_PATH" }, 403);
+      }
+      const { data: row } = await supabaseAdmin.from("legal_consultations")
+        .select("user_uid, lawyer_uid").eq("id", consultId).eq("i_del", 0).maybeSingle();
+      const participant = row?.user_uid === uid || (isLawyer(role) && row?.lawyer_uid === uid);
+      if (!participant) return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+      const { count } = await supabaseAdmin.from("consultation_chats")
+        .select("id", { count: "exact", head: true }).eq("file_url", path).eq("i_del", 0);
+      if ((count ?? 0) > 0) return json({ success: false, error: "FILE_ALREADY_LINKED" }, 409);
+      const { error } = await supabaseAdmin.storage.from("consultation_files").remove([path]);
+      if (error) return json({ success: false, error: "CHAT_UPLOAD_CLEANUP_FAILED" }, 400);
+      return json({ success: true });
     }
 
     // ─── إرسال رسالة في المحادثة ───
@@ -1754,13 +1791,24 @@ serve(async (req) => {
       const fileUrl = (body.file_url ?? "").toString();
       const fileName = (body.file_name ?? "").toString();
       const durationSeconds = body.duration_seconds ? Number(body.duration_seconds) : null;
+      let clientMessageId = (body.client_message_id ?? "").toString();
 
       if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      // توافق مؤقت مع النسخ المثبتة قبل هذا التحصين؛ النسخة الجديدة ترسل UUID ثابتاً.
+      if (!clientMessageId) clientMessageId = crypto.randomUUID();
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientMessageId)) {
+        return json({ success: false, error: "CLIENT_MESSAGE_ID_REQUIRED" }, 400);
+      }
       if (!["text", "image", "voice"].includes(messageType)) {
         return json({ success: false, error: "INVALID_MESSAGE_TYPE" }, 400);
       }
       if (messageType === "text" && !content) return json({ success: false, error: "CONTENT_REQUIRED" }, 400);
+      if (content.length > 4000) return json({ success: false, error: "MESSAGE_TOO_LONG" }, 413);
+      if (fileName.length > 160) return json({ success: false, error: "FILE_NAME_TOO_LONG" }, 413);
       if (messageType !== "text" && !fileUrl) return json({ success: false, error: "FILE_REQUIRED" }, 400);
+      if (messageType === "voice" && (!durationSeconds || durationSeconds < 1 || durationSeconds > 60)) {
+        return json({ success: false, error: "INVALID_VOICE_DURATION" }, 400);
+      }
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
@@ -1793,14 +1841,42 @@ serve(async (req) => {
         return json({ success: false, error: "CHAT_EXPIRED_7DAYS", message: "انتهت صلاحية المحادثة (7 أيام)" }, 400);
       }
 
+      // عدم التكرار: إعادة نفس الطلب الشبكي تعيد الرسالة نفسها بلا إشعار ثانٍ.
+      const { data: existingMessage } = await supabaseAdmin
+        .from("consultation_chats")
+        .select("*")
+        .eq("consultation_id", consultId)
+        .eq("sender_id", uid)
+        .eq("client_message_id", clientMessageId)
+        .maybeSingle();
+      if (existingMessage) return json({ success: true, message: existingMessage, duplicate: true });
+
+      // حد إساءة الاستخدام: عشرون رسالة في الدقيقة لكل مرسل داخل الاستشارة.
+      const minuteAgo = new Date(Date.now() - 60_000).toISOString();
+      const { count: recentCount } = await supabaseAdmin
+        .from("consultation_chats")
+        .select("id", { count: "exact", head: true })
+        .eq("consultation_id", consultId)
+        .eq("sender_id", uid)
+        .gte("ts_crt", minuteAgo);
+      if ((recentCount ?? 0) >= 20) {
+        return json({ success: false, error: "CHAT_RATE_LIMIT" }, 429);
+      }
+
       // حفظ الرسالة
       const { data: msg, error: insertErr } = await supabaseAdmin
         .from("consultation_chats").insert({
           consultation_id: consultId, sender_id: uid,
           message_type: messageType, content,
           file_url: fileUrl || null, file_name: fileName || null,
-          duration_seconds: durationSeconds,
+          duration_seconds: durationSeconds, client_message_id: clientMessageId,
         }).select().single();
+      if (insertErr?.code === "23505") {
+        const { data: duplicate } = await supabaseAdmin.from("consultation_chats")
+          .select("*").eq("consultation_id", consultId)
+          .eq("sender_id", uid).eq("client_message_id", clientMessageId).maybeSingle();
+        if (duplicate) return json({ success: true, message: duplicate, duplicate: true });
+      }
       if (insertErr) return json({ success: false, error: insertErr.message }, 400);
 
       // إشعار الطرف الآخر
@@ -1843,7 +1919,7 @@ serve(async (req) => {
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, extended, status, lawyer_alias")
+        .select("id, user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, extended, renew_count, status, lawyer_alias")
         .eq("id", consultId).eq("i_del", 0).maybeSingle();
       if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
 
@@ -1881,11 +1957,21 @@ serve(async (req) => {
       // تحديد الرسائل غير المقروءة كمقروءة (للطرف الآخر)
       const otherUid = isStudent ? row.lawyer_uid : isAssignedLawyer ? row.user_uid : null;
       if (otherUid) {
-        await supabaseAdmin.from("consultation_chats")
+        const { data: readRows } = await supabaseAdmin.from("consultation_chats")
           .update({ is_read: true })
           .eq("consultation_id", consultId)
           .eq("is_read", false)
-          .neq("sender_id", uid);
+          .neq("sender_id", uid)
+          .select("id");
+        if ((readRows?.length ?? 0) > 0) {
+          try {
+            const channel = supabaseAdmin.channel(`consultation:${consultId}`);
+            await channel.send({
+              type: "broadcast", event: "messages_read", payload: { changed: true },
+            });
+            await supabaseAdmin.removeChannel(channel);
+          } catch { /* القراءة ستظهر عند الجلب التالي */ }
+        }
       }
 
       // حساب الوقت المتبقي
@@ -1907,6 +1993,7 @@ serve(async (req) => {
           chat_started_at: row.chat_started_at,
           chat_duration_minutes: row.chat_duration_minutes,
           extended: row.extended,
+          renew_count: row.renew_count ?? 0,
           remaining_seconds: remainingSeconds,
           chat_expired: chatExpired,
           lawyer_alias: row.lawyer_alias ?? "محامي المكتب",
@@ -1922,21 +2009,36 @@ serve(async (req) => {
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, lawyer_uid, extended, chat_duration_minutes, chat_started_at")
+        .select("id, user_uid, lawyer_uid, extended, chat_duration_minutes, chat_started_at, status")
         .eq("id", consultId).eq("i_del", 0).maybeSingle();
       if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
 
-      // فقط المحامي المُسند يمدد
-      if (isLawyer(role) && row.lawyer_uid !== uid && !canManageLawyerProfiles(role)) {
+      // فقط المحامي المُسند يمدد؛ الإدارة لا تنوب عنه في هبة الوقت المجانية.
+      if (!isLawyer(role) || row.lawyer_uid !== uid) {
         return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
       }
+      if (Number(row.status) !== 1) return json({ success: false, error: "CHAT_CLOSED" }, 409);
       if (row.extended) return json({ success: false, error: "ALREADY_EXTENDED" }, 400);
       if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
+      const currentDuration = Number(row.chat_duration_minutes) || 15;
+      const currentEnd = new Date(row.chat_started_at).getTime() + currentDuration * 60 * 1000;
+      if (Date.now() > currentEnd + 5 * 60 * 1000) {
+        return json({ success: false, error: "EXTENSION_WINDOW_EXPIRED" }, 409);
+      }
 
-      const newDuration = (Number(row.chat_duration_minutes) || 15) + 5;
-      await supabaseAdmin.from("legal_consultations").update({
-        extended: true, extended_by: uid, chat_duration_minutes: newDuration,
-      }).eq("id", consultId);
+      const newDuration = currentDuration + 5;
+      const { data: extendedRows, error: extendErr } = await supabaseAdmin
+        .from("legal_consultations").update({
+          extended: true, extended_by: uid, chat_duration_minutes: newDuration,
+        })
+        .eq("id", consultId)
+        .eq("status", 1)
+        .eq("extended", false)
+        .select("id");
+      if (extendErr) return json({ success: false, error: extendErr.message }, 400);
+      if (!extendedRows || extendedRows.length !== 1) {
+        return json({ success: false, error: "ALREADY_EXTENDED" }, 409);
+      }
 
       // رسالة system
       await supabaseAdmin.from("consultation_chats").insert({
@@ -1963,6 +2065,30 @@ serve(async (req) => {
       return json({ success: true, new_duration: newDuration });
     }
 
+    // ─── إبلاغ الإدارة عن مشكلة في الاستشارة ───
+    if (action === "report_consultation_issue") {
+      const consultId = (body.consultation_id ?? "").toString();
+      const details = (body.details ?? "").toString().trim();
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (details.length < 10 || details.length > 1000) {
+        return json({ success: false, error: "REPORT_DETAILS_INVALID" }, 400);
+      }
+      const { data: row } = await supabaseAdmin.from("legal_consultations")
+        .select("user_uid, lawyer_uid").eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
+      const { count } = await supabaseAdmin.from("reports")
+        .select("id", { count: "exact", head: true })
+        .eq("rep_uid", uid).eq("tgt_tp", 4).eq("tgt_id", consultId).eq("sts", 0);
+      if ((count ?? 0) > 0) return json({ success: false, error: "REPORT_ALREADY_OPEN" }, 409);
+      const { error } = await supabaseAdmin.from("reports").insert({
+        rep_uid: uid, tgt_uid: row.lawyer_uid, tgt_tp: 4,
+        tgt_id: consultId, rsn: 6, det: details, sts: 0,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true });
+    }
+
     // ─── تقييم الاستشارة ───
     if (action === "rate_consultation") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
@@ -1974,7 +2100,7 @@ serve(async (req) => {
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, rating, status")
+        .select("id, user_uid, rating, status, service_type, chat_started_at, chat_duration_minutes")
         .eq("id", consultId).eq("i_del", 0).maybeSingle();
       if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
 
@@ -1989,7 +2115,18 @@ serve(async (req) => {
       // (2) التقييم يُقبل **مرة واحدة** (ALREADY_RATED) فيفقد المستخدم
       // فرصته الحقيقية بعد انتهاء الخدمة فعلاً.
       // القاعدة: التقييم بعد الإنجاز فقط (status = 2 «مكتملة»).
-      if (Number(row.status) !== 2) {
+      let effectiveStatus = Number(row.status);
+      if (effectiveStatus === 1 && Number(row.service_type) === 0 && row.chat_started_at) {
+        const endAt = new Date(row.chat_started_at).getTime() +
+          (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+        if (Date.now() >= endAt) {
+          const { data: closed } = await supabaseAdmin.from("legal_consultations")
+            .update({ status: 2, ts_upd: new Date().toISOString() })
+            .eq("id", consultId).eq("status", 1).select("id");
+          if ((closed?.length ?? 0) === 1) effectiveStatus = 2;
+        }
+      }
+      if (effectiveStatus !== 2) {
         return json({
           success: false,
           error: "CONSULTATION_NOT_COMPLETED",
@@ -1997,9 +2134,14 @@ serve(async (req) => {
         }, 409);
       }
 
-      await supabaseAdmin.from("legal_consultations").update({
-        rating, rating_comment: comment || null,
-      }).eq("id", consultId);
+      const { data: ratedRows, error: rateErr } = await supabaseAdmin
+        .from("legal_consultations").update({
+          rating, rating_comment: comment || null,
+        }).eq("id", consultId).eq("status", 2).is("rating", null).select("id");
+      if (rateErr) return json({ success: false, error: rateErr.message }, 400);
+      if (!ratedRows || ratedRows.length !== 1) {
+        return json({ success: false, error: "ALREADY_RATED" }, 409);
+      }
 
       return json({ success: true });
     }
@@ -2048,63 +2190,15 @@ serve(async (req) => {
       return json({ success: true, reactivate_count: newCount });
     }
 
-    // ─── تجديد وقت المحادثة (دفع + إضافة 15 دقيقة) ───
+    // ─── التجديد لا يتم من هذا الإجراء إطلاقاً ───
+    // المسار الوحيد: إنشاء دفعة meta.continue_chat ثم اعتمادها إدارياً عبر
+    // approve_payment_final_v2. إبقاء الاسم يعيد خطأً واضحاً للعملاء القدماء.
     if (action === "renew_chat") {
-      const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
-      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
-
-      const { data: row } = await supabaseAdmin
-        .from("legal_consultations")
-        .select("id, user_uid, chat_started_at, chat_duration_minutes, renew_count, expires_at")
-        .eq("id", consultId).eq("i_del", 0).maybeSingle();
-      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
-
-      // فقط صاحب الاستشارة يجدد
-      if (row.user_uid !== uid) return json({ success: false, error: "NOT_OWNER" }, 403);
-      if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
-
-      // التحقق: لم تتجاوز 7 أيام
-      const startedAt = new Date(row.chat_started_at).getTime();
-      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-      if (Date.now() > startedAt + sevenDaysMs) {
-        return json({ success: false, error: "CHAT_EXPIRED_7DAYS", message: "انتهت صلاحية المحادثة (7 أيام)" }, 400);
-      }
-
-      // 2026-08-14: المدة تُقرأ من الإعدادات بدل 15 الثابتة
-      const renewCfg = await getLegalPrices(supabaseAdmin);
-      const addMins = renewCfg.durationMins;
-      const newDuration = (Number(row.chat_duration_minutes) || addMins) + addMins;
-      const newRenewCount = (Number(row.renew_count) || 0) + 1;
-      await supabaseAdmin.from("legal_consultations").update({
-        chat_duration_minutes: newDuration,
-        renew_count: newRenewCount,
-      }).eq("id", consultId);
-
-      // رسالة system
-      await supabaseAdmin.from("consultation_chats").insert({
-        consultation_id: consultId, sender_id: uid,
-        message_type: "system", content: `⏱️ تم تجديد المحادثة ${addMins} دقيقة إضافية (التجديد رقم ${newRenewCount})`,
-      });
-
-      // إشعار المحامي
-      const { data: consult } = await supabaseAdmin
-        .from("legal_consultations").select("lawyer_uid").eq("id", consultId).maybeSingle();
-      if (consult?.lawyer_uid) {
-        await supabaseAdmin.from("notifications").insert({
-          uid: consult.lawyer_uid, tp: 1, ttl: "⏱️ تم تجديد المحادثة",
-          bdy: `العميل جدد المحادثة ${addMins} دقيقة إضافية`,
-          ref_id: consultId, act: "chat_renewed", i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
-        });
-        try {
-          await supabaseAdmin.rpc("send_push_notification", {
-            p_uid: consult.lawyer_uid, p_title: "⏱️ تجديد المحادثة",
-            p_body: `العميل جدد ${addMins} دقيقة إضافية`,
-            p_data: { act: "chat_renewed", ref_id: consultId },
-          });
-        } catch {}
-      }
-
-      return json({ success: true, new_duration: newDuration, renew_count: newRenewCount });
+      return json({
+        success: false,
+        error: "يلزم إنشاء دفعة تجديد وانتظار اعتمادها من الإدارة أولاً.",
+        code: "RENEWAL_PAYMENT_REQUIRED",
+      }, 409);
     }
 
     // ─── جلب المحادثات السابقة (لخيار المتابعة) ───

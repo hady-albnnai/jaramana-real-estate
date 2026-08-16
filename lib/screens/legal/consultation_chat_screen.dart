@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,7 +26,8 @@ class ConsultationChatScreen extends StatefulWidget {
   State<ConsultationChatScreen> createState() => _ConsultationChatScreenState();
 }
 
-class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
+class _ConsultationChatScreenState extends State<ConsultationChatScreen>
+    with WidgetsBindingObserver {
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _storage = StorageService();
@@ -51,6 +54,16 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       context.read<ConfigProvider>().config?.legalDurationMins ?? 15;
   static String _fmtPrice(int v) => v.toString().replaceAllMapped(
       RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+
+  String _newClientMessageId() {
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
   String _lawyerAlias = 'محامي المكتب';
 
   Timer? _timer;
@@ -61,6 +74,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _subscribeRealtime();
       _restoreDraft();
@@ -70,6 +84,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     _timer?.cancel();
@@ -83,11 +98,22 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadMessages();
+    }
+  }
+
   void _subscribeRealtime() {
     _realtimeChannel = SupabaseService().client
         .channel('consultation:${widget.consultationId}')
         .onBroadcast(
           event: 'messages_changed',
+          callback: (_) => _loadMessages(),
+        )
+        .onBroadcast(
+          event: 'messages_read',
           callback: (_) => _loadMessages(),
         )
         .subscribe();
@@ -121,6 +147,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
             _lawyerAlias = (info['lawyer_alias'] ?? 'محامي المكتب').toString();
             _remainingSeconds = (info['remaining_seconds'] ?? 0) as int;
             _timeUp = (info['chat_expired'] ?? false) as bool;
+            _renewCount = (info['renew_count'] ?? 0) as int;
             _loading = false;
           });
           _startTimer();
@@ -218,8 +245,23 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     });
   }
 
+  Future<void> _discardUploadedFile(String path) async {
+    if (path.isEmpty) return;
+    try {
+      await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'discard_chat_upload',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'consultation_id': widget.consultationId,
+        'path': path,
+      });
+    } catch (_) {
+      // مهمة التنظيف الدورية تبقى خط الدفاع الأخير.
+    }
+  }
+
   Future<void> _sendVoice(String path, int duration) async {
     setState(() => _sending = true);
+    var remotePath = '';
     try {
       final bytes = await File(path).readAsBytes();
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
@@ -229,11 +271,15 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
         'file_base64': base64Encode(bytes), 'duration_seconds': duration,
       });
       final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
-      final remotePath = data?['path']?.toString() ?? '';
+      remotePath = data?['path']?.toString() ?? '';
       if (data?['success'] != true || remotePath.isEmpty) throw Exception();
-      await _sendMessage('voice', '', fileUrl: remotePath,
+      final sent = await _sendMessage('voice', '', fileUrl: remotePath,
           fileName: 'رسالة صوتية.m4a', duration: duration);
-    } catch (_) { _showAlert('فشل إرسال الرسالة الصوتية'); }
+      if (!sent) await _discardUploadedFile(remotePath);
+    } catch (_) {
+      if (remotePath.isNotEmpty) await _discardUploadedFile(remotePath);
+      _showAlert('فشل إرسال الرسالة الصوتية');
+    }
     if (mounted) setState(() => _sending = false);
   }
 
@@ -287,6 +333,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1280);
     if (file == null) return;
     setState(() => _sending = true);
+    var remotePath = '';
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
       final bytes = kIsWeb
@@ -305,18 +352,23 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       final data = response.data is Map
           ? Map<String, dynamic>.from(response.data as Map)
           : null;
-      final path = data?['path']?.toString() ?? '';
-      if (data?['success'] != true || path.isEmpty) {
+      remotePath = data?['path']?.toString() ?? '';
+      if (data?['success'] != true || remotePath.isEmpty) {
         throw Exception('CHAT_IMAGE_UPLOAD_FAILED');
       }
-      await _sendMessage('image', '', fileUrl: path, fileName: file.name);
-    } catch (e) { _showAlert('فشل رفع الصورة'); }
+      final sent = await _sendMessage('image', '', fileUrl: remotePath, fileName: file.name);
+      if (!sent) await _discardUploadedFile(remotePath);
+    } catch (_) {
+      if (remotePath.isNotEmpty) await _discardUploadedFile(remotePath);
+      _showAlert('فشل رفع الصورة');
+    }
     if (mounted) setState(() => _sending = false);
   }
 
   Future<bool> _sendMessage(String type, String content, {String? fileUrl, String? fileName, int? duration}) async {
     setState(() => _sending = true);
     var sent = false;
+    final clientMessageId = _newClientMessageId();
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
@@ -324,7 +376,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
         'consultation_id': widget.consultationId,
         'message_type': type, 'content': content,
         'file_url': fileUrl ?? '', 'file_name': fileName ?? '',
-        'duration_seconds': duration,
+        'duration_seconds': duration, 'client_message_id': clientMessageId,
       });
       final data = res.data as Map<String, dynamic>?;
       if (data != null && data['success'] == true) {
@@ -347,29 +399,85 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   }
 
   Future<void> _renewChat() async {
-    setState(() => _sending = true);
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('تجديد المحادثة',
+            style: TextStyle(color: AppTheme.primaryGold)),
+        content: Text(
+          'سيتم نقلك إلى قسم الاستشارة لإنشاء طلب دفع بقيمة '
+          '${_fmtPrice(_renewPrice)} ل.س. لا تُضاف المدة إلا بعد اعتماد الدفعة من الإدارة.',
+          style: const TextStyle(color: AppTheme.textWhite),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('متابعة إلى الدفع'),
+          ),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) context.push('/legal/consultations');
+  }
+
+  Future<void> _showReportDialog() async {
+    final detailsCtrl = TextEditingController();
+    final submit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('إبلاغ الإدارة عن مشكلة',
+            style: TextStyle(color: AppTheme.primaryGold)),
+        content: TextField(
+          controller: detailsCtrl,
+          minLines: 3,
+          maxLines: 6,
+          maxLength: 1000,
+          style: const TextStyle(color: AppTheme.textWhite),
+          decoration: const InputDecoration(
+            hintText: 'اشرح المشكلة بوضوح دون كتابة معلومات غير ضرورية',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('إرسال البلاغ')),
+        ],
+      ),
+    );
+    final details = detailsCtrl.text.trim();
+    detailsCtrl.dispose();
+    if (submit != true || details.length < 10 || !mounted) {
+      if (submit == true && details.length < 10) {
+        _showAlert('يرجى كتابة تفاصيل أوضح للمشكلة');
+      }
+      return;
+    }
     try {
-      final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-      // التجديد بسعر الإعدادات (legalPrice.renew) — لا رقم ثابت
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
-        'action': 'renew_chat', 'user_uid': uid,
+        'action': 'report_consultation_issue',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
         'consultation_id': widget.consultationId,
+        'details': details,
       });
       final data = res.data as Map<String, dynamic>?;
-      if (data != null && data['success'] == true) {
-        setState(() {
-          _timeUp = false;
-          _remainingSeconds = _durationMins * 60; // مدة جديدة من الإعدادات
-          _renewCount = (data['renew_count'] ?? 0) as int;
-        });
-        _startTimer();
-        await _loadMessages();
-        _showAlert('✅ تم تجديد المحادثة $_durationMins دقيقة إضافية');
+      if (data?['success'] == true) {
+        _showAlert('تم إرسال البلاغ إلى الإدارة');
+      } else if (data?['error'] == 'REPORT_ALREADY_OPEN') {
+        _showAlert('يوجد بلاغ مفتوح لهذه الاستشارة بالفعل');
       } else {
-        _showAlert(data?['error']?.toString() ?? 'فشل التجديد');
+        _showAlert('تعذّر إرسال البلاغ');
       }
-    } catch (e) { _showAlert('خطأ: $e'); }
-    if (mounted) setState(() => _sending = false);
+    } catch (_) {
+      _showAlert('تعذّر إرسال البلاغ');
+    }
   }
 
   void _showRatingDialog() {
@@ -432,6 +540,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
             ],
           ]),
         ]),
+        actions: [
+          if (!isLawyer && !isReadOnlyAdmin)
+            IconButton(
+              tooltip: 'إبلاغ الإدارة عن مشكلة',
+              onPressed: _showReportDialog,
+              icon: const Icon(Icons.flag_outlined, color: AppTheme.primaryGold),
+            ),
+        ],
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: AppTheme.primaryGold), onPressed: () => Navigator.pop(context)),
       ),
       body: _loading
@@ -492,6 +608,11 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       decoration: BoxDecoration(color: AppTheme.warningOrange.withOpacity(0.1), border: Border(top: BorderSide(color: AppTheme.warningOrange.withOpacity(0.3)))),
       child: Column(children: [
         const Text('⏱️ انتهى الوقت الحالي — يمكنك التجديد للمتابعة', style: TextStyle(color: AppTheme.warningOrange, fontSize: 12)),
+        Text(
+          'المدة المسجلة: ${_chatInfo['chat_duration_minutes'] ?? _durationMins} دقيقة'
+          '${_renewCount > 0 ? ' • مرات التجديد: $_renewCount' : ''}',
+          style: const TextStyle(color: AppTheme.textGrey, fontSize: 11),
+        ),
         AppTheme.gapHeightSmall,
         Row(children: [
           Expanded(child: ElevatedButton.icon(

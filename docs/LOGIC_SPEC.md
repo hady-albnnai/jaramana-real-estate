@@ -219,6 +219,11 @@
   حراس فرع `tp=2`: `CONSULTATION_META_INVALID` (بلا `meta.service='legal_consultation'`) ·
   `CONSULTATION_TYPE_INVALID` (`pkg` خارج 0/1) · `CONSULTATION_OWNER_MISMATCH` (محادثة ليست للدافع) ·
   `CHAT_NOT_STARTED` · `CHAT_EXPIRED_7DAYS`.
+- **(تحصين 2026-08-16):** مسار الإدارة يستدعي `approve_payment_final_v2`. الحجز الجديد
+  يربط دفعة معتمدة غير مستخدمة أو يستهلك رصيداً داخل معاملة ذرية؛ لا إنشاء بلا دفع.
+  `renew_chat` المباشر محظور، والتجديد لا يضيف وقتاً إلا بعد اعتماد دفعة
+  `meta.continue_chat`. الرسائل تحمل `client_message_id` فريداً، وتغلق المحادثات
+  الهاتفية آلياً خلال دقيقة من نهاية مدتها الحالية.
 - **قنوات الدفع والإعدادات:** كل كتابة على `app_config` تمر عبر `admin-config` بمفتاح الخدمة
   (الكتابة المباشرة يرفضها RLS بـ`42501`). الأقسام المسموحة: `pts, com, qta, txts,
   socialPublishing, photoPrice, payChannels, office`. رقم المكتب (`office.phone`) هو **وجهة

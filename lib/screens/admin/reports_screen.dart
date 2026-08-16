@@ -18,7 +18,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
   bool _loading = true;
   int _filter = 0; // 0=مفتوح(افتراضي), -1=الكل, 1=معالَج
 
-  static const _tgtTypes = {0: 'مستخدم', 1: 'عرض', 2: 'طلب', 3: 'موعد'};
+  static const _tgtTypes = {
+    0: 'مستخدم',
+    1: 'عرض',
+    2: 'طلب',
+    3: 'موعد',
+    4: 'استشارة قانونية',
+  };
   static const _actions = {
     0: 'لا إجراء',
     1: 'تحذير',
