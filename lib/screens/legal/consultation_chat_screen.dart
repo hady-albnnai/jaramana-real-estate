@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -28,6 +29,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   Map<String, dynamic> _chatInfo = {};
   bool _loading = true;
   bool _sending = false;
+  bool _refreshing = false;
+  RealtimeChannel? _realtimeChannel;
 
   // ⚖️ سعر التجديد ومدة المحادثة من الإعدادات (2026-08-14) — كانا ثابتين نصاً
   int get _renewPrice =>
@@ -46,7 +49,10 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMessages());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _subscribeRealtime();
+      _loadMessages();
+    });
   }
 
   @override
@@ -54,10 +60,26 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     _timer?.cancel();
+    final channel = _realtimeChannel;
+    if (channel != null) {
+      unawaited(SupabaseService().client.removeChannel(channel));
+    }
     super.dispose();
   }
 
+  void _subscribeRealtime() {
+    _realtimeChannel = SupabaseService().client
+        .channel('consultation:${widget.consultationId}')
+        .onBroadcast(
+          event: 'messages_changed',
+          callback: (_) => _loadMessages(),
+        )
+        .subscribe();
+  }
+
   Future<void> _loadMessages() async {
+    if (_refreshing) return;
+    _refreshing = true;
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
       final res = await SupabaseService().invokeFunction(
@@ -85,6 +107,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -146,12 +170,26 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     setState(() => _sending = true);
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-      final compressed = await _storage.compressImage(File(file.path));
-      final bytes = await (compressed ?? File(file.path)).readAsBytes();
-      final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      await SupabaseService().storage.from('consultation_files').uploadBinary(
-        path, bytes, fileOptions: FileOptions(cacheControl: '3600', upsert: false),
+      final bytes = kIsWeb
+          ? await file.readAsBytes()
+          : await (await _storage.compressImage(File(file.path)) ?? File(file.path))
+              .readAsBytes();
+      final response = await SupabaseService().invokeFunction(
+        'legal-actions',
+        body: {
+          'action': 'upload_chat_image',
+          'user_uid': uid,
+          'consultation_id': widget.consultationId,
+          'file_base64': base64Encode(bytes),
+        },
       );
+      final data = response.data is Map
+          ? Map<String, dynamic>.from(response.data as Map)
+          : null;
+      final path = data?['path']?.toString() ?? '';
+      if (data?['success'] != true || path.isEmpty) {
+        throw Exception('CHAT_IMAGE_UPLOAD_FAILED');
+      }
       await _sendMessage('image', '', fileUrl: path, fileName: file.name);
     } catch (e) { _showAlert('فشل رفع الصورة'); }
     if (mounted) setState(() => _sending = false);
@@ -175,6 +213,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
         final error = data?['error']?.toString() ?? '';
         if (error == 'CHAT_EXPIRED_7DAYS') {
           _showAlert('انتهت صلاحية المحادثة (7 أيام)');
+        } else if (error == 'CHAT_TIME_EXPIRED') {
+          _timeUp = true;
+          _showAlert('انتهى وقت المحادثة — يلزم التجديد للمتابعة');
         } else {
           _showAlert('فشل إرسال الرسالة');
         }

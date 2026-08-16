@@ -1448,9 +1448,18 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
       });
       final data = res.data as Map<String, dynamic>?;
       if (data != null && data['success'] == true) {
-        if (mounted) _snack('✅ تم تمديد المحادثة 5 دقائق');
+        await context.read<LegalProvider>().fetchLawyerConsultations();
+        if (mounted) _snack('✅ تم تمديد المحادثة 5 دقائق — لا يمكن تمديدها مرة ثانية');
       } else {
-        if (mounted) _snack(data?['error']?.toString() ?? 'فشل التمديد', bg: AppTheme.errorRed);
+        final error = data?['error']?.toString() ?? '';
+        if (mounted) {
+          _snack(
+            error == 'ALREADY_EXTENDED'
+                ? 'تم استخدام التمديد المجاني لهذه الاستشارة، ولا يمكن التمديد مرة ثانية'
+                : 'فشل تمديد المحادثة',
+            bg: AppTheme.errorRed,
+          );
+        }
       }
     } catch (e) {
       if (mounted) _snack(ErrorUtils.arabicMessage(e), bg: AppTheme.errorRed);
@@ -1846,7 +1855,13 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     if (ok) {
       _snack('✅ تم $action الاستشارة');
     } else {
-      _snack(legal.error ?? 'فشل $action الاستشارة', bg: AppTheme.errorRed);
+      final error = legal.error ?? '';
+      final message = error == 'CHAT_TIME_NOT_FINISHED'
+          ? 'لا يمكن إتمام الاستشارة قبل انتهاء مدتها الحالية'
+          : error == 'CHAT_NOT_STARTED'
+              ? 'ابدأ المحادثة أولاً قبل إتمام الاستشارة'
+              : 'فشل $action الاستشارة';
+      _snack(message, bg: AppTheme.errorRed);
     }
     return ok;
   }

@@ -1524,7 +1524,7 @@ serve(async (req) => {
 
       const { data: row, error: fetchErr } = await supabaseAdmin
         .from("legal_consultations")
-        .select("id, user_uid, lawyer_uid, service_type, subject, status")
+        .select("id, user_uid, lawyer_uid, service_type, subject, status, chat_started_at, chat_duration_minutes")
         .eq("id", consultId)
         .eq("i_del", 0)
         .maybeSingle();
@@ -1560,6 +1560,22 @@ serve(async (req) => {
         4: [],            // مرفوض → لا شيء (نهائية)
         5: [0, 3],        // بانتظار بيانات → عاد للمحامي / ملغي
       };
+      // الاستشارة الهاتفية لا تُنجز قبل بدء المحادثة ونهاية مدتها الحالية.
+      if (newStatus === 2 && Number(row.service_type) === 0) {
+        if (!row.chat_started_at) {
+          return json({ success: false, error: "CHAT_NOT_STARTED" }, 409);
+        }
+        const endAt = new Date(row.chat_started_at).getTime() +
+          (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+        if (Date.now() < endAt) {
+          return json({
+            success: false,
+            error: "CHAT_TIME_NOT_FINISHED",
+            remaining_seconds: Math.ceil((endAt - Date.now()) / 1000),
+          }, 409);
+        }
+      }
+
       const allowed = allowedTransitions[currentStatus] ?? [];
       if (!allowed.includes(newStatus)) {
         const statusNames: Record<number, string> = { 0: "بانتظار", 1: "مؤكدة", 2: "مكتملة", 3: "ملغاة", 4: "مرفوضة", 5: "بانتظار استكمال بيانات" };
@@ -1666,6 +1682,40 @@ serve(async (req) => {
       return json({ success: true, chat_started_at: now });
     }
 
+    // ─── رفع صورة داخل المحادثة عبر مفتاح الخدمة ───
+    if (action === "upload_chat_image") {
+      const consultId = (body.consultation_id ?? "").toString();
+      const encoded = (body.file_base64 ?? "").toString();
+      if (!consultId || !encoded) return json({ success: false, error: "FILE_REQUIRED" }, 400);
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, status")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+      const participant = row.user_uid === uid || (isLawyer(role) && row.lawyer_uid === uid);
+      if (!participant) return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+      if (!row.chat_started_at || Number(row.status) !== 1) {
+        return json({ success: false, error: "CHAT_NOT_OPEN" }, 409);
+      }
+      const endAt = new Date(row.chat_started_at).getTime() +
+        (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+      if (Date.now() >= endAt) return json({ success: false, error: "CHAT_TIME_EXPIRED" }, 409);
+      let bytes: Uint8Array;
+      try { bytes = base64ToUint8Array(encoded); }
+      catch { return json({ success: false, error: "INVALID_IMAGE_CONTENT" }, 400); }
+      if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024) {
+        return json({ success: false, error: "INVALID_IMAGE_SIZE" }, 400);
+      }
+      const contentType = detectImageContentType(bytes);
+      if (!contentType) return json({ success: false, error: "INVALID_IMAGE_CONTENT" }, 400);
+      const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+      const path = `${uid}/chat/${consultId}/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabaseAdmin.storage.from("consultation_files")
+        .upload(path, bytes, { contentType, cacheControl: "3600", upsert: false });
+      if (error) return json({ success: false, error: "CHAT_IMAGE_UPLOAD_FAILED" }, 400);
+      return json({ success: true, path });
+    }
+
     // ─── إرسال رسالة في المحادثة ───
     if (action === "send_chat_message") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
@@ -1676,7 +1726,11 @@ serve(async (req) => {
       const durationSeconds = body.duration_seconds ? Number(body.duration_seconds) : null;
 
       if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (!["text", "image", "voice"].includes(messageType)) {
+        return json({ success: false, error: "INVALID_MESSAGE_TYPE" }, 400);
+      }
       if (messageType === "text" && !content) return json({ success: false, error: "CONTENT_REQUIRED" }, 400);
+      if (messageType !== "text" && !fileUrl) return json({ success: false, error: "FILE_REQUIRED" }, 400);
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
@@ -1687,16 +1741,22 @@ serve(async (req) => {
       // التحقق: المستخدم أو المحامي المُسند فقط
       const isStudent = row.user_uid === uid;
       const isAssignedLawyer = isLawyer(role) && row.lawyer_uid === uid;
-      const isAdminUser = canManageLawyerProfiles(role);
-      if (!isStudent && !isAssignedLawyer && !isAdminUser) {
+      if (!isStudent && !isAssignedLawyer) {
         return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
       }
+      if (messageType !== "text" &&
+          (!fileUrl.startsWith(`${uid}/chat/${consultId}/`) || fileUrl.includes(".."))) {
+        return json({ success: false, error: "INVALID_FILE_PATH" }, 403);
+      }
 
-      // التحقق: المحادثة مفتوحة (لا نقفل تلقائياً — المستخدم يجدد بالدفع)
       if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
-      
-      // التحقق: المحادثة لم تتجاوز 7 أيام
       const startedAt = new Date(row.chat_started_at).getTime();
+      const durationMs = (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+      if (Date.now() >= startedAt + durationMs) {
+        return json({ success: false, error: "CHAT_TIME_EXPIRED" }, 409);
+      }
+
+      // التحقق: المحادثة لم تتجاوز 7 أيام
       const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
       if (Date.now() > startedAt + sevenDaysMs) {
         return json({ success: false, error: "CHAT_EXPIRED_7DAYS", message: "انتهت صلاحية المحادثة (7 أيام)" }, 400);
@@ -1730,6 +1790,17 @@ serve(async (req) => {
           });
         } catch {}
       }
+
+      // حدث لحظي بلا محتوى حساس؛ الطرف الآخر يعيد الجلب عبر الحارس.
+      try {
+        const channel = supabaseAdmin.channel(`consultation:${consultId}`);
+        await channel.send({
+          type: "broadcast",
+          event: "messages_changed",
+          payload: { changed: true },
+        });
+        await supabaseAdmin.removeChannel(channel);
+      } catch { /* الإشعار يبقى مساراً احتياطياً */ }
 
       return json({ success: true, message: msg });
     }
