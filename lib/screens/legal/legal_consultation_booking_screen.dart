@@ -30,10 +30,12 @@ import '../../core/utils/error_utils.dart';
 class LegalConsultationBookingScreen extends StatefulWidget {
   final String initialFlow;
   final String parentConsultationId;
+  final String appointmentId;
   const LegalConsultationBookingScreen({
     super.key,
     this.initialFlow = '',
     this.parentConsultationId = '',
+    this.appointmentId = '',
   });
   @override
   State<LegalConsultationBookingScreen> createState() => _State();
@@ -70,6 +72,7 @@ class _State extends State<LegalConsultationBookingScreen>
   bool _allowOtherLawyer = false;
   String? _v2IdempotencyKey;
   num? _v2QuotedAmount;
+  String? _rescheduleAppointmentId;
   final _subjectCtrl = TextEditingController();
   final List<XFile> _attachments = [];
   String _channel = '';
@@ -107,9 +110,13 @@ class _State extends State<LegalConsultationBookingScreen>
       _isContinuing = true;
       _serviceType = 0;
       setState(() => _screen = 5);
-    } else if (_v2Flow == 'onsite_convert') {
+    } else if (_v2Flow == 'onsite_convert' ||
+        _v2Flow == 'onsite_reschedule') {
       _isContinuing = false;
       _serviceType = 1;
+      _rescheduleAppointmentId = widget.appointmentId.isEmpty
+          ? null
+          : widget.appointmentId;
       setState(() {
         _slotsFuture = null;
         _screen = 7;
@@ -394,7 +401,8 @@ class _State extends State<LegalConsultationBookingScreen>
     _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null;
     _v2IntentId = null; _v2Flow = ''; _allowOtherLawyer = false;
     _v2IdempotencyKey = null;
-    _v2QuotedAmount = null; _viewingPending = false; _selectedSlot = null;
+    _v2QuotedAmount = null; _rescheduleAppointmentId = null;
+    _viewingPending = false; _selectedSlot = null;
     // 📅 UI-CAL-001: تصفير حالة التقويم وكاش المواعيد — وإلا عُرضت مواعيد
     // قديمة (وربما محجوزة الآن) عند بدء حجز جديد.
     _selectedDayKey = null; _slotsFuture = null;
@@ -1812,7 +1820,9 @@ class _State extends State<LegalConsultationBookingScreen>
         future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(
           days: 30,
           parentConsultationId:
-              _v2Flow == 'onsite_convert' && !_allowOtherLawyer
+              (_v2Flow == 'onsite_convert' ||
+                      _v2Flow == 'onsite_reschedule') &&
+                  !_allowOtherLawyer
                   ? (_continueChatId ?? '')
                   : '',
         ),
@@ -2001,10 +2011,12 @@ class _State extends State<LegalConsultationBookingScreen>
                   child: ElevatedButton.icon(
                     onPressed: _selectedSlot == null
                         ? null
-                        : (_v2IntentId != null &&
-                                _pendingV2Intent?['status'] == 'payment_needs_slot')
-                            ? _replaceV2Reservation
-                            : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
+                        : _v2Flow == 'onsite_reschedule'
+                            ? _rescheduleLegalAppointment
+                            : (_v2IntentId != null &&
+                                    _pendingV2Intent?['status'] == 'payment_needs_slot')
+                                ? _replaceV2Reservation
+                                : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
                     icon: const Icon(Icons.arrow_back, color: Colors.black),
                     label: Text(
                         _selectedSlot == null
@@ -2049,6 +2061,30 @@ class _State extends State<LegalConsultationBookingScreen>
     if (dt == null) return '';
     return '${_dayLabel(dt)} ${dt.hour.toString().padLeft(2, '0')}:'
         '${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _rescheduleLegalAppointment() async {
+    if (_rescheduleAppointmentId == null || _selectedSlot == null) return;
+    setState(() => _submitting = true);
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'reschedule_legal_appointment_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'appointment_id': _rescheduleAppointmentId,
+        'slot': _selectedSlot,
+        'idempotency_key': _newUuid(),
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['success'] == true && mounted) {
+        _snack('✅ تم تغيير موعد الجلسة بنفس الدفعة');
+        context.go('/user/my-appointments');
+      } else {
+        _snack(ErrorUtils.arabicMessage(data?['error']));
+      }
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+    }
+    if (mounted) setState(() => _submitting = false);
   }
 
   void _startReplaceV2Reservation() {

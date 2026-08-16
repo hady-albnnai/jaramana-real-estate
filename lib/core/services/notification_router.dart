@@ -115,6 +115,7 @@ class NotificationRouter {
         return const NotificationTarget('/legal/consultations');
 
       case 'legal_appointment_update':
+      case 'legal_appointment_reminder':
       case 'legal_onsite_confirmed':
         return role == UserRole.lawyer
             ? const NotificationTarget('/lawyer/dashboard')

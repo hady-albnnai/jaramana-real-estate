@@ -122,6 +122,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           event: 'messages_read',
           callback: (_) => _loadMessages(),
         )
+        .onBroadcast(
+          event: 'session_changed',
+          callback: (_) async {
+            await _loadMessages();
+            await _loadV2Session();
+          },
+        )
         .subscribe((status, _) {
           if (!mounted) return;
           setState(() {

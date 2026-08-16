@@ -485,6 +485,8 @@ class LegalProvider with ChangeNotifier {
   // ═══════════════════════════════════════════════════════════════
   List<Map<String, dynamic>> _adminConsultations = [];
   List<Map<String, dynamic>> get adminConsultations => _adminConsultations;
+  Map<String, dynamic> _adminV2Overview = {};
+  Map<String, dynamic> get adminV2Overview => _adminV2Overview;
 
   Future<void> fetchAdminConsultations({bool onlyOrphan = false}) async {
     try {
@@ -494,15 +496,20 @@ class LegalProvider with ChangeNotifier {
         'only_orphan': onlyOrphan,
       });
       final data = res.data as Map<String, dynamic>?;
-      _adminConsultations = _ok(data, 'تعذّر جلب الاستشارات')
+      final ok = _ok(data, 'تعذّر جلب الاستشارات');
+      _adminConsultations = ok
           ? ((data!['consultations'] as List?)
                   ?.map((e) => Map<String, dynamic>.from(e as Map))
                   .toList() ??
               [])
           : [];
+      _adminV2Overview = ok && data?['v2_overview'] is Map
+          ? Map<String, dynamic>.from(data!['v2_overview'] as Map)
+          : {};
     } catch (e) {
       _error = e.toString();
       _adminConsultations = [];
+      _adminV2Overview = {};
     }
     notifyListeners();
   }

@@ -1,0 +1,17 @@
+-- Consultation Legal V2 setup chain
+-- يُشغّل عبر psql من مجلد supabase بعد setup.sql والهجرات القانونية السابقة.
+\ir migrations/2026_08_16_fix_lawyer_picker_overload.sql
+\ir migrations/2026_08_16_consultation_hardening.sql
+\ir migrations/2026_08_16_consultation_v2_foundation.sql
+\ir migrations/2026_08_16_consultation_v2_transactions.sql
+\ir migrations/2026_08_16_consultation_v2_feature_flag_fix.sql
+\ir migrations/2026_08_16_consultation_v2_sessions.sql
+\ir migrations/2026_08_16_consultation_v2_materialization.sql
+\ir migrations/2026_08_16_consultation_v2_payment_compensation.sql
+\ir migrations/2026_08_16_consultation_v2_atomic_accept.sql
+\ir migrations/2026_08_16_consultation_v2_waitlist_alternate.sql
+\ir migrations/2026_08_16_consultation_v2_outbox_worker.sql
+\ir migrations/2026_08_16_consultation_v2_replace_expired_slot.sql
+\ir migrations/2026_08_16_consultation_v2_expired_hold_guard.sql
+\ir migrations/2026_08_16_consultation_v2_exact_sync_reminders.sql
+\ir migrations/2026_08_16_consultation_v2_reschedule.sql

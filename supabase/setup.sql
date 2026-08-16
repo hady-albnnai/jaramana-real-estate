@@ -5070,3 +5070,11 @@ CREATE TRIGGER trg_offer_approved_award_points
 REVOKE ALL ON FUNCTION public.trg_offer_approved_award_points() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.trg_offer_approved_award_points() FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.trg_offer_approved_award_points() TO service_role;
+
+-- =============================================================================
+-- Consultation Legal V2 (2026-08-16)
+-- =============================================================================
+-- القسم القانوني الحديث أُضيف بعد هذا الـbaseline، وسلسلة تأسيسه الموثقة هي:
+--   supabase/setup_legal_v2.sql
+-- في النشر الاعتيادي تطبق Supabase ملفات migrations زمنياً، فلا حاجة لتشغيله
+-- يدوياً. الملف مستقل فقط لإعادة تأسيس القسم القانوني فوق قاعدة baseline.

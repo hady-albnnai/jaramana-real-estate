@@ -75,6 +75,33 @@ async function consultationFlowV2Enabled(supabaseAdmin: SupabaseAdmin): Promise<
   return features?.consultationFlowV2 === true;
 }
 
+async function broadcastConsultationEvent(
+  supabaseAdmin: SupabaseAdmin,
+  consultationId: string,
+  event: string,
+): Promise<void> {
+  try {
+    const channel = supabaseAdmin.channel(`consultation:${consultationId}`);
+    await channel.send({ type: "broadcast", event, payload: { changed: true } });
+    await supabaseAdmin.removeChannel(channel);
+  } catch { /* Push/الجلب عند العودة مساران احتياطيان */ }
+}
+
+async function syncConsultationSession(
+  supabaseAdmin: SupabaseAdmin,
+  consultationId: string,
+): Promise<Record<string, unknown> | null> {
+  if (!consultationId) return null;
+  const { data } = await supabaseAdmin.rpc("sync_chat_session_v2", {
+    p_consultation_id: consultationId,
+  });
+  const result = data && typeof data === "object" ? data as Record<string, unknown> : null;
+  if (result?.changed === true) {
+    await broadcastConsultationEvent(supabaseAdmin, consultationId, "session_changed");
+  }
+  return result;
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
   const clean = base64.includes(",") ? base64.split(",").pop() ?? "" : base64;
   const binary = atob(clean);
@@ -369,6 +396,17 @@ serve(async (req) => {
       return json({ success: true, intent: data, reservation });
     }
 
+    if (action === "reschedule_legal_appointment_v2") {
+      const { data, error } = await supabaseAdmin.rpc("reschedule_legal_appointment_v2", {
+        p_actor_uid: uid,
+        p_appointment_id: body.appointment_id,
+        p_slot: body.slot,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
     if (action === "replace_consultation_reservation_v2") {
       const { data, error } = await supabaseAdmin.rpc("replace_consultation_reservation_v2", {
         p_user_uid: uid,
@@ -398,6 +436,7 @@ serve(async (req) => {
         p_idempotency_key: body.idempotency_key,
       });
       if (error) return json({ success: false, error: error.message }, 400);
+      await broadcastConsultationEvent(supabaseAdmin, (body.consultation_id ?? "").toString(), "session_changed");
       return json(data as Record<string, unknown>);
     }
 
@@ -408,13 +447,16 @@ serve(async (req) => {
         p_idempotency_key: body.idempotency_key,
       });
       if (error) return json({ success: false, error: error.message }, 400);
+      await broadcastConsultationEvent(supabaseAdmin, (body.consultation_id ?? "").toString(), "session_changed");
       return json(data as Record<string, unknown>);
     }
 
     if (action === "get_chat_session_v2") {
+      const consultationId = (body.consultation_id ?? "").toString();
+      await syncConsultationSession(supabaseAdmin, consultationId);
       const { data, error } = await supabaseAdmin.rpc("get_current_chat_session_v2", {
         p_user_uid: uid,
-        p_consultation_id: body.consultation_id,
+        p_consultation_id: consultationId,
       });
       if (error) return json({ success: false, error: error.message }, 400);
       return json(data as Record<string, unknown>);
@@ -427,6 +469,7 @@ serve(async (req) => {
         p_consultation_id: body.consultation_id,
       });
       if (error) return json({ success: false, error: error.message }, 400);
+      await broadcastConsultationEvent(supabaseAdmin, (body.consultation_id ?? "").toString(), "session_changed");
       return json(data as Record<string, unknown>);
     }
 
@@ -1359,7 +1402,26 @@ serve(async (req) => {
       if (onlyOrphan) q = q.is("lawyer_uid", null).eq("status", 0);
       const { data, error } = await q;
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: true, consultations: data ?? [] });
+      const [{ data: intents }, { data: sessions }, { data: reservations }] = await Promise.all([
+        supabaseAdmin.from("consultation_intents").select("status,flow"),
+        supabaseAdmin.from("consultation_chat_sessions").select("status"),
+        supabaseAdmin.from("lawyer_time_reservations").select("status"),
+      ]);
+      const countBy = (rows: Record<string, unknown>[] | null, key: string) =>
+        (rows ?? []).reduce((acc: Record<string, number>, row) => {
+          const value = String(row[key] ?? "unknown");
+          acc[value] = (acc[value] ?? 0) + 1;
+          return acc;
+        }, {});
+      return json({
+        success: true,
+        consultations: data ?? [],
+        v2_overview: {
+          intents: countBy(intents as Record<string, unknown>[] | null, "status"),
+          sessions: countBy(sessions as Record<string, unknown>[] | null, "status"),
+          reservations: countBy(reservations as Record<string, unknown>[] | null, "status"),
+        },
+      });
     }
 
     // إسناد يدوي لمحامٍ محدد (بعد تنسيق الإدارة الخارجي)
@@ -1900,6 +1962,9 @@ serve(async (req) => {
       const consultId = (body.consultation_id ?? "").toString();
       const encoded = (body.file_base64 ?? "").toString();
       if (!consultId || !encoded) return json({ success: false, error: "FILE_REQUIRED" }, 400);
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        await syncConsultationSession(supabaseAdmin, consultId);
+      }
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")
         .select("user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, status")
@@ -1936,6 +2001,9 @@ serve(async (req) => {
       const duration = Number(body.duration_seconds ?? 0);
       if (!consultId || !encoded || duration < 1 || duration > 60) {
         return json({ success: false, error: "INVALID_VOICE_MESSAGE" }, 400);
+      }
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        await syncConsultationSession(supabaseAdmin, consultId);
       }
       const { data: row } = await supabaseAdmin.from("legal_consultations")
         .select("user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, status")
@@ -1996,6 +2064,9 @@ serve(async (req) => {
       let clientMessageId = (body.client_message_id ?? "").toString();
 
       if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        await syncConsultationSession(supabaseAdmin, consultId);
+      }
       // توافق مؤقت مع النسخ المثبتة قبل هذا التحصين؛ النسخة الجديدة ترسل UUID ثابتاً.
       if (!clientMessageId) clientMessageId = crypto.randomUUID();
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientMessageId)) {
@@ -2118,6 +2189,9 @@ serve(async (req) => {
     if (action === "get_chat_messages") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
       if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        await syncConsultationSession(supabaseAdmin, consultId);
+      }
 
       const { data: row } = await supabaseAdmin
         .from("legal_consultations")

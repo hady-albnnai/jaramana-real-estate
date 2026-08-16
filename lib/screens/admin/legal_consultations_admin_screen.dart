@@ -69,6 +69,16 @@ class _LegalConsultationsAdminScreenState
   Widget build(BuildContext context) {
     final legal = context.watch<LegalProvider>();
     final all = legal.adminConsultations;
+    final overview = legal.adminV2Overview;
+    final intents = overview['intents'] is Map
+        ? Map<String, dynamic>.from(overview['intents'] as Map)
+        : <String, dynamic>{};
+    final sessions = overview['sessions'] is Map
+        ? Map<String, dynamic>.from(overview['sessions'] as Map)
+        : <String, dynamic>{};
+    final reservations = overview['reservations'] is Map
+        ? Map<String, dynamic>.from(overview['reservations'] as Map)
+        : <String, dynamic>{};
     final orphanCount =
         all.where((c) => c['lawyer_uid'] == null && (c['status'] ?? 0) == 0).length;
     final shown = _filter == -1
@@ -118,6 +128,36 @@ class _LegalConsultationsAdminScreenState
                 ),
                 const Icon(Icons.arrow_forward_ios, color: AppTheme.errorRed, size: 14),
               ]),
+            ),
+          ),
+
+        if (overview.isNotEmpty)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            padding: AppTheme.paddingAllMedium,
+            decoration: BoxDecoration(
+              color: AppTheme.infoBlue.withOpacity(0.08),
+              borderRadius: AppTheme.radiusMedium,
+              border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3)),
+            ),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              children: [
+                Text('دفعات تنتظر: ${intents['payment_pending'] ?? 0}',
+                    style: const TextStyle(color: AppTheme.textWhite, fontSize: 11)),
+                Text('تحتاج موعداً: ${intents['payment_needs_slot'] ?? 0}',
+                    style: const TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
+                Text('جلسات جاهزة: ${sessions['ready'] ?? 0}',
+                    style: const TextStyle(color: AppTheme.infoBlue, fontSize: 11)),
+                Text('انتظار انضمام: ${sessions['join_window'] ?? 0}',
+                    style: const TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
+                Text('جلسات نشطة: ${sessions['active'] ?? 0}',
+                    style: const TextStyle(color: AppTheme.successGreen, fontSize: 11)),
+                Text('حجوزات مؤقتة: ${reservations['held'] ?? 0}',
+                    style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+              ],
             ),
           ),
 

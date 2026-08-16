@@ -132,7 +132,15 @@ serve(async (req) => {
       });
       if (error) return json({ success: false, error: error.message }, 400);
       const result = data && typeof data === "object" ? data as Record<string, unknown> : { success: data === true };
-      // الإشعار يتم من trg_payment_approved تلقائياً عند تحول sts
+      if (result.success === true && result.consultation_id) {
+        try {
+          const consultationId = String(result.consultation_id);
+          const channel = supabaseAdmin.channel(`consultation:${consultationId}`);
+          await channel.send({ type: "broadcast", event: "session_changed", payload: { changed: true } });
+          await supabaseAdmin.removeChannel(channel);
+        } catch { /* Push/فتح الشاشة مساران احتياطيان */ }
+      }
+      // الإشعار يتم من trigger الدفع المناسب تلقائياً عند تحول sts
       return json(result);
     }
 

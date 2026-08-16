@@ -424,6 +424,23 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               ),
             ],
 
+            if (sts == 1 && isLegal && appt.consultationId.isNotEmpty) ...[
+              AppTheme.gapHeightMedium,
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push(
+                    '/legal/consultations?flow=onsite_reschedule'
+                    '&parent=${appt.consultationId}&appointment=${appt.id}',
+                  ),
+                  icon: const Icon(Icons.event_repeat,
+                      color: AppTheme.primaryGold),
+                  label: const Text('تغيير الموعد بنفس الدفعة',
+                      style: TextStyle(color: AppTheme.primaryGold)),
+                ),
+              ),
+            ],
+
             if (sts == 2 && isLegal && appt.consultationId.isNotEmpty) ...[
               AppTheme.gapHeightMedium,
               SizedBox(

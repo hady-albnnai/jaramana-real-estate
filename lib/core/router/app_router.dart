@@ -331,6 +331,7 @@ class AppRouter {
         builder: (context, state) => LegalConsultationBookingScreen(
           initialFlow: state.uri.queryParameters['flow'] ?? '',
           parentConsultationId: state.uri.queryParameters['parent'] ?? '',
+          appointmentId: state.uri.queryParameters['appointment'] ?? '',
         ),
       ),
       GoRoute(path: '/legal/chat/:id', builder: (context, state) {
