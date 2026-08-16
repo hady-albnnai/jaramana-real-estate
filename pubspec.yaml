@@ -41,6 +41,10 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.2
 
+  # محادثة الاستشارة: تسجيل وتشغيل الرسائل الصوتية
+  record: ^5.2.1
+  just_audio: ^0.9.42
+
   # Networking
   http: ^1.2.2
   http_parser: ^4.0.2

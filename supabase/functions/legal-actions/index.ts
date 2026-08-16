@@ -1716,6 +1716,36 @@ serve(async (req) => {
       return json({ success: true, path });
     }
 
+    // ─── رفع رسالة صوتية داخل المحادثة ───
+    if (action === "upload_chat_voice") {
+      const consultId = (body.consultation_id ?? "").toString();
+      const encoded = (body.file_base64 ?? "").toString();
+      const duration = Number(body.duration_seconds ?? 0);
+      if (!consultId || !encoded || duration < 1 || duration > 60) {
+        return json({ success: false, error: "INVALID_VOICE_MESSAGE" }, 400);
+      }
+      const { data: row } = await supabaseAdmin.from("legal_consultations")
+        .select("user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, status")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+      const participant = row.user_uid === uid || (isLawyer(role) && row.lawyer_uid === uid);
+      if (!participant) return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+      if (!row.chat_started_at || Number(row.status) !== 1) return json({ success: false, error: "CHAT_NOT_OPEN" }, 409);
+      const endAt = new Date(row.chat_started_at).getTime() + (Number(row.chat_duration_minutes) || 15) * 60000;
+      if (Date.now() >= endAt) return json({ success: false, error: "CHAT_TIME_EXPIRED" }, 409);
+      let bytes: Uint8Array;
+      try { bytes = base64ToUint8Array(encoded); } catch { return json({ success: false, error: "INVALID_AUDIO_CONTENT" }, 400); }
+      if (bytes.length < 12 || bytes.length > 8 * 1024 * 1024) return json({ success: false, error: "INVALID_AUDIO_SIZE" }, 400);
+      // AAC/M4A: صندوق ftyp يبدأ عند البايت الرابع.
+      const isM4a = String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
+      if (!isM4a) return json({ success: false, error: "INVALID_AUDIO_CONTENT" }, 400);
+      const path = `${uid}/chat/${consultId}/${crypto.randomUUID()}.m4a`;
+      const { error } = await supabaseAdmin.storage.from("consultation_files")
+        .upload(path, bytes, { contentType: "audio/mp4", cacheControl: "3600", upsert: false });
+      if (error) return json({ success: false, error: "CHAT_VOICE_UPLOAD_FAILED" }, 400);
+      return json({ success: true, path });
+    }
+
     // ─── إرسال رسالة في المحادثة ───
     if (action === "send_chat_message") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";

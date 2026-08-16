@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../providers/auth_provider.dart';
@@ -24,12 +28,18 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _storage = StorageService();
+  final _recorder = AudioRecorder();
+  final _audioPlayer = AudioPlayer();
 
   List<Map<String, dynamic>> _messages = [];
   Map<String, dynamic> _chatInfo = {};
   bool _loading = true;
   bool _sending = false;
   bool _refreshing = false;
+  bool _recording = false;
+  int _recordingSeconds = 0;
+  Timer? _recordingTimer;
+  String? _playingMessageId;
   RealtimeChannel? _realtimeChannel;
 
   // ⚖️ سعر التجديد ومدة المحادثة من الإعدادات (2026-08-14) — كانا ثابتين نصاً
@@ -51,6 +61,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _subscribeRealtime();
+      _restoreDraft();
       _loadMessages();
     });
   }
@@ -60,6 +71,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     _timer?.cancel();
+    _recordingTimer?.cancel();
+    unawaited(_recorder.dispose());
+    unawaited(_audioPlayer.dispose());
     final channel = _realtimeChannel;
     if (channel != null) {
       unawaited(SupabaseService().client.removeChannel(channel));
@@ -156,11 +170,87 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     return diff > 0 ? diff : 0;
   }
 
+  String get _draftKey => 'consultation_chat_draft_${widget.consultationId}';
+
+  Future<void> _restoreDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final draft = prefs.getString(_draftKey) ?? '';
+    if (mounted && draft.isNotEmpty) _msgCtrl.text = draft;
+  }
+
+  Future<void> _saveDraft(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value.trim().isEmpty) await prefs.remove(_draftKey);
+    else await prefs.setString(_draftKey, value);
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_recording) {
+      final path = await _recorder.stop();
+      _recordingTimer?.cancel();
+      final duration = _recordingSeconds;
+      if (mounted) setState(() { _recording = false; _recordingSeconds = 0; });
+      if (path != null && duration > 0) await _sendVoice(path, duration);
+      return;
+    }
+    if (!await _recorder.hasPermission()) {
+      _showAlert('يلزم السماح باستخدام الميكروفون لتسجيل رسالة صوتية');
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
+    if (!mounted) return;
+    setState(() { _recording = true; _recordingSeconds = 0; });
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (!mounted || !_recording) return;
+      setState(() => _recordingSeconds++);
+      if (_recordingSeconds >= 60) await _toggleRecording();
+    });
+  }
+
+  Future<void> _sendVoice(String path, int duration) async {
+    setState(() => _sending = true);
+    try {
+      final bytes = await File(path).readAsBytes();
+      final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+      final response = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'upload_chat_voice', 'user_uid': uid,
+        'consultation_id': widget.consultationId,
+        'file_base64': base64Encode(bytes), 'duration_seconds': duration,
+      });
+      final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
+      final remotePath = data?['path']?.toString() ?? '';
+      if (data?['success'] != true || remotePath.isEmpty) throw Exception();
+      await _sendMessage('voice', '', fileUrl: remotePath,
+          fileName: 'رسالة صوتية.m4a', duration: duration);
+    } catch (_) { _showAlert('فشل إرسال الرسالة الصوتية'); }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  Future<void> _playVoice(Map<String, dynamic> msg) async {
+    final url = (msg['file_signed_url'] ?? msg['file_url'] ?? '').toString();
+    if (url.isEmpty) return;
+    final id = msg['id']?.toString() ?? url;
+    if (_playingMessageId == id && _audioPlayer.playing) {
+      await _audioPlayer.pause();
+      if (mounted) setState(() {});
+      return;
+    }
+    await _audioPlayer.setUrl(url);
+    if (mounted) setState(() => _playingMessageId = id);
+    await _audioPlayer.play();
+    if (mounted) setState(() => _playingMessageId = null);
+  }
+
   Future<void> _sendText() async {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty) return;
-    _msgCtrl.clear();
-    await _sendMessage('text', text);
+    final sent = await _sendMessage('text', text);
+    if (sent) {
+      _msgCtrl.clear();
+      await _saveDraft('');
+    }
   }
 
   Future<void> _sendImage() async {
@@ -195,8 +285,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     if (mounted) setState(() => _sending = false);
   }
 
-  Future<void> _sendMessage(String type, String content, {String? fileUrl, String? fileName, int? duration}) async {
+  Future<bool> _sendMessage(String type, String content, {String? fileUrl, String? fileName, int? duration}) async {
     setState(() => _sending = true);
+    var sent = false;
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
@@ -208,6 +299,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       });
       final data = res.data as Map<String, dynamic>?;
       if (data != null && data['success'] == true) {
+        sent = true;
         await _loadMessages();
       } else {
         final error = data?['error']?.toString() ?? '';
@@ -222,6 +314,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       }
     } catch (e) { _showAlert('فشل إرسال الرسالة'); }
     if (mounted) setState(() => _sending = false);
+    return sent;
   }
 
   Future<void> _renewChat() async {
@@ -384,12 +477,21 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(color: AppTheme.surfaceBlack, border: Border(top: BorderSide(color: Colors.white12))),
       child: Row(children: [
+        IconButton(
+          icon: Icon(_recording ? Icons.stop_circle : Icons.mic,
+              color: _recording ? AppTheme.errorRed : AppTheme.primaryGold),
+          onPressed: _sending ? null : _toggleRecording,
+        ),
+        if (_recording)
+          Text('${_formatTime(_recordingSeconds)}',
+              style: const TextStyle(color: AppTheme.errorRed, fontSize: 11)),
         IconButton(icon: const Icon(Icons.image, color: AppTheme.primaryGold), onPressed: _sending ? null : _sendImage),
         Expanded(child: TextField(controller: _msgCtrl, style: const TextStyle(color: AppTheme.textWhite),
           decoration: const InputDecoration(hintText: 'اكتب رسالتك...', hintStyle: TextStyle(color: AppTheme.textGrey, fontSize: 13),
             filled: true, fillColor: AppTheme.scaffoldBackground,
             border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(20))),
             contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+          onChanged: _saveDraft,
           onSubmitted: (_) => _sendText())),
         AppTheme.gapWidthSmall,
         _sending
@@ -436,9 +538,17 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
                 msg['file_signed_url']?.toString() ?? msg['file_url'].toString(),
                 width: 200, height: 150, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 40))),
-            if (type == 'voice') Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.mic, color: AppTheme.primaryGold, size: 18), AppTheme.gapWidthSmall,
-              Text('🎤 رسالة صوتية (${msg['duration_seconds'] ?? 0}ث)', style: const TextStyle(color: AppTheme.textWhite, fontSize: 12))]),
+            if (type == 'voice') InkWell(
+              onTap: () => _playVoice(msg),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_playingMessageId == msg['id']?.toString() && _audioPlayer.playing
+                    ? Icons.pause_circle : Icons.play_circle,
+                    color: AppTheme.primaryGold, size: 28),
+                AppTheme.gapWidthSmall,
+                Text('رسالة صوتية (${msg['duration_seconds'] ?? 0}ث)',
+                    style: const TextStyle(color: AppTheme.textWhite, fontSize: 12)),
+              ]),
+            ),
             const SizedBox(height: 2),
             Text(ts, style: const TextStyle(color: AppTheme.textGrey, fontSize: 10)),
           ]))),

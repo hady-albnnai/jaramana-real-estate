@@ -3,6 +3,8 @@
 
     <!-- Internet & Network -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- تُطلب وقت ضغط زر التسجيل فقط داخل محادثة الاستشارة -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <!-- Notifications (Android 13+) -->
