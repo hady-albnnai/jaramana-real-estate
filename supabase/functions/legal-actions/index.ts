@@ -1677,6 +1677,17 @@ serve(async (req) => {
         return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
       }
 
+      // V2: قبول الهاتفية + إنشاء session ready + إشعار المستخدم معاملة واحدة.
+      if (newStatus === 1 && currentStatus === 0 && Number(row.service_type) === 0 &&
+          await consultationFlowV2Enabled(supabaseAdmin)) {
+        const { data: accepted, error: acceptErr } = await supabaseAdmin.rpc(
+          "accept_phone_consultation_v2",
+          { p_actor_uid: uid, p_consultation_id: consultId, p_notes: updateNotes },
+        );
+        if (acceptErr) return json({ success: false, error: acceptErr.message }, 400);
+        return json(accepted as Record<string, unknown>);
+      }
+
       // 🔒 حماية انتقالات الحالة — منع تغيير حالة مكتملة/ملغاة/مرفوضة
       // 2026-08-14: أُضيفت الحالة 5 = بانتظار استكمال بيانات المستخدم.
       // مسارها: 5 → 0 عبر resubmit_consultation · أو 5 → 3 إلغاء المستخدم.
@@ -1723,21 +1734,6 @@ serve(async (req) => {
       if (updErr) return json({ success: false, error: updErr.message }, 400);
       if (!updatedRows || updatedRows.length !== 1) {
         return json({ success: false, error: "CONSULTATION_CONCURRENTLY_UPDATED" }, 409);
-      }
-
-      // V2: قبول الهاتفية ينشئ رصيد الجلسة الأساسية جاهزاً، ولا يبدأ الوقت.
-      if (newStatus === 1 && Number(row.service_type) === 0 &&
-          await consultationFlowV2Enabled(supabaseAdmin)) {
-        const { error: sessionErr } = await supabaseAdmin.rpc("ensure_initial_chat_session_v2", {
-          p_consultation_id: consultId,
-        });
-        if (sessionErr) {
-          // نعيد الحالة السابقة لأن قبولاً بلا جلسة جاهزة كسر تعاقدي.
-          await supabaseAdmin.from("legal_consultations")
-            .update({ status: currentStatus, ts_upd: new Date().toISOString() })
-            .eq("id", consultId).eq("status", newStatus);
-          return json({ success: false, error: "CHAT_SESSION_CREATE_FAILED" }, 500);
-        }
       }
 
       // 🔔 إشعار المستخدم بتحديث الحالة
