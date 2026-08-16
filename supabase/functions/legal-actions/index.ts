@@ -1749,6 +1749,7 @@ serve(async (req) => {
         return json({ success: false, error: "INVALID_FILE_PATH" }, 403);
       }
 
+      if (Number(row.status) !== 1) return json({ success: false, error: "CHAT_CLOSED" }, 409);
       if (!row.chat_started_at) return json({ success: false, error: "CHAT_NOT_STARTED" }, 400);
       const startedAt = new Date(row.chat_started_at).getTime();
       const durationMs = (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
