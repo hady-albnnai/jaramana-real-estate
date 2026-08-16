@@ -30,6 +30,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   int? _filterType; // null=الكل, 0=عقار, 1=سيارة
   int? _filterTrx;  // null=الكل, 0=بيع, 1=إيجار
   bool _isSearching = false;
+  bool _showSearchPanel = false;
 
   // 🎛️ الفلاتر المتقدمة — الودجت المشترك offer_filters.dart (معايير مطابقة الطلبات، 2026-07-27)
   final OfferFiltersData _advF = OfferFiltersData();
@@ -105,13 +106,21 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final offerProv = Provider.of<OfferProvider>(context);
+    final config = context.watch<ConfigProvider>().config;
     final userName = auth.userModel?.nm ?? 'مستخدم';
+    final packageLabel = auth.isInternal || auth.userModel == null
+        ? null
+        : _activePackageLabel(
+            auth.userModel!,
+            config?.packages ?? const <String, dynamic>{},
+          );
 
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
         backgroundColor: AppTheme.scaffoldBackground,
         elevation: 0,
+        toolbarHeight: packageLabel == null ? 64 : 78,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -130,6 +139,17 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                 fontSize: AppTheme.fontSizeSmall,
               ),
             ),
+            if (packageLabel != null)
+              Text(
+                packageLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppTheme.primaryGold,
+                  fontSize: AppTheme.fontSizeCaption,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
           ],
         ),
         actions: [
@@ -139,6 +159,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
               tooltip: _roleShortcutTooltip(auth),
               onPressed: () => context.push(_roleShortcutRoute(auth)!),
             ),
+          IconButton(
+            icon: Icon(
+              _showSearchPanel ? Icons.close_rounded : Icons.search_rounded,
+              color: AppTheme.primaryGold,
+            ),
+            tooltip: _showSearchPanel ? 'إغلاق البحث' : 'البحث والفلاتر',
+            onPressed: () => setState(() {
+              _showSearchPanel = !_showSearchPanel;
+            }),
+          ),
           // أيقونة الإشعارات مع badge لعدد غير المقروء
           Consumer<NotificationProvider>(
             builder: (context, notif, _) {
@@ -187,19 +217,9 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
       ),
       body: Column(
         children: [
-          // تذكير مشجّع بالباقة المدفوعة، أو تنبيه واضح خلال فترة السماح.
-          // اسم الباقة يأتي من app_config ولا يُثبّت داخل الواجهة.
-          if (!auth.isInternal && auth.userModel != null &&
-              (auth.userModel!.isPkgActive || auth.userModel!.isInGracePeriod))
-            _buildPackageBanner(
-              context,
-              auth.userModel!,
-              context.watch<ConfigProvider>().config?.packages ??
-                  const <String, dynamic>{},
-            ),
-
-          // شريط البحث + زر الفلاتر الظاهر (يفتح الفلاتر الكاملة — معايير مطابقة الطلبات)
-          Padding(
+          // البحث والفلاتر مخفيان افتراضياً لتخفيف ازدحام الرئيسية.
+          if (_showSearchPanel)
+            Padding(
             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
             child: Row(
               children: [
@@ -240,7 +260,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
               child: SizedBox(
-                height: 85,
+                height: 64,
                 child: Row(
                   children: [
                     Expanded(
@@ -419,97 +439,16 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     );
   }
 
-  Widget _buildPackageBanner(
-    BuildContext context,
+  String? _activePackageLabel(
     UserModel user,
     Map<String, dynamic> packages,
   ) {
+    if (!user.isPkgActive) return null;
     final package = packages['${user.bPkg}'];
-    final packageName = package is Map
-        ? (package['nm']?.toString().trim() ?? '')
-        : '';
-    final hasName = packageName.isNotEmpty;
-    final isGrace = user.isInGracePeriod;
-    final color = isGrace ? AppTheme.warningOrange : AppTheme.primaryGold;
-    final icon = isGrace
-        ? Icons.schedule_rounded
-        : user.bPkg == 2
-            ? Icons.workspace_premium_rounded
-            : Icons.auto_awesome_rounded;
-    final title = isGrace
-        ? hasName
-            ? 'باقة «$packageName» ضمن فترة السماح'
-            : 'الباقة ضمن فترة السماح'
-        : hasName
-            ? 'باقة «$packageName» فعّالة'
-            : 'باقتك فعّالة';
-    final graceTime = user.graceDaysLeft > 0
-        ? 'متبقّي ${user.graceDaysLeft} يوم'
-        : 'متبقّي أقل من يوم';
-    final subtitle = isGrace
-        ? '$graceTime — جدّدها للحفاظ على المزايا.'
-        : 'استثمر مزاياها وأضف المزيد من العروض بثقة.';
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(15, 8, 15, 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: AppTheme.radiusMedium,
-          onTap: () => context.push('/user/packages'),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  color.withOpacity(0.18),
-                  AppTheme.surfaceBlack,
-                ],
-              ),
-              borderRadius: AppTheme.radiusMedium,
-              border: Border.all(color: color.withOpacity(0.45)),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, color: color, size: 27),
-                AppTheme.gapWidthSmall,
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: color,
-                          fontSize: AppTheme.fontSizeBody,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      AppTheme.gapHeightXXS,
-                      Text(
-                        subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppTheme.textWhite,
-                          fontSize: AppTheme.fontSizeCaption,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.arrow_forward_ios_rounded,
-                    color: color.withOpacity(0.8), size: 15),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    if (package is! Map) return null;
+    final packageName = package['nm']?.toString().trim() ?? '';
+    if (packageName.isEmpty) return null;
+    return 'باقة $packageName فعّالة';
   }
 
   Widget _serviceTile(BuildContext context,
@@ -520,7 +459,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
     return GestureDetector(
       onTap: () => context.push(route),
       child: Container(
-        padding: AppTheme.paddingAllMedium,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -535,7 +474,7 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: AppTheme.primaryGold, size: 28),
+            Icon(icon, color: AppTheme.primaryGold, size: 22),
             AppTheme.gapWidthSmall,
             Expanded(
               child: Column(
@@ -545,13 +484,14 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
                   Text(title,
                       style: const TextStyle(
                           color: AppTheme.textWhite,
-                          fontSize: AppTheme.fontSizeBody,
+                          fontSize: AppTheme.fontSizeSmall,
                           fontWeight: FontWeight.bold)),
-                  AppTheme.gapHeightXXS,
                   Text(subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           color: AppTheme.primaryGold.withOpacity(0.7),
-                          fontSize: AppTheme.fontSizeCaption)),
+                          fontSize: AppTheme.fontSizeXS)),
                 ],
               ),
             ),
