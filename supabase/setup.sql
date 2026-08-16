@@ -2837,6 +2837,33 @@ $function$
 REVOKE ALL ON FUNCTION register_daily_streak_internal(p_user_uid uuid, p_points integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION register_daily_streak_internal(p_user_uid uuid, p_points integer) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.check_username_available(p_username text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions', 'pg_temp'
+AS $function$
+DECLARE
+  v_usr TEXT;
+  v_norm TEXT;
+BEGIN
+  BEGIN
+    v_usr := public.app_assert_username(p_username, TRUE);
+  EXCEPTION WHEN OTHERS THEN
+    RETURN FALSE;
+  END;
+  v_norm := public.normalize_arabic_username(v_usr);
+  RETURN NOT EXISTS (
+    SELECT 1 FROM public.users
+    WHERE public.normalize_arabic_username(usr) = v_norm AND i_del = 0
+  );
+END;
+$function$
+
+REVOKE ALL ON FUNCTION public.check_username_available(TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.check_username_available(TEXT) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_username_available(TEXT) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.register_password(p_user_uid uuid, p_username text, p_password text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2848,13 +2875,13 @@ DECLARE
   v_norm TEXT;
   v_existing UUID;
 BEGIN
-  v_usr := app_assert_username(p_username, TRUE);
-  v_norm := normalize_arabic_username(v_usr);
-  PERFORM app_assert_password(p_password, 8);
+  v_usr := public.app_assert_username(p_username, TRUE);
+  v_norm := public.normalize_arabic_username(v_usr);
+  PERFORM public.app_assert_password(p_password, 8);
 
   SELECT id INTO v_existing
-  FROM users
-  WHERE normalize_arabic_username(usr) = v_norm
+  FROM public.users
+  WHERE public.normalize_arabic_username(usr) = v_norm
     AND i_del = 0
     AND id <> p_user_uid;
 
@@ -2862,22 +2889,31 @@ BEGIN
     RAISE EXCEPTION 'USERNAME_TAKEN';
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM users WHERE id = p_user_uid AND i_del = 0) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = p_user_uid AND i_del = 0) THEN
     RAISE EXCEPTION 'USER_NOT_FOUND';
   END IF;
 
-  UPDATE users
-  SET usr = v_usr,
-      pwd = crypt(p_password, gen_salt('bf', 8)),
-      ts_upd = NOW()
-  WHERE id = p_user_uid;
+  BEGIN
+    UPDATE public.users
+    SET usr = v_usr,
+        pwd = crypt(p_password, gen_salt('bf', 8)),
+        ts_upd = NOW()
+    WHERE id = p_user_uid;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'USERNAME_TAKEN';
+  END;
 
   RETURN jsonb_build_object('success', true, 'username', v_usr);
 END;
 $function$
 
-REVOKE ALL ON FUNCTION register_password(p_user_uid uuid, p_username text, p_password text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION register_password(p_user_uid uuid, p_username text, p_password text) TO service_role;
+REVOKE ALL ON FUNCTION public.register_password(UUID, TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.register_password(UUID, TEXT, TEXT) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.register_password(UUID, TEXT, TEXT) TO service_role;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username_normalized_active
+ON public.users (public.normalize_arabic_username(usr))
+WHERE usr IS NOT NULL AND NULLIF(BTRIM(usr), '') IS NOT NULL AND i_del = 0;
 
 CREATE OR REPLACE FUNCTION public.revoke_all_staff_sessions(p_user_uid uuid)
  RETURNS integer

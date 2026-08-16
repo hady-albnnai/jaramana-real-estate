@@ -154,7 +154,8 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
           _usernameAvailable = ok;
           _checkFailed = false;
           _checkingUsername = false;
-          _usernameInputError = null;
+          _usernameInputError =
+              ok ? null : 'اسم المستخدم مستخدم في حساب آخر';
         });
       }
     } catch (_) {

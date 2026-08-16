@@ -1977,11 +1977,15 @@ DECLARE
   v_usr TEXT;
   v_norm TEXT;
 BEGIN
-  v_usr := LOWER(TRIM(p_username));
-  IF LENGTH(v_usr) < 3 THEN RETURN FALSE; END IF;
-  v_norm := normalize_arabic_username(v_usr);
+  BEGIN
+    v_usr := public.app_assert_username(p_username, TRUE);
+  EXCEPTION WHEN OTHERS THEN
+    RETURN FALSE;
+  END;
+  v_norm := public.normalize_arabic_username(v_usr);
   RETURN NOT EXISTS (
-    SELECT 1 FROM users WHERE normalize_arabic_username(usr) = v_norm AND i_del = 0
+    SELECT 1 FROM public.users
+    WHERE public.normalize_arabic_username(usr) = v_norm AND i_del = 0
   );
 END;
 $function$
@@ -4950,13 +4954,13 @@ DECLARE
   v_norm TEXT;
   v_existing UUID;
 BEGIN
-  v_usr := app_assert_username(p_username, TRUE);
-  v_norm := normalize_arabic_username(v_usr);
-  PERFORM app_assert_password(p_password, 8);
+  v_usr := public.app_assert_username(p_username, TRUE);
+  v_norm := public.normalize_arabic_username(v_usr);
+  PERFORM public.app_assert_password(p_password, 8);
 
   SELECT id INTO v_existing
-  FROM users
-  WHERE normalize_arabic_username(usr) = v_norm
+  FROM public.users
+  WHERE public.normalize_arabic_username(usr) = v_norm
     AND i_del = 0
     AND id <> p_user_uid;
 
@@ -4964,15 +4968,19 @@ BEGIN
     RAISE EXCEPTION 'USERNAME_TAKEN';
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM users WHERE id = p_user_uid AND i_del = 0) THEN
+  IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = p_user_uid AND i_del = 0) THEN
     RAISE EXCEPTION 'USER_NOT_FOUND';
   END IF;
 
-  UPDATE users
-  SET usr = v_usr,
-      pwd = crypt(p_password, gen_salt('bf', 8)),
-      ts_upd = NOW()
-  WHERE id = p_user_uid;
+  BEGIN
+    UPDATE public.users
+    SET usr = v_usr,
+        pwd = crypt(p_password, gen_salt('bf', 8)),
+        ts_upd = NOW()
+    WHERE id = p_user_uid;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'USERNAME_TAKEN';
+  END;
 
   RETURN jsonb_build_object('success', true, 'username', v_usr);
 END;
