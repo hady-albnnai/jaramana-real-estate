@@ -55,8 +55,61 @@ class ErrorUtils {
       if (raw.contains(code)) return code;
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // 🩹 APPT-001 (2026-08-16) — أخطاء قاعدة البيانات الخام (PostgrestException)
+    // ═══════════════════════════════════════════════════════════════════
+    // بلاغ المالك: ظهر بالسجل نص إنجليزي كامل
+    // PostgrestException(message: {"code":"22P02", ... invalid input syntax for
+    // type uuid: ""}, code: 400 ...) — وهذا نص خام لا يُعرض للمستخدم أبداً (§19).
+    // الحل: انتزاع رمز SQLSTATE (5 محارف) وتحويله لرمز داخلي مترجَم.
+    final pg = RegExp(r'"code"\s*:\s*"([0-9A-Za-z]{5})"').firstMatch(raw);
+    if (pg != null) {
+      final sqlState = pg.group(1)!.toUpperCase();
+      final mapped = _pgState[sqlState];
+      if (mapped != null) return mapped;
+      return 'DB_ERROR';
+    }
+    if (raw.contains('PostgrestException') ||
+        raw.contains('AuthException') ||
+        raw.contains('FunctionException') ||
+        raw.contains('SocketException') ||
+        raw.contains('ClientException') ||
+        raw.contains('TimeoutException')) {
+      if (raw.contains('SocketException') ||
+          raw.contains('ClientException') ||
+          raw.contains('Failed host lookup')) {
+        return 'NETWORK_ERROR';
+      }
+      if (raw.contains('TimeoutException')) return 'TIMEOUT';
+      return 'DB_ERROR';
+    }
+
+    // لا نُعيد نصاً خاماً قد يكون إنجليزياً: أي محتوى لاتيني صرف يُعمَّم.
+    final hasArabic = RegExp(r'[\u0600-\u06FF]').hasMatch(raw);
+    if (!hasArabic && RegExp(r'[a-z]').hasMatch(raw)) {
+      // رموز الأخطاء الاصطلاحية (SNAKE_CASE) تُترك ليلتقطها القاموس
+      final looksLikeCode = RegExp(r'^[A-Z0-9_]+$').hasMatch(raw.trim());
+      if (!looksLikeCode) return 'UNKNOWN_ERROR';
+    }
+
     return raw.length > 220 ? raw.substring(0, 220) : raw;
   }
+
+  /// 🩹 APPT-001: خريطة رموز SQLSTATE ← رموز داخلية مترجَمة بالقاموس أدناه.
+  static const Map<String, String> _pgState = {
+    '22P02': 'DB_INVALID_INPUT',   // invalid input syntax (مثل uuid فارغ)
+    '23502': 'DB_MISSING_FIELD',   // not null violation
+    '23503': 'DB_LINK_MISSING',    // foreign key violation
+    '23505': 'DB_DUPLICATE',       // unique violation
+    '23514': 'DB_CHECK_FAILED',    // check violation
+    '42501': 'DB_NO_PERMISSION',   // insufficient privilege / RLS
+    '42703': 'DB_ERROR',           // undefined column
+    '42883': 'DB_ERROR',           // undefined function
+    '40001': 'DB_BUSY',            // serialization failure
+    '55P03': 'DB_BUSY',            // lock not available
+    '57014': 'TIMEOUT',            // query canceled
+    'PGRST': 'DB_ERROR',
+  };
 
 
   /// ═══════════════════════════════════════════════════════════════════
@@ -70,6 +123,18 @@ class ErrorUtils {
   ///
   /// هذا القاموس يغطيها كلها، وكل رسالة تجيب: **ماذا حدث؟** و**ماذا أفعل؟**
   static const Map<String, String> _ar = {
+    // ── 🩹 APPT-001: أخطاء قاعدة البيانات والشبكة (خط الدفاع الأخير) ──
+    'DB_ERROR': 'حدث خلل أثناء الاتصال بالخادم — أعد المحاولة بعد قليل.',
+    'DB_INVALID_INPUT': 'إحدى البيانات المُرسلة غير صالحة — أعد فتح الشاشة وحاول مجدداً.',
+    'DB_MISSING_FIELD': 'هناك حقل مطلوب لم يُملأ — راجع البيانات وأعد الإرسال.',
+    'DB_LINK_MISSING': 'العنصر المرتبط بهذه العملية لم يعد موجوداً — حدّث القائمة.',
+    'DB_DUPLICATE': 'هذه البيانات مسجّلة مسبقاً.',
+    'DB_CHECK_FAILED': 'القيمة المُدخلة خارج النطاق المسموح.',
+    'DB_NO_PERMISSION': 'ليست لديك صلاحية لتنفيذ هذه العملية.',
+    'DB_BUSY': 'الخادم مشغول حالياً — أعد المحاولة بعد لحظات.',
+    'NETWORK_ERROR': 'تعذّر الاتصال بالإنترنت — تحقق من الشبكة وأعد المحاولة.',
+    'TIMEOUT': 'استغرقت العملية وقتاً طويلاً — أعد المحاولة.',
+
     // ── الجلسة والصلاحيات ──
     'AUTH_REQUIRED': 'يجب تسجيل الدخول أولاً.',
     'AUTH_FAILED': 'تعذّر التحقق من هويتك — سجّل الدخول من جديد.',

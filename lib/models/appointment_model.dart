@@ -27,6 +27,10 @@ class AppointmentModel {
   // حقول جديدة
   final String? supervisorUid; // المشرف المعيَّن تلقائياً
   final List<Map<String, dynamic>> neog; // تاريخ التراشق (5 جولات كحد أقصى)
+  // 🩹 APPT-002: وسم نوع الصف. الإيدج user-appointments يدمج مهام التصوير
+  // ضمن «مواعيدي» بصيغة صف موعد ويضع kind='photography'، وحقول العرض
+  // والمالك فيها فارغة — فيجب تمييزها لئلا تُعامَل معاملة موعد معاينة.
+  final String kind;
 
   AppointmentModel({
     required this.id,
@@ -56,6 +60,7 @@ class AppointmentModel {
     required this.tsCrt,
     this.supervisorUid,
     this.neog = const [],
+    this.kind = 'appointment',
   });
 
   factory AppointmentModel.fromSupabase(Map<String, dynamic> data, String id) {
@@ -90,6 +95,7 @@ class AppointmentModel {
           ? List<Map<String, dynamic>>.from(
               (data['neog'] as List).map((e) => Map<String, dynamic>.from(e as Map)))
           : [],
+      kind: (data['kind'] ?? 'appointment').toString(),
     );
   }
 
@@ -123,6 +129,10 @@ class AppointmentModel {
       'neog': neog,
     };
   }
+
+  /// 🩹 APPT-002: هل هذا الصف موعد تصوير مدموج (لا عرض ولا مالك له)؟
+  /// نعتمد الوسم أولاً، ثم غياب معرّف العرض كشبكة أمان لو غاب الوسم.
+  bool get isPhotography => kind == 'photography' || offId.trim().isEmpty;
 
   /// عدد جولات التراشق المنجزة
   int get neogRounds => neog.length;

@@ -51,7 +51,14 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     ]);
     
     // ✅ Fix for Bug #18: جلب معلومات العروض للمواعيد
-    final offerIds = results[0].map((a) => a.offId).toSet().toList();
+    // 🩹 APPT-001: مواعيد التصوير المدموجة تأتي بـ off_id = null ⇒ معرّف فارغ.
+    // تمريره لاستعلام العروض كان يُنتج خطأ نوع uuid (22P02) بكل فتح للشاشة.
+    // الحل: تصفية المعرّفات الفارغة قبل الجلب.
+    final offerIds = results[0]
+        .map((a) => a.offId.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
     for (final offerId in offerIds) {
       if (offerProv.getOfferById(offerId) == null) {
         await offerProv.fetchOfferById(offerId, userId: uid);
@@ -158,12 +165,27 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
       0: 'قيد الانتظار', 1: 'مؤكد', 2: 'منتهي',
       3: 'ملغي', 4: 'مرفوض', 5: 'لم يتم الحضور',
     };
+    // 🩹 APPT-004: صفوف التصوير المدموجة تُرسل بحالة 1 (جارية) أو 3 (منجزة)،
+    // بينما 3 في جدول المواعيد تعني «ملغي» ⇒ كانت المهمة المنجزة تظهر «ملغي».
+    final photoStatusColors = {1: AppTheme.infoBlue, 3: AppTheme.successGreen};
+    final photoStatusTexts = {1: 'مجدول', 3: 'منتهي'};
+
+    // 🩹 APPT-002: صفوف مهام التصوير المدموجة لا عرض لها ولا مالك.
+    final isPhoto = appt.isPhotography;
 
     // ✅ Fix for Bug #18: جلب معلومات العرض
     final offerProv = context.read<OfferProvider>();
-    final offer = offerProv.getOfferById(appt.offId);
-    final offerTitle = offer?.ttl ?? 'عرض';
-    final offerNumber = offer?.offerNumber?.toString() ?? appt.offId.substring(0, 8);
+    final offer = isPhoto ? null : offerProv.getOfferById(appt.offId);
+    // عنوان مهمة التصوير محفوظ ضمن الملاحظة الإدارية بصيغة «📸 موعد تصوير — العنوان»
+    final photoTitle = (appt.adminNt ?? '').trim();
+    final offerTitle = isPhoto
+        ? (photoTitle.isNotEmpty ? photoTitle : '📸 موعد تصوير')
+        : (offer?.ttl ?? 'عرض');
+    // 🩹 APPT-002: كان `appt.offId.substring(0, 8)` ينهار بـ RangeError
+    // على المعرّف الفارغ. الآن: حارس طول + لا رقم عرض لمواعيد التصوير.
+    final rawOfferId = appt.offId.trim();
+    final offerNumber = offer?.offerNumber?.toString() ??
+        (rawOfferId.length >= 8 ? rawOfferId.substring(0, 8) : rawOfferId);
     
     // استخراج الموقع من العرض
     final offerLoc = offer?.loc ?? {};
@@ -189,7 +211,8 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              const Icon(Icons.event, color: AppTheme.primaryGold, size: 22),
+              Icon(isPhoto ? Icons.photo_camera : Icons.event,
+                  color: AppTheme.primaryGold, size: 22),
               AppTheme.gapWidthSmall,
               Expanded(
                 child: Column(
@@ -206,8 +229,9 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
+                    // 🩹 APPT-002: مواعيد التصوير لا رقم عرض لها
                     Text(
-                      'عرض رقم #$offerNumber',
+                      isPhoto ? 'خدمة تصوير عقاري' : 'عرض رقم #$offerNumber',
                       style: const TextStyle(
                           color: AppTheme.textGrey,
                           fontSize: 13),
@@ -218,13 +242,16 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (statusColors[sts] ?? AppTheme.textGrey).withOpacity(0.2),
+                  color: ((isPhoto ? photoStatusColors[sts] : statusColors[sts]) ??
+                          AppTheme.textGrey)
+                      .withOpacity(0.2),
                   borderRadius: AppTheme.radiusSmall,
                 ),
                 child: Text(
-                  statusTexts[sts] ?? '—',
+                  (isPhoto ? photoStatusTexts[sts] : statusTexts[sts]) ?? '—',
                   style: TextStyle(
-                      color: statusColors[sts] ?? AppTheme.textGrey,
+                      color: (isPhoto ? photoStatusColors[sts] : statusColors[sts]) ??
+                          AppTheme.textGrey,
                       fontSize: AppTheme.fontSizeCaption,
                       fontWeight: FontWeight.bold),
                 ),
@@ -287,7 +314,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                       const Icon(Icons.person, size: 14, color: AppTheme.primaryGold),
                       AppTheme.gapWidthSmall,
                       Text(
-                        'المشرف: ${_supervisorsCache[supervisorUid]?['name'] ?? '—'}',
+                        '${isPhoto ? 'المصوّر' : 'المشرف'}: ${_supervisorsCache[supervisorUid]?['name'] ?? '—'}',
                         style: const TextStyle(
                             color: AppTheme.textWhite,
                             fontWeight: FontWeight.w600,
@@ -369,7 +396,8 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
             ],
 
             // إلغاء (للمواعيد المعلقة والمؤكدة)
-            if (sts <= 1 && !pendingCounter) ...[
+            // 🩹 APPT-003: مواعيد التصوير لا تُلغى من هنا (لا صف لها بجدول المواعيد)
+            if (sts <= 1 && !pendingCounter && !isPhoto) ...[
               AppTheme.gapHeightMedium,
               SizedBox(
                 width: double.infinity,
@@ -385,7 +413,8 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
             ],
 
             // تقييم للموعد المنتهي
-            if (sts == 2) ...[
+            // 🩹 APPT-003: كان يمرّر ownId فارغاً لمواعيد التصوير ⇒ فشل صامت
+            if (sts == 2 && !isPhoto && appt.ownId.trim().isNotEmpty) ...[
               AppTheme.gapHeightMedium,
               SizedBox(
                 width: double.infinity,
