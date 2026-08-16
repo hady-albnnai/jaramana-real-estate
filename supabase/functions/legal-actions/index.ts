@@ -68,6 +68,13 @@ async function getLegalPrices(
   }
 }
 
+async function consultationFlowV2Enabled(supabaseAdmin: SupabaseAdmin): Promise<boolean> {
+  const { data } = await supabaseAdmin.from("app_config").select("value").eq("key", "main").maybeSingle();
+  const value = data?.value as Record<string, unknown> | null;
+  const features = value?.features as Record<string, unknown> | undefined;
+  return features?.consultationFlowV2 === true;
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
   const clean = base64.includes(",") ? base64.split(",").pop() ?? "" : base64;
   const binary = atob(clean);
@@ -274,6 +281,105 @@ serve(async (req) => {
     if (!actor.ok) return actor.response;
     const uid = actor.uid;
     const role = actor.role;
+
+    // ─── Consultation Flow V2 (يظل خلف feature flag حتى اكتمال الواجهة) ───
+    if (action === "consultation_v2_status") {
+      return json({ success: true, enabled: await consultationFlowV2Enabled(supabaseAdmin) });
+    }
+
+    if (action === "prepare_consultation_intent_v2") {
+      const enabled = await consultationFlowV2Enabled(supabaseAdmin);
+      if (!enabled && !(role === 6 && body.v2_test === true)) {
+        return json({ success: false, error: "CONSULTATION_V2_NOT_ENABLED" }, 409);
+      }
+      const attachments = Array.isArray(body.attachments) ? body.attachments.map(String) : [];
+      const { data, error } = await supabaseAdmin.rpc("prepare_consultation_intent_v2", {
+        p_user_uid: uid,
+        p_flow: (body.flow ?? "").toString(),
+        p_parent_consultation_id: body.parent_consultation_id || null,
+        p_subject: (body.subject ?? "").toString(),
+        p_attachments: attachments,
+        p_slot: body.slot || null,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "create_consultation_payment_v2") {
+      const enabled = await consultationFlowV2Enabled(supabaseAdmin);
+      if (!enabled && !(role === 6 && body.v2_test === true)) {
+        return json({ success: false, error: "CONSULTATION_V2_NOT_ENABLED" }, 409);
+      }
+      const payment = body.payment && typeof body.payment === "object"
+        ? body.payment as Record<string, unknown>
+        : {};
+      const { data, error } = await supabaseAdmin.rpc("create_consultation_payment_v2", {
+        p_user_uid: uid,
+        p_intent_id: body.intent_id,
+        p_payment: payment,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "get_consultation_intent_v2") {
+      const intentId = (body.intent_id ?? "").toString();
+      if (!intentId) return json({ success: false, error: "CONSULTATION_INTENT_ID_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin.from("consultation_intents")
+        .select("id,flow,parent_consultation_id,service_type,quoted_amount,base_discount,status,expires_at,materialized_consultation_id,failure_code,reservation_id,ts_crt,ts_upd")
+        .eq("id", intentId).eq("user_uid", uid).maybeSingle();
+      if (error) return json({ success: false, error: error.message }, 400);
+      if (!data) return json({ success: false, error: "CONSULTATION_INTENT_NOT_FOUND" }, 404);
+      let reservation: Record<string, unknown> | null = null;
+      if (data.reservation_id) {
+        const { data: hold } = await supabaseAdmin.from("lawyer_time_reservations")
+          .select("id,slot_start,slot_end,status,hold_expires_at,appointment_id")
+          .eq("id", data.reservation_id).maybeSingle();
+        reservation = hold as Record<string, unknown> | null;
+      }
+      return json({ success: true, intent: data, reservation });
+    }
+
+    if (action === "lawyer_ready_chat_v2") {
+      if (!isLawyer(role)) return json({ success: false, error: "LAWYER_ROLE_REQUIRED" }, 403);
+      const { data, error } = await supabaseAdmin.rpc("lawyer_ready_chat_session_v2", {
+        p_lawyer_uid: uid,
+        p_consultation_id: body.consultation_id,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "join_chat_session_v2") {
+      const { data, error } = await supabaseAdmin.rpc("join_chat_session_v2", {
+        p_user_uid: uid,
+        p_consultation_id: body.consultation_id,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "get_chat_session_v2") {
+      const { data, error } = await supabaseAdmin.rpc("get_current_chat_session_v2", {
+        p_user_uid: uid,
+        p_consultation_id: body.consultation_id,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "extend_chat_session_v2") {
+      if (!isLawyer(role)) return json({ success: false, error: "LAWYER_ROLE_REQUIRED" }, 403);
+      const { data, error } = await supabaseAdmin.rpc("extend_chat_session_v2", {
+        p_lawyer_uid: uid,
+        p_consultation_id: body.consultation_id,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
 
     // ─── المحامين النشطين (إخفاء واتساب عن المستخدم العادي) ───
     if (action === "get_active_lawyers") {
@@ -1607,6 +1713,21 @@ serve(async (req) => {
         return json({ success: false, error: "CONSULTATION_CONCURRENTLY_UPDATED" }, 409);
       }
 
+      // V2: قبول الهاتفية ينشئ رصيد الجلسة الأساسية جاهزاً، ولا يبدأ الوقت.
+      if (newStatus === 1 && Number(row.service_type) === 0 &&
+          await consultationFlowV2Enabled(supabaseAdmin)) {
+        const { error: sessionErr } = await supabaseAdmin.rpc("ensure_initial_chat_session_v2", {
+          p_consultation_id: consultId,
+        });
+        if (sessionErr) {
+          // نعيد الحالة السابقة لأن قبولاً بلا جلسة جاهزة كسر تعاقدي.
+          await supabaseAdmin.from("legal_consultations")
+            .update({ status: currentStatus, ts_upd: new Date().toISOString() })
+            .eq("id", consultId).eq("status", newStatus);
+          return json({ success: false, error: "CHAT_SESSION_CREATE_FAILED" }, 500);
+        }
+      }
+
       // 🔔 إشعار المستخدم بتحديث الحالة
       const statusLabels: Record<number, string> = { 1: "تم تأكيد", 2: "تم إتمام", 3: "تم إلغاء", 4: "تم رفض" };
       const label = statusLabels[newStatus] ?? "تم تحديث";
@@ -1661,6 +1782,16 @@ serve(async (req) => {
       const managingAdmin = canManageLawyerProfiles(role);
       if (!assignedLawyer && !managingAdmin) {
         return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
+      }
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        if (!assignedLawyer) return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
+        const { data: ready, error: readyErr } = await supabaseAdmin.rpc("lawyer_ready_chat_session_v2", {
+          p_lawyer_uid: uid,
+          p_consultation_id: consultId,
+          p_idempotency_key: crypto.randomUUID(),
+        });
+        if (readyErr) return json({ success: false, error: readyErr.message }, 400);
+        return json({ ...(ready as Record<string, unknown>), waiting_for_user: true });
       }
       if (Number(row.status) !== 1) return json({ success: false, error: "CONSULTATION_NOT_CONFIRMED" }, 400);
       if (row.chat_started_at) return json({ success: false, error: "CHAT_ALREADY_STARTED" }, 400);
@@ -2030,6 +2161,14 @@ serve(async (req) => {
       // فقط المحامي المُسند يمدد؛ الإدارة لا تنوب عنه في هبة الوقت المجانية.
       if (!isLawyer(role) || row.lawyer_uid !== uid) {
         return json({ success: false, error: "NOT_ASSIGNED_LAWYER" }, 403);
+      }
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        const { data: extendedV2, error: extendedV2Err } = await supabaseAdmin.rpc("extend_chat_session_v2", {
+          p_lawyer_uid: uid,
+          p_consultation_id: consultId,
+        });
+        if (extendedV2Err) return json({ success: false, error: extendedV2Err.message }, 400);
+        return json(extendedV2 as Record<string, unknown>);
       }
       if (Number(row.status) !== 1) return json({ success: false, error: "CHAT_CLOSED" }, 409);
       if (row.extended) return json({ success: false, error: "ALREADY_EXTENDED" }, 400);
