@@ -101,6 +101,9 @@ class _AdminSectionsScreenState extends State<AdminSectionsScreen> {
                     _tile(Icons.assignment_outlined, 'طلبات العملاء', '/admin/requests'),
                 ]),
                 _section('المالية والتقارير', [
+                  if (user?.isManager == true)
+                    _tile(Icons.account_balance_wallet_outlined,
+                        'واردات الشركة', '/admin/revenue'),
                   if (PermissionService.has(user, PermissionKeys.managePayments))
                     _tile(Icons.payments_outlined, 'المدفوعات', '/admin/payments', badge: _counts['pendingPayments'] ?? 0),
                   if (PermissionService.has(user, PermissionKeys.manageDeals))

@@ -20,3 +20,4 @@
 \ir migrations/2026_08_16_lawyer_earnings_half_share.sql
 \ir migrations/2026_08_16_lawyer_earnings_renewal_backfill.sql
 \ir migrations/2026_08_16_phone_30min_1000_and_ready_state.sql
+\ir migrations/2026_08_16_manager_revenue_and_lawyer_payouts.sql

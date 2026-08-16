@@ -128,6 +128,41 @@ serve(async (req) => {
       return json({ success: true, stats: data });
     }
 
+    if (action === "revenue_report") {
+      if (Number(actor.role) !== 6) {
+        return json({ success: false, error: "ONLY_MANAGER_CAN_VIEW_REVENUE" }, 403);
+      }
+      const period = (body.period ?? "month").toString();
+      const { data, error } = await supabaseAdmin.rpc("get_manager_revenue_report_period", {
+        p_manager_uid: adminUid,
+        p_period: period,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "mark_lawyer_paid") {
+      if (Number(actor.role) !== 6) {
+        return json({ success: false, error: "ONLY_MANAGER_CAN_MARK_PAYOUT" }, 403);
+      }
+      const { data, error } = await supabaseAdmin.rpc("mark_lawyer_earnings_paid", {
+        p_manager_uid: adminUid,
+        p_lawyer_uid: body.lawyer_uid,
+        p_note: (body.note ?? "").toString(),
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const result = data as Record<string, unknown>;
+      try {
+        await supabaseAdmin.rpc("send_push_notification", {
+          p_uid: body.lawyer_uid,
+          p_title: "💰 تم تسجيل دفع مستحقاتك",
+          p_body: `سجّل المكتب دفع ${String(result.amount ?? 0)} ل.س من مستحقاتك.`,
+          p_data: { act: "lawyer_payout_paid", ref_id: result.payout_id },
+        });
+      } catch { /* صف الإشعار داخل التطبيق موجود */ }
+      return json(result);
+    }
+
     if (action === "all_staff") {
       const { data, error } = await supabaseAdmin.rpc("get_all_staff_users", { p_admin_uid: adminUid });
       if (error) return json({ success: false, error: error.message }, 400);

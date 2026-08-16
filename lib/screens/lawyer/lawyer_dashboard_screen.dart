@@ -2097,6 +2097,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     final rows = legal.lawyerEarnings;
     final pending = (totals['pending'] as num?) ?? 0;
     final earned = (totals['earned'] as num?) ?? 0;
+    final paid = (totals['paid'] as num?) ?? 0;
     return RefreshIndicator(
       onRefresh: legal.fetchLawyerEarnings,
       child: ListView(
@@ -2114,8 +2115,11 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
             Expanded(child: _earningSummary('قيد الاستحقاق', _money(pending),
                 AppTheme.warningOrange)),
             AppTheme.gapWidthSmall,
-            Expanded(child: _earningSummary('مستحقة', _money(earned),
+            Expanded(child: _earningSummary('لي عند المكتب', _money(earned),
                 AppTheme.successGreen)),
+            AppTheme.gapWidthSmall,
+            Expanded(child: _earningSummary('تم دفعها', _money(paid),
+                AppTheme.infoBlue)),
           ]),
           AppTheme.gapHeightLarge,
           if (rows.isEmpty)
@@ -2128,8 +2132,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
             ...rows.map((row) {
               final status = (row['status'] ?? '').toString();
               final statusText = switch (status) {
-                'earned' => 'مستحقة',
+                'earned' => 'مستحقة عند المكتب',
                 'pending' => 'قيد الاستحقاق',
+                'paid' => 'تم دفعها',
                 'reversed' => 'معكوسة',
                 _ => 'ملغاة',
               };
@@ -2137,7 +2142,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
                   ? AppTheme.successGreen
                   : status == 'pending'
                       ? AppTheme.warningOrange
-                      : AppTheme.textGrey;
+                      : status == 'paid'
+                          ? AppTheme.infoBlue
+                          : AppTheme.textGrey;
               final kind = switch ((row['service_kind'] ?? '').toString()) {
                 'phone_initial' => 'استشارة هاتفية',
                 'phone_renewal' => 'تجديد محادثة',

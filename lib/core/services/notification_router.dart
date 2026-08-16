@@ -49,6 +49,7 @@ class NotificationRouter {
     'consultation_reactivated': [UserRole.lawyer],
     'legal_user_joined': [UserRole.lawyer],
     'legal_renewal_paid_ready': [UserRole.lawyer],
+    'lawyer_payout_paid': [UserRole.lawyer],
     'legal_consultation_admin': [UserRole.deputy, UserRole.manager],
     'legal_consultation_escalated': [UserRole.deputy, UserRole.manager],
   };
@@ -95,6 +96,9 @@ class NotificationRouter {
         return refId.isEmpty
             ? const NotificationTarget('/legal/consultations')
             : NotificationTarget('/legal/chat/$refId');
+
+      case 'lawyer_payout_paid':
+        return const NotificationTarget('/lawyer/dashboard');
 
       case 'legal_consultation_new':
       case 'legal_consultation_resubmitted':

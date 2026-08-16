@@ -1249,6 +1249,7 @@ serve(async (req) => {
         totals: {
           pending: sum("pending"),
           earned: sum("earned"),
+          paid: sum("paid"),
           reversed: sum("reversed"),
           cancelled: sum("cancelled"),
         },

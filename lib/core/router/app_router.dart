@@ -90,6 +90,7 @@ import '../../screens/admin/payments_screen.dart';
 import '../../screens/admin/reports_screen.dart';
 import '../../screens/admin/config_editor_screen.dart';
 import '../../screens/admin/analytics_screen.dart';
+import '../../screens/admin/revenue_dashboard_screen.dart';
 import '../../providers/auth_provider.dart';
 import '../services/permission_service.dart';
 
@@ -219,6 +220,9 @@ class AppRouter {
       // لا يحتاج guard — المستخدم العادي هو من يطلب الاستشارة
 
       if (path.startsWith('/admin')) {
+        if (path == '/admin/revenue' && !auth.isManager) {
+          return auth.isSenior ? '/admin/sections' : '/user/home';
+        }
         if (auth.isLawyer) return '/lawyer/dashboard';
         if (auth.isExpediter) return '/expediter/tasks';
         if (!(auth.isEmployee || auth.isSenior)) {
@@ -325,6 +329,7 @@ class AppRouter {
       GoRoute(path: '/admin/resource-usage', builder: (context, state) => const ResourceUsageScreen()),
       GoRoute(path: '/admin/config', builder: (context, state) => const ConfigEditorScreen()),
       GoRoute(path: '/admin/analytics', builder: (context, state) => const AnalyticsScreen()),
+      GoRoute(path: '/admin/revenue', builder: (context, state) => const RevenueDashboardScreen()),
       GoRoute(path: '/admin/completion-requests', builder: (context, state) => const CompletionRequestsScreen()),
       GoRoute(
         path: '/legal/consultations',
