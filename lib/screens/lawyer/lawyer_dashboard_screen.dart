@@ -1211,6 +1211,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     final sName = sIdx < serviceNames.length ? serviceNames[sIdx] : 'استشارة';
     final price = (c['price'] ?? 0) as num;
     final lawyerAmount = (c['lawyer_amount'] as num?) ?? (price / 2);
+    final renewCount = (c['renew_count'] as num?)?.toInt() ?? 0;
     final subject = (c['subject'] ?? '').toString();
     final clientName = c['client_nm']?.toString() ?? 'عميل';
     // substring(0,16) كان يرمي استثناء ويكسر البطاقة لو قصُر النص
@@ -1333,10 +1334,16 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
           ],
           const SizedBox(height: 6),
           Row(children: [
-            Text('حصتك: ${lawyerAmount.toStringAsFixed(0)} ل.س',
-                style: const TextStyle(color: AppTheme.primaryGold,
-                    fontSize: AppTheme.fontSizeBody,
-                    fontWeight: FontWeight.bold)),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('إجمالي حصتك: ${lawyerAmount.toStringAsFixed(0)} ل.س',
+                  style: const TextStyle(color: AppTheme.primaryGold,
+                      fontSize: AppTheme.fontSizeBody,
+                      fontWeight: FontWeight.bold)),
+              if (renewCount > 0)
+                Text('تشمل $renewCount تجديد',
+                    style: const TextStyle(color: AppTheme.textGrey,
+                        fontSize: 9)),
+            ]),
             const Spacer(),
             Text(tsCrt, style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
           ]),
