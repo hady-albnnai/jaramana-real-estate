@@ -18,3 +18,4 @@
 \ir migrations/2026_08_16_consultation_v2_cancel_retry.sql
 \ir migrations/2026_08_16_consultation_orphan_cleanup_cron.sql
 \ir migrations/2026_08_16_lawyer_earnings_half_share.sql
+\ir migrations/2026_08_16_lawyer_earnings_renewal_backfill.sql

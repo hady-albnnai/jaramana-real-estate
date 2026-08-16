@@ -1405,7 +1405,8 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
           ],
 
           // ── 📞 مؤكدة + هاتفية: الجلسة هي مصدر الحقيقة ──
-          if (sts == 1 && sIdx != 1) ...[
+          if (sIdx != 1 &&
+              (sts == 1 || sessionReady || sessionWaiting || sessionActive)) ...[
             AppTheme.gapHeightSmall,
             SizedBox(width: double.infinity, child: ElevatedButton.icon(
               onPressed: () async {
