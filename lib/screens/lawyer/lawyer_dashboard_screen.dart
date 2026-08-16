@@ -18,8 +18,7 @@ class LawyerDashboardScreen extends StatefulWidget {
   State<LawyerDashboardScreen> createState() => _LawyerDashboardScreenState();
 }
 
-class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
-    with SingleTickerProviderStateMixin {
+class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
   final _whatsappCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   static const String _customDocsStorageKey = 'lawyer_expediting_custom_docs_v1';
@@ -38,12 +37,11 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
   bool _checking = true; // يمنع وميض شاشة الإعداد
   String? _selectedExpediterUid;
   int _selectedItemType = 0;
-  late TabController _tabCtrl;
+  int _selectedSection = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 5, vsync: this); // +تبويب «أوقاتي» 2026-08-14
     _loadCustomDocumentTemplates();
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
@@ -74,7 +72,6 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
     _permanentDocTitleCtrl.dispose();
     _oneTimeDocTitleCtrl.dispose();
     _searchCtrl.dispose();
-    _tabCtrl.dispose();
     super.dispose();
   }
 
@@ -396,88 +393,294 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
+      drawer: _buildSideMenu(legal),
       appBar: AppBar(
-        title: const E2E(id: 'e2e_screen_lawyer_dashboard', child: Text('⚖️ لوحة المحامي')), backgroundColor: AppTheme.scaffoldBackground,
+        backgroundColor: AppTheme.scaffoldBackground,
+        title: E2E(
+          id: 'e2e_screen_lawyer_dashboard',
+          child: Text(_sectionTitle),
+        ),
         actions: [
-          // 🟢 مفتاح التوفر (2026-08-14) — أول أسس الإسناد:
-          // متاح ← الأقل انشغالاً ← الدور. كان is_active بلا كاتب إطلاقاً.
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(_isAvailable ? 'متاح' : 'غير متاح',
-                style: TextStyle(
-                    color: _isAvailable ? AppTheme.successGreen : AppTheme.textGrey,
-                    fontSize: 11, fontWeight: FontWeight.bold)),
-            Switch(
-              value: _isAvailable,
-              activeColor: AppTheme.successGreen,
-              onChanged: (v) => _toggleAvailability(context.read<LegalProvider>(), v),
-            ),
-          ]),
           IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: AppTheme.primaryGold),
-            tooltip: 'الإشعارات',
-            onPressed: () => context.push('/user/notifications'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.account_circle_outlined, color: AppTheme.primaryGold),
-            tooltip: 'تفاصيل حسابي',
-            onPressed: _openAccountDetails,
-          ),
-          IconButton(
-            icon: const Icon(Icons.lock_outline, color: AppTheme.primaryGold),
-            tooltip: 'تغيير كلمة المرور',
-            onPressed: _showProfileDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
-            tooltip: 'تسجيل خروج',
-            onPressed: _logout,
+            icon: const Icon(Icons.refresh, color: AppTheme.primaryGold),
+            tooltip: 'تحديث الصفحة الحالية',
+            onPressed: () => _refreshSelectedSection(legal),
           ),
         ],
-        bottom: TabBar(controller: _tabCtrl, indicatorColor: AppTheme.primaryGold,
-          labelColor: AppTheme.primaryGold, unselectedLabelColor: AppTheme.textGrey,
-          tabs: [
-            Tab(
-              // 🔔 شارة الطلبات الجديدة (status=0) — تلفت نظر المحامي فوراً
-              icon: E2E(
-                id: 'e2e_lawyer_tab_consultations',
-                button: true,
-                child: Builder(builder: (_) {
-                  final newCount = legal.lawyerConsultations
-                      .where((c) => (c['status'] ?? 0) == 0)
-                      .length;
-                  if (newCount == 0) return const Icon(Icons.gavel);
-                  return Stack(clipBehavior: Clip.none, children: [
-                    const Icon(Icons.gavel),
-                    Positioned(
-                      top: -4, right: -6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppTheme.errorRed,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text('$newCount',
-                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ]);
-                }),
-              ),
-              text: 'الاستشارات',
-            ),
-            const Tab(icon: E2E(id: 'e2e_lawyer_tab_appointments', button: true, child: Icon(Icons.calendar_month)), text: 'مواعيدي'),
-            const Tab(icon: E2E(id: 'e2e_lawyer_tab_create_task', button: true, child: Icon(Icons.add_task)), text: 'إضافة مهمة'),
-            const Tab(icon: E2E(id: 'e2e_lawyer_tab_sent_tasks', button: true, child: Icon(Icons.assignment)), text: 'المهام المرسلة'),
-            const Tab(icon: E2E(id: 'e2e_lawyer_tab_slots', button: true, child: Icon(Icons.schedule)), text: 'أوقاتي'),
-          ]),
       ),
-      body: TabBarView(controller: _tabCtrl, children: [
-        _buildConsultationsTab(legal),
-        _buildAppointmentsTab(legal),
-        _buildCreateTaskTab(legal),
-        _buildSentTasksTab(legal),
-        _slotsEditor(legal, isGate: false),
-      ]),
+      body: _buildSelectedSection(legal),
+    );
+  }
+
+  static const _sectionTitles = [
+    'الاستشارات',
+    'مواعيدي',
+    'إضافة مهمة',
+    'المهام المرسلة',
+    'أوقاتي',
+  ];
+
+  String get _sectionTitle => _sectionTitles[_selectedSection];
+
+  Widget _buildSelectedSection(LegalProvider legal) {
+    switch (_selectedSection) {
+      case 1:
+        return _buildAppointmentsTab(legal);
+      case 2:
+        return _buildCreateTaskTab(legal);
+      case 3:
+        return _buildSentTasksTab(legal);
+      case 4:
+        return _slotsEditor(legal, isGate: false);
+      default:
+        return _buildConsultationsTab(legal);
+    }
+  }
+
+  void _selectSection(int index, {bool closeMenu = true}) {
+    if (closeMenu) Navigator.pop(context);
+    if (_selectedSection != index) setState(() => _selectedSection = index);
+  }
+
+  Future<void> _refreshSelectedSection(LegalProvider legal) async {
+    switch (_selectedSection) {
+      case 1:
+        await legal.fetchLawyerAppointments();
+        break;
+      case 2:
+        await legal.fetchAvailableExpediters();
+        break;
+      case 3:
+        await legal.fetchLawyerTasks();
+        break;
+      case 4:
+        _draftSlots.clear();
+        final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+        if (uid.isNotEmpty) await legal.checkLawyerProfile(uid);
+        if (mounted) setState(() {});
+        break;
+      default:
+        await legal.fetchLawyerConsultations();
+    }
+  }
+
+  Widget _buildSideMenu(LegalProvider legal) {
+    final user = context.read<AuthProvider>().userModel;
+    final newConsultations = legal.lawyerConsultations
+        .where((c) => (c['status'] ?? 0) == 0)
+        .length;
+
+    Widget sectionTile({
+      required int index,
+      required String e2eId,
+      required IconData icon,
+      required String title,
+      Widget? trailing,
+    }) {
+      final selected = _selectedSection == index;
+      return ListTile(
+        selected: selected,
+        selectedTileColor: AppTheme.primaryGold.withOpacity(0.12),
+        leading: E2E(
+          id: e2eId,
+          button: true,
+          child: Icon(
+            icon,
+            color: selected ? AppTheme.primaryGold : AppTheme.textGrey,
+          ),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: selected ? AppTheme.primaryGold : AppTheme.textWhite,
+            fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
+        trailing: trailing,
+        onTap: () => _selectSection(index),
+      );
+    }
+
+    return Drawer(
+      backgroundColor: AppTheme.surfaceBlack,
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            Container(
+              padding: AppTheme.paddingAllLarge,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryGold.withOpacity(0.10),
+                border: Border(
+                  bottom: BorderSide(
+                    color: AppTheme.primaryGold.withOpacity(0.25),
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.gavel,
+                      color: AppTheme.primaryGold, size: 34),
+                  AppTheme.gapHeightSmall,
+                  Text(
+                    user?.nm.isNotEmpty == true ? user!.nm : 'حساب المحامي',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: AppTheme.fontSizeSubtitle,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  AppTheme.gapHeightXS,
+                  Row(
+                    children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: _isAvailable
+                              ? AppTheme.successGreen
+                              : AppTheme.textGrey,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      AppTheme.gapWidthSmall,
+                      Expanded(
+                        child: Text(
+                          _isAvailable
+                              ? 'متاح لاستقبال قضايا جديدة'
+                              : 'استقبال القضايا الجديدة متوقف',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _isAvailable
+                                ? AppTheme.successGreen
+                                : AppTheme.textGrey,
+                            fontSize: AppTheme.fontSizeCaption,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            sectionTile(
+              index: 0,
+              e2eId: 'e2e_lawyer_tab_consultations',
+              icon: Icons.gavel,
+              title: 'الاستشارات',
+              trailing: newConsultations > 0
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorRed,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$newConsultations',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            sectionTile(
+              index: 1,
+              e2eId: 'e2e_lawyer_tab_appointments',
+              icon: Icons.calendar_month,
+              title: 'مواعيدي',
+            ),
+            sectionTile(
+              index: 2,
+              e2eId: 'e2e_lawyer_tab_create_task',
+              icon: Icons.add_task,
+              title: 'إضافة مهمة',
+            ),
+            sectionTile(
+              index: 3,
+              e2eId: 'e2e_lawyer_tab_sent_tasks',
+              icon: Icons.assignment,
+              title: 'المهام المرسلة',
+            ),
+            sectionTile(
+              index: 4,
+              e2eId: 'e2e_lawyer_tab_slots',
+              icon: Icons.schedule,
+              title: 'أوقاتي',
+            ),
+            const Divider(color: Colors.white12),
+            SwitchListTile(
+              value: _isAvailable,
+              activeColor: AppTheme.successGreen,
+              secondary: Icon(
+                _isAvailable ? Icons.work_outline : Icons.pause_circle_outline,
+                color: _isAvailable
+                    ? AppTheme.successGreen
+                    : AppTheme.textGrey,
+              ),
+              title: const Text(
+                'استقبال قضايا جديدة',
+                style: TextStyle(color: AppTheme.textWhite),
+              ),
+              subtitle: Text(
+                _isAvailable ? 'مفعّل' : 'متوقف',
+                style: TextStyle(
+                  color: _isAvailable
+                      ? AppTheme.successGreen
+                      : AppTheme.textGrey,
+                ),
+              ),
+              onChanged: (value) => _toggleAvailability(legal, value),
+            ),
+            ListTile(
+              leading: const Icon(Icons.notifications_outlined,
+                  color: AppTheme.primaryGold),
+              title: const Text('الإشعارات',
+                  style: TextStyle(color: AppTheme.textWhite)),
+              onTap: () {
+                Navigator.pop(context);
+                Future.microtask(() => context.push('/user/notifications'));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_circle_outlined,
+                  color: AppTheme.primaryGold),
+              title: const Text('تفاصيل حسابي',
+                  style: TextStyle(color: AppTheme.textWhite)),
+              onTap: () {
+                Navigator.pop(context);
+                Future.microtask(_openAccountDetails);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline,
+                  color: AppTheme.primaryGold),
+              title: const Text('تغيير كلمة المرور',
+                  style: TextStyle(color: AppTheme.textWhite)),
+              onTap: () {
+                Navigator.pop(context);
+                Future.microtask(_showProfileDialog);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text('تسجيل الخروج',
+                  style: TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.pop(context);
+                Future.microtask(_logout);
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1156,7 +1359,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
             ),
             AppTheme.gapHeightSmall,
             SizedBox(width: double.infinity, child: OutlinedButton.icon(
-              onPressed: () => _tabCtrl.animateTo(1),
+              onPressed: () => _selectSection(1, closeMenu: false),
               icon: const Icon(Icons.calendar_month, color: AppTheme.primaryGold, size: 16),
               label: const Text('إدارة الموعد',
                   style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
@@ -1333,29 +1536,71 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
                   for (final f in files)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: ClipRRect(
-                        borderRadius: AppTheme.radiusSmall,
-                        child: Image.network(
+                      child: InkWell(
+                        onTap: () => _showAttachmentPreview(
                           f['url'] ?? '',
-                          fit: BoxFit.contain,
-                          loadingBuilder: (_, child, p) => p == null
-                              ? child
-                              : const SizedBox(
-                                  height: 90,
-                                  child: Center(
-                                      child: CircularProgressIndicator(color: AppTheme.primaryGold))),
-                          errorBuilder: (_, __, ___) => Container(
-                            padding: AppTheme.paddingAllMedium,
+                          f['name'] ?? 'مستند',
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
                             color: AppTheme.scaffoldBackground,
-                            child: Row(children: [
-                              const Icon(Icons.insert_drive_file, color: AppTheme.infoBlue),
-                              AppTheme.gapWidthSmall,
-                              Expanded(
-                                child: Text(f['name'] ?? 'مستند',
-                                    style: const TextStyle(color: AppTheme.textWhite, fontSize: 12)),
-                              ),
-                            ]),
+                            borderRadius: AppTheme.radiusSmall,
+                            border: Border.all(color: Colors.white12),
                           ),
+                          child: Column(children: [
+                            ClipRRect(
+                              borderRadius: AppTheme.radiusSmall,
+                              child: Image.network(
+                                f['url'] ?? '',
+                                width: double.infinity,
+                                height: 220,
+                                fit: BoxFit.contain,
+                                loadingBuilder: (_, child, p) => p == null
+                                    ? child
+                                    : const SizedBox(
+                                        height: 220,
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                              color: AppTheme.primaryGold),
+                                        ),
+                                      ),
+                                errorBuilder: (_, __, ___) => const SizedBox(
+                                  height: 120,
+                                  child: Center(
+                                    child: Text(
+                                      'تعذّر عرض الصورة',
+                                      style: TextStyle(color: AppTheme.errorRed),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              child: Row(children: [
+                                const Icon(Icons.zoom_in,
+                                    color: AppTheme.primaryGold, size: 18),
+                                AppTheme.gapWidthSmall,
+                                Expanded(
+                                  child: Text(
+                                    f['name'] ?? 'مستند',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        color: AppTheme.textWhite,
+                                        fontSize: 12),
+                                  ),
+                                ),
+                                const Text(
+                                  'اضغط للتكبير',
+                                  style: TextStyle(
+                                      color: AppTheme.primaryGold,
+                                      fontSize: 11),
+                                ),
+                              ]),
+                            ),
+                          ]),
                         ),
                       ),
                     ),
@@ -1370,6 +1615,77 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen>
             child: const Text('إغلاق', style: TextStyle(color: AppTheme.primaryGold)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showAttachmentPreview(String url, String name) {
+    if (url.isEmpty) {
+      _snack('تعذّر فتح المستند', bg: AppTheme.errorRed);
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppTheme.deepBlack,
+        insetPadding: const EdgeInsets.all(10),
+        child: SafeArea(
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  tooltip: 'إغلاق',
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ]),
+            ),
+            const Divider(color: Colors.white12, height: 1),
+            Expanded(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 6,
+                child: Center(
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (_, child, progress) => progress == null
+                        ? child
+                        : const Center(
+                            child: CircularProgressIndicator(
+                                color: AppTheme.primaryGold),
+                          ),
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Text(
+                        'تعذّر تحميل الصورة — أعد فتح المستند',
+                        style: TextStyle(color: AppTheme.errorRed),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text(
+                'استخدم إصبعين للتكبير والتحريك',
+                style: TextStyle(color: AppTheme.textGrey, fontSize: 11),
+              ),
+            ),
+          ]),
+        ),
       ),
     );
   }

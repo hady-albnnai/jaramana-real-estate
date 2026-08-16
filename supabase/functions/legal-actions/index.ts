@@ -83,6 +83,25 @@ function safeImageContentType(value: unknown): string {
     : "image/jpeg";
 }
 
+function detectImageContentType(bytes: Uint8Array): string | null {
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e &&
+    bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a &&
+    bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) return "image/png";
+  if (
+    bytes.length >= 12 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+  ) return "image/webp";
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  ) return "image/jpeg";
+  return null;
+}
+
 function safeStorageName(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.-]/g, "_").slice(0, 80) || "item";
 }
@@ -624,12 +643,67 @@ serve(async (req) => {
       return json({ success: true, tasks: signedTasks });
     }
 
+    // ─── رفع مستند استشارة عبر مفتاح الخدمة ───
+    // الرفع المباشر من التطبيق يفشل لأن توثيقه staff_session لا Supabase Auth.
+    // المسار يُبنى من uid المتحقق منه أعلاه ولا يقبله السيرفر من العميل.
+    if (action === "upload_consultation_attachment") {
+      const attachmentBase64 = (body.attachment_base64 ?? "").toString();
+      if (!attachmentBase64) {
+        return json({ success: false, error: "ATTACHMENT_REQUIRED" }, 400);
+      }
+      let bytes: Uint8Array;
+      try {
+        bytes = base64ToUint8Array(attachmentBase64);
+      } catch {
+        return json({ success: false, error: "INVALID_ATTACHMENT" }, 400);
+      }
+      if (bytes.length === 0) {
+        return json({ success: false, error: "INVALID_ATTACHMENT" }, 400);
+      }
+      if (bytes.length > 8 * 1024 * 1024) {
+        return json({ success: false, error: "ATTACHMENT_TOO_LARGE" }, 413);
+      }
+      // نوع الملف يُكتشف من البايتات نفسها، لا من اسم الملف أو ترويسة العميل.
+      const contentType = detectImageContentType(bytes);
+      if (!contentType) {
+        return json({ success: false, error: "INVALID_IMAGE_CONTENT" }, 400);
+      }
+      const ext = contentType === "image/png"
+        ? "png"
+        : contentType === "image/webp"
+        ? "webp"
+        : "jpg";
+      const path = `${uid}/${crypto.randomUUID()}.${ext}`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("consultation_files")
+        .upload(path, bytes, {
+          contentType,
+          cacheControl: "3600",
+          upsert: false,
+        });
+      if (uploadError) {
+        return json({ success: false, error: "ATTACHMENT_UPLOAD_FAILED" }, 400);
+      }
+      return json({ success: true, path });
+    }
+
     // ─── حجز استشارة قانونية (من المستخدم العادي) ───
     if (action === "book_consultation") {
       const serviceType = Number(body.service_type ?? 0);
       const subject = (body.subject ?? "").toString().trim();
       const price = Number(body.price ?? 0);
-      const attachments = Array.isArray(body.attachments) ? body.attachments.map(String) : [];
+      const requestedAttachments = Array.isArray(body.attachments)
+        ? body.attachments.map(String)
+        : [];
+      if (requestedAttachments.length > 5) {
+        return json({ success: false, error: "TOO_MANY_ATTACHMENTS" }, 400);
+      }
+      const attachments = requestedAttachments.filter((path) =>
+        path.startsWith(`${uid}/`) && !path.includes("..")
+      );
+      if (attachments.length !== requestedAttachments.length) {
+        return json({ success: false, error: "INVALID_ATTACHMENT_PATH" }, 403);
+      }
       const requestedSlot = (body.slot ?? "").toString(); // حضورية: موعد مختار مسبقاً
       if (!subject) return json({ success: false, error: "SUBJECT_REQUIRED" }, 400);
       if (serviceType < 0 || serviceType > 1) return json({ success: false, error: "INVALID_SERVICE_TYPE" }, 400);

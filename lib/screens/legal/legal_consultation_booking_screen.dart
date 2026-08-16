@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -347,33 +348,52 @@ class _State extends State<LegalConsultationBookingScreen>
   }
   void _pickProof() async { final f = await _storage.pickImage(fromCamera: false); if (f != null) setState(() => _proofImage = f); }
 
-  Future<List<String>> _uploadAttachments() async {
+  Future<List<String>?> _uploadAttachments() async {
     if (_attachments.isEmpty) return [];
-    final urls = <String>[];
-    final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-    // 🔒 §13 No-Silent-Probes (2026-08-14): كان فشل رفع أي مرفق يُبتلع
-    // بـ`catch (_) {}` ⇒ المستخدم يرفق صورة الطابو ويُرسل الطلب وهو مطمئن،
-    // بينما المحامي يستلم استشارة **بلا مستندات** فيردّها need_info، وتضيع
-    // جولة كاملة على الطرفين بلا أن يعرف أحد السبب.
-    // الآن: نحصي الإخفاقات ونُعلنها للمستخدم بعد المحاولة.
-    var failed = 0;
-    for (final f in _attachments) {
+    final paths = <String>[];
+
+    // التطبيق يستخدم staff_session لا Supabase Auth JWT، لذلك الرفع المباشر
+    // إلى consultation_files كان يُرفض بـRLS وتُنشأ الاستشارة بلا الصورة.
+    // الرفع الآن عبر legal-actions بعد التحقق من جلسة المستخدم، وأي فشل
+    // يوقف إرسال الطلب بالكامل كي لا يصل للمحامي ناقصاً بصمت.
+    for (final file in _attachments) {
       try {
-        final comp = await _storage.compressImage(File(f.path));
-        final bytes = await (comp ?? File(f.path)).readAsBytes();
-        final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.${f.path.split('.').last}';
-        await SupabaseService().storage.from('consultation_files').uploadBinary(path, bytes, fileOptions: FileOptions(cacheControl: '3600', upsert: false));
-        urls.add(path);
+        final bytes = kIsWeb
+            ? await file.readAsBytes()
+            : await (await _storage.compressImage(File(file.path)) ??
+                    File(file.path))
+                .readAsBytes();
+        final ext = file.name.toLowerCase().split('.').last;
+        final contentType = ext == 'png'
+            ? 'image/png'
+            : ext == 'webp'
+                ? 'image/webp'
+                : 'image/jpeg';
+        final res = await SupabaseService().invokeFunction(
+          'legal-actions',
+          body: {
+            'action': 'upload_consultation_attachment',
+            'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+            'attachment_base64': base64Encode(bytes),
+            'attachment_content_type': contentType,
+          },
+        );
+        final data = res.data is Map
+            ? Map<String, dynamic>.from(res.data as Map)
+            : null;
+        final path = data?['path']?.toString() ?? '';
+        if (data?['success'] != true || path.isEmpty) {
+          throw Exception('ATTACHMENT_UPLOAD_FAILED');
+        }
+        paths.add(path);
       } catch (_) {
-        failed++;
+        if (mounted) {
+          _snack('تعذّر رفع المستندات — لم يتم إرسال الطلب، حاول مجدداً');
+        }
+        return null;
       }
     }
-    if (failed > 0 && mounted) {
-      _snack(failed == _attachments.length
-          ? 'تعذّر رفع المرفقات — تحقّق من اتصالك وأعد المحاولة'
-          : 'تعذّر رفع $failed من ${_attachments.length} مرفقات');
-    }
-    return urls;
+    return paths;
   }
 
   Future<String?> _uploadProof(String uid) async {
@@ -483,6 +503,10 @@ class _State extends State<LegalConsultationBookingScreen>
   Future<void> _submitConsultation() async {
     setState(() => _submitting = true);
     final atts = await _uploadAttachments();
+    if (atts == null) {
+      if (mounted) setState(() => _submitting = false);
+      return;
+    }
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
         'action': 'book_consultation', 'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
