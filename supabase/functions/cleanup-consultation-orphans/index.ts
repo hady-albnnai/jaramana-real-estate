@@ -42,20 +42,6 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
-  const payload = await req.json().catch(() => ({})) as Record<string, unknown>;
-
-  if (payload.action === "wipe_user_uploads") {
-    const { data: objects, error } = await admin.rpc("list_all_user_upload_files_for_wipe");
-    if (error) return json({ success: false, error: "STORAGE_SCAN_FAILED" }, 500);
-    const result = await removeObjects(admin, (objects ?? []) as Record<string, unknown>[]);
-    return json({
-      success: result.failures.length === 0,
-      scanned: objects?.length ?? 0,
-      removed: result.removed,
-      failures: result.failures,
-    }, result.failures.length === 0 ? 200 : 500);
-  }
-
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: objects, error } = await admin.rpc("list_consultation_orphan_files_v2");
   if (error) return json({ success: false, error: "STORAGE_SCAN_FAILED" }, 500);
