@@ -102,8 +102,19 @@ serve(async (req) => {
 
     if (error) return json({ success: false, error: error.message }, 400);
 
+    const result = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : null;
+    const succeeded = data === true || result?.success === true;
+    if (!succeeded) {
+      return json({
+        success: false,
+        error: result?.error ?? "PASSWORD_RESET_FAILED",
+      }, 400);
+    }
+
     return json({
-      success: data === true,
+      success: true,
       new_password: newPassword,
     });
   } catch (error) {
