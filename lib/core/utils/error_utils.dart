@@ -322,6 +322,7 @@ class ErrorUtils {
     'INVALID_SERVICE_TYPE': 'نوع الخدمة غير صالح.',
     'INVALID_DURATION_MINS': 'مدة الاستشارة غير صالحة.',
     'INVALID_LEGAL_PRICE': 'سعر الاستشارة غير صالح.',
+    'INVALID_LAWYER_SHARE_PERCENT': 'نسبة حصة المحامي يجب أن تكون بين 0 و100.',
     'INVALID_REASON_CODE': 'سبب الرفض غير صالح.',
     'REASON_REQUIRED': 'السبب مطلوب.',
     'REASON_NOTE_REQUIRED': 'اكتب تفاصيل السبب.',

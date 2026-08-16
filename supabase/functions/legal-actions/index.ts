@@ -496,8 +496,29 @@ serve(async (req) => {
         p_idempotency_key: body.idempotency_key,
       });
       if (error) return json({ success: false, error: error.message }, 400);
-      await broadcastConsultationEvent(supabaseAdmin, (body.consultation_id ?? "").toString(), "session_changed");
-      return json(data as Record<string, unknown>);
+      const ready = data as Record<string, unknown>;
+      const consultationId = (body.consultation_id ?? "").toString();
+      await broadcastConsultationEvent(supabaseAdmin, consultationId, "session_changed");
+      if (ready?.duplicate !== true) {
+        const { data: consultation } = await supabaseAdmin.from("legal_consultations")
+          .select("user_uid").eq("id", consultationId).maybeSingle();
+        if (consultation?.user_uid) {
+          try {
+            await supabaseAdmin.rpc("send_push_notification", {
+              p_uid: consultation.user_uid,
+              p_title: "💬 المحامي جاهز لبدء الاستشارة",
+              p_body: "افتح المحادثة خلال دقيقتين. يبدأ الوقت عند دخولك أو تلقائياً بعد المهلة.",
+              p_data: { act: "legal_lawyer_ready", ref_id: consultationId },
+            });
+            if (ready?.session_id) {
+              await supabaseAdmin.from("consultation_event_outbox")
+                .update({ status: "sent", sent_at: new Date().toISOString(), last_error: null })
+                .eq("event_key", `lawyer-ready:${String(ready.session_id)}`);
+            }
+          } catch { /* يبقى outbox pending لإعادة المحاولة */ }
+        }
+      }
+      return json(ready);
     }
 
     if (action === "join_chat_session_v2") {
@@ -1207,6 +1228,34 @@ serve(async (req) => {
     }
 
     // ─── استشارات المحامي (محامي: خاصة به — إدارة: الكل) ───
+    if (action === "get_lawyer_earnings") {
+      if (!isLawyer(role) && !canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+      const target = isLawyer(role)
+        ? uid
+        : (body.lawyer_uid ?? uid).toString();
+      const { data, error } = await supabaseAdmin.from("lawyer_earnings")
+        .select("id,consultation_id,session_id,appointment_id,payment_id,service_kind,gross_amount,share_percent,lawyer_amount,status,earned_at,ts_crt")
+        .eq("lawyer_uid", target).order("ts_crt", { ascending: false }).limit(300);
+      if (error) return json({ success: false, error: error.message }, 400);
+      const rows = (data ?? []) as Record<string, unknown>[];
+      const sum = (status: string) => rows
+        .filter((r) => r.status === status)
+        .reduce((total, r) => total + Number(r.lawyer_amount ?? 0), 0);
+      return json({
+        success: true,
+        earnings: rows,
+        totals: {
+          pending: sum("pending"),
+          earned: sum("earned"),
+          reversed: sum("reversed"),
+          cancelled: sum("cancelled"),
+        },
+        share_percent: await supabaseAdmin.rpc("legal_lawyer_share_percent").then((r) => r.data),
+      });
+    }
+
     if (action === "get_lawyer_consultations") {
       if (!isLawyer(role) && !canManageLawyerProfiles(role)) {
         return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
@@ -1222,7 +1271,44 @@ serve(async (req) => {
       }
       const { data, error } = await query;
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: true, consultations: data ?? [] });
+      const consultations = (data ?? []) as Record<string, unknown>[];
+      const ids = consultations.map((c) => String(c.id ?? "")).filter(Boolean);
+      const latestByConsultation = new Map<string, Record<string, unknown>>();
+      if (ids.length > 0) {
+        const { data: sessions } = await supabaseAdmin.from("consultation_chat_sessions")
+          .select("consultation_id,status,starts_at,ends_at,join_deadline,ordinal")
+          .in("consultation_id", ids)
+          .order("ordinal", { ascending: false });
+        for (const session of (sessions ?? []) as Record<string, unknown>[]) {
+          const id = String(session.consultation_id ?? "");
+          if (id && !latestByConsultation.has(id)) latestByConsultation.set(id, session);
+        }
+      }
+      const earningByConsultation = new Map<string, number>();
+      if (ids.length > 0) {
+        const { data: earnings } = await supabaseAdmin.from("lawyer_earnings")
+          .select("consultation_id,lawyer_amount,status")
+          .in("consultation_id", ids)
+          .in("status", ["pending", "earned"]);
+        for (const earning of (earnings ?? []) as Record<string, unknown>[]) {
+          const id = String(earning.consultation_id ?? "");
+          earningByConsultation.set(id,
+            (earningByConsultation.get(id) ?? 0) + Number(earning.lawyer_amount ?? 0));
+        }
+      }
+      const enriched = consultations.map((c) => {
+        const id = String(c.id ?? "");
+        const session = latestByConsultation.get(id);
+        return {
+          ...c,
+          session_status: session?.status ?? null,
+          session_starts_at: session?.starts_at ?? null,
+          session_ends_at: session?.ends_at ?? null,
+          session_join_deadline: session?.join_deadline ?? null,
+          lawyer_amount: earningByConsultation.get(id) ?? (Number(c.price ?? 0) / 2),
+        };
+      });
+      return json({ success: true, consultations: enriched });
     }
 
     // ─── تحديث حالة الاستشارة (محامي/أدمن/المستخدم يلغي) ───

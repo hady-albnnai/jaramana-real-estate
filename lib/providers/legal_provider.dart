@@ -56,6 +56,10 @@ class LegalProvider with ChangeNotifier {
   List<Map<String, dynamic>> get lawyerAppointments => _lawyerAppointments;
   List<Map<String, dynamic>> _lawyerConsultations = [];
   List<Map<String, dynamic>> get lawyerConsultations => _lawyerConsultations;
+  List<Map<String, dynamic>> _lawyerEarnings = [];
+  List<Map<String, dynamic>> get lawyerEarnings => _lawyerEarnings;
+  Map<String, dynamic> _lawyerEarningTotals = {};
+  Map<String, dynamic> get lawyerEarningTotals => _lawyerEarningTotals;
   List<ExpeditingTaskModel> _expeditingTasks = [];
   List<ExpeditingTaskModel> get expeditingTasks => _expeditingTasks;
 
@@ -239,6 +243,29 @@ class LegalProvider with ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       _lawyerConsultations = [];
+    }
+    notifyListeners();
+  }
+
+  Future<void> fetchLawyerEarnings() async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'get_lawyer_earnings',
+        'user_uid': _actorUid,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'تعذّر جلب المستحقات')) {
+        _lawyerEarnings = ((data!['earnings'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        _lawyerEarningTotals = data['totals'] is Map
+            ? Map<String, dynamic>.from(data['totals'] as Map)
+            : {};
+      }
+    } catch (e) {
+      _error = e.toString();
+      _lawyerEarnings = [];
+      _lawyerEarningTotals = {};
     }
     notifyListeners();
   }

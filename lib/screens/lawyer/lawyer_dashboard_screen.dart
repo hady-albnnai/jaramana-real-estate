@@ -33,6 +33,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
 
   bool _savingProfile = false;
   bool _creatingTask = false;
+  bool _sectionLoading = false;
   bool _isAvailable = true; // 🟢 حالة توفر المحامي (is_active) — أُضيفت 2026-08-14
   bool _checking = true; // يمنع وميض شاشة الإعداد
   String? _selectedExpediterUid;
@@ -57,10 +58,13 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     // 🟢 قراءة حالة التوفر الفعلية من ملف المحامي
     _isAvailable = (legal.lawyerProfile?['is_active'] ?? true) == true;
     if (legal.profileSetupComplete) {
-      legal.fetchAvailableExpediters();
-      legal.fetchLawyerAppointments();
-      legal.fetchLawyerTasks();
-      legal.fetchLawyerConsultations();
+      await Future.wait([
+        legal.fetchAvailableExpediters(),
+        legal.fetchLawyerAppointments(),
+        legal.fetchLawyerTasks(),
+        legal.fetchLawyerConsultations(),
+        legal.fetchLawyerEarnings(),
+      ]);
     }
     if (mounted) setState(() => _checking = false);
   }
@@ -408,7 +412,10 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
           ),
         ],
       ),
-      body: _buildSelectedSection(legal),
+      body: _sectionLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryGold))
+          : _buildSelectedSection(legal),
     );
   }
 
@@ -418,6 +425,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     'إضافة مهمة',
     'المهام المرسلة',
     'أوقاتي',
+    'مستحقاتي',
   ];
 
   String get _sectionTitle => _sectionTitles[_selectedSection];
@@ -432,14 +440,26 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         return _buildSentTasksTab(legal);
       case 4:
         return _slotsEditor(legal, isGate: false);
+      case 5:
+        return _buildEarningsTab(legal);
       default:
         return _buildConsultationsTab(legal);
     }
   }
 
-  void _selectSection(int index, {bool closeMenu = true}) {
+  Future<void> _selectSection(int index, {bool closeMenu = true}) async {
     if (closeMenu) Navigator.pop(context);
-    if (_selectedSection != index) setState(() => _selectedSection = index);
+    if (!mounted) return;
+    setState(() {
+      _selectedSection = index;
+      _sectionLoading = true;
+    });
+    final legal = context.read<LegalProvider>();
+    try {
+      await _refreshSelectedSection(legal);
+    } finally {
+      if (mounted) setState(() => _sectionLoading = false);
+    }
   }
 
   Future<void> _refreshSelectedSection(LegalProvider legal) async {
@@ -458,6 +478,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         final uid = context.read<AuthProvider>().userModel?.uid ?? '';
         if (uid.isNotEmpty) await legal.checkLawyerProfile(uid);
         if (mounted) setState(() {});
+        break;
+      case 5:
+        await legal.fetchLawyerEarnings();
         break;
       default:
         await legal.fetchLawyerConsultations();
@@ -614,6 +637,12 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
               e2eId: 'e2e_lawyer_tab_slots',
               icon: Icons.schedule,
               title: 'أوقاتي',
+            ),
+            sectionTile(
+              index: 5,
+              e2eId: 'e2e_lawyer_tab_earnings',
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'مستحقاتي',
             ),
             const Divider(color: Colors.white12),
             SwitchListTile(
@@ -1181,12 +1210,17 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     final sIdx = (c['service_type'] ?? 0) as int;
     final sName = sIdx < serviceNames.length ? serviceNames[sIdx] : 'استشارة';
     final price = (c['price'] ?? 0) as num;
+    final lawyerAmount = (c['lawyer_amount'] as num?) ?? (price / 2);
     final subject = (c['subject'] ?? '').toString();
     final clientName = c['client_nm']?.toString() ?? 'عميل';
     // substring(0,16) كان يرمي استثناء ويكسر البطاقة لو قصُر النص
     final tsRaw = c['ts_crt']?.toString() ?? '';
     final tsCrt = tsRaw.length >= 16 ? tsRaw.substring(0, 16) : tsRaw;
     final chatStarted = c['chat_started_at'] != null;
+    final sessionStatus = (c['session_status'] ?? '').toString();
+    final sessionActive = sessionStatus == 'active';
+    final sessionWaiting = sessionStatus == 'join_window';
+    final sessionReady = sessionStatus == 'ready';
     final extended = c['extended'] == true;
     final consultId = c['id']?.toString() ?? '';
     final attachments = (c['attachments'] as List?) ?? [];
@@ -1299,7 +1333,10 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
           ],
           const SizedBox(height: 6),
           Row(children: [
-            Text('${price.toStringAsFixed(0)} ل.س', style: const TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeBody, fontWeight: FontWeight.bold)),
+            Text('حصتك: ${lawyerAmount.toStringAsFixed(0)} ل.س',
+                style: const TextStyle(color: AppTheme.primaryGold,
+                    fontSize: AppTheme.fontSizeBody,
+                    fontWeight: FontWeight.bold)),
             const Spacer(),
             Text(tsCrt, style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
           ]),
@@ -1367,13 +1404,14 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
             )),
           ],
 
-          // ── 📞 مؤكدة + هاتفية: محادثة + تمديد + إتمام ──
+          // ── 📞 مؤكدة + هاتفية: الجلسة هي مصدر الحقيقة ──
           if (sts == 1 && sIdx != 1) ...[
             AppTheme.gapHeightSmall,
             SizedBox(width: double.infinity, child: ElevatedButton.icon(
               onPressed: () async {
-                // بدء المحادثة قرار منفصل — المؤقت يبدأ الآن لا عند القبول
-                if (!chatStarted) {
+                final shouldReady = sessionReady ||
+                    (sessionStatus.isEmpty && !chatStarted);
+                if (shouldReady) {
                   final go = await _confirmStartChat();
                   if (go != true) return;
                   await _startChat(consultId);
@@ -1381,31 +1419,32 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
                 if (mounted) context.push('/legal/chat/$consultId');
               },
               icon: const Icon(Icons.chat, color: Colors.black, size: 16),
-              label: Text(chatStarted ? 'فتح المحادثة' : 'بدء المحادثة الآن',
+              label: Text(
+                  sessionReady || (sessionStatus.isEmpty && !chatStarted)
+                      ? 'أنا جاهز — إشعار العميل'
+                      : sessionWaiting
+                          ? 'فتح المحادثة — بانتظار العميل'
+                          : 'فتح المحادثة',
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
             )),
-            AppTheme.gapHeightSmall,
-            Row(children: [
-              if (chatStarted && !extended)
-                Expanded(child: OutlinedButton.icon(
-                  onPressed: () => _extendChat(consultId),
-                  icon: const Icon(Icons.timer, color: AppTheme.infoBlue, size: 16),
-                  label: const Text('تمديد 5 دقائق', style: TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeSmall)),
-                  style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.infoBlue)),
-                )),
-              if (chatStarted && !extended) AppTheme.gapWidthSmall,
-              Expanded(child: ElevatedButton.icon(
-                onPressed: () => _updateConsultationStatus(legal, c['id'], 2, ''),
-                icon: const Icon(Icons.done_all, color: Colors.black, size: 16),
-                label: const Text('إتمام', style: TextStyle(color: Colors.black, fontSize: AppTheme.fontSizeSmall, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+            if (sessionActive && !extended) ...[
+              AppTheme.gapHeightSmall,
+              SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                onPressed: () => _extendChat(consultId),
+                icon: const Icon(Icons.timer, color: AppTheme.infoBlue, size: 16),
+                label: const Text('تمديد 5 دقائق',
+                    style: TextStyle(color: AppTheme.infoBlue,
+                        fontSize: AppTheme.fontSizeSmall)),
+                style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.infoBlue)),
               )),
-            ]),
+            ],
             if (extended) ...[
               AppTheme.gapHeightXS,
               const Text('⏱️ تم التمديد 5 دقائق إضافية (مرة واحدة فقط)',
-                  style: TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeCaption)),
+                  style: TextStyle(color: AppTheme.infoBlue,
+                      fontSize: AppTheme.fontSizeCaption)),
             ],
           ],
         ],
@@ -2040,6 +2079,95 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     } else {
       _snack(legal.error ?? 'فشل تنفيذ الإجراء', bg: AppTheme.errorRed);
     }
+  }
+
+  String _money(num value) => value.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+
+  Widget _buildEarningsTab(LegalProvider legal) {
+    final totals = legal.lawyerEarningTotals;
+    final rows = legal.lawyerEarnings;
+    final pending = (totals['pending'] as num?) ?? 0;
+    final earned = (totals['earned'] as num?) ?? 0;
+    return RefreshIndicator(
+      onRefresh: legal.fetchLawyerEarnings,
+      child: ListView(
+        padding: AppTheme.paddingAllLarge,
+        children: [
+          const Text('💰 مستحقاتي من الاستشارات',
+              style: TextStyle(color: AppTheme.primaryGold,
+                  fontSize: AppTheme.fontSizeTitle, fontWeight: FontWeight.bold)),
+          AppTheme.gapHeightSmall,
+          const Text('تظهر هنا حصة المحامي فقط (50٪). سعر العميل الكامل وتفاصيل حصة المكتب لا تظهر في حساب المحامي.',
+              style: TextStyle(color: AppTheme.textGrey,
+                  fontSize: AppTheme.fontSizeSmall, height: 1.4)),
+          AppTheme.gapHeightLarge,
+          Row(children: [
+            Expanded(child: _earningSummary('قيد الاستحقاق', _money(pending),
+                AppTheme.warningOrange)),
+            AppTheme.gapWidthSmall,
+            Expanded(child: _earningSummary('مستحقة', _money(earned),
+                AppTheme.successGreen)),
+          ]),
+          AppTheme.gapHeightLarge,
+          if (rows.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(36),
+              child: Center(child: Text('لا توجد مستحقات مسجلة بعد',
+                  style: TextStyle(color: AppTheme.textGrey))),
+            )
+          else
+            ...rows.map((row) {
+              final status = (row['status'] ?? '').toString();
+              final statusText = switch (status) {
+                'earned' => 'مستحقة',
+                'pending' => 'قيد الاستحقاق',
+                'reversed' => 'معكوسة',
+                _ => 'ملغاة',
+              };
+              final color = status == 'earned'
+                  ? AppTheme.successGreen
+                  : status == 'pending'
+                      ? AppTheme.warningOrange
+                      : AppTheme.textGrey;
+              final kind = switch ((row['service_kind'] ?? '').toString()) {
+                'phone_initial' => 'استشارة هاتفية',
+                'phone_renewal' => 'تجديد محادثة',
+                _ => 'جلسة حضورية',
+              };
+              return Card(
+                color: AppTheme.surfaceBlack,
+                child: ListTile(
+                  leading: const Icon(Icons.payments_outlined,
+                      color: AppTheme.primaryGold),
+                  title: Text('$kind — ${_money((row['lawyer_amount'] as num?) ?? 0)} ل.س',
+                      style: const TextStyle(color: AppTheme.textWhite,
+                          fontWeight: FontWeight.bold)),
+                  subtitle: Text(statusText,
+                      style: TextStyle(color: color, fontSize: 11)),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _earningSummary(String title, String amount, Color color) {
+    return Container(
+      padding: AppTheme.paddingAllMedium,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: AppTheme.radiusMedium,
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Column(children: [
+        Text(title, style: TextStyle(color: color, fontSize: 11)),
+        AppTheme.gapHeightXS,
+        Text('$amount ل.س', style: TextStyle(color: color,
+            fontSize: 17, fontWeight: FontWeight.bold)),
+      ]),
+    );
   }
 
   // ──────── تبويب إضافة مهمة ────────

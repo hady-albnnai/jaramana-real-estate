@@ -120,7 +120,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         )
         .onBroadcast(
           event: 'messages_read',
-          callback: (_) => _loadMessages(),
+          callback: (_) async {
+            // إن وصل حدث القراءة أثناء جلب سابق، نعيد المحاولة بعد مهلة قصيرة
+            // بدل إسقاط الحدث بسبب _refreshing.
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+            await _loadMessages();
+          },
         )
         .onBroadcast(
           event: 'session_changed',
@@ -866,10 +871,32 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                     style: const TextStyle(color: AppTheme.textWhite, fontSize: 12)),
               ]),
             ),
-            const SizedBox(height: 2),
-            Text(ts, style: const TextStyle(color: AppTheme.textGrey, fontSize: 10)),
+            const SizedBox(height: 3),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(ts, style: const TextStyle(
+                  color: AppTheme.textGrey, fontSize: 10)),
+              if (isMine) ...[
+                const SizedBox(width: 5),
+                Icon(
+                  msg['is_read'] == true ? Icons.done_all : Icons.done,
+                  size: 13,
+                  color: msg['is_read'] == true
+                      ? AppTheme.infoBlue
+                      : AppTheme.textGrey,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  msg['is_read'] == true ? 'تمت القراءة' : 'تم الإرسال',
+                  style: TextStyle(
+                    color: msg['is_read'] == true
+                        ? AppTheme.infoBlue
+                        : AppTheme.textGrey,
+                    fontSize: 9,
+                  ),
+                ),
+              ],
+            ]),
           ]))),
-        if (isMine) ...[AppTheme.gapWidthSmall, Icon(Icons.done_all, size: 14, color: msg['is_read'] == true ? AppTheme.infoBlue : AppTheme.textGrey)],
       ]));
   }
 }

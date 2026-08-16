@@ -132,7 +132,11 @@ class PermissionService {
   static List<String> defaultsForRole(int role) {
     // 🔒 VULN-001: التخصّصات الجانبية لا ترث أي صلاحية إدارية افتراضية.
     // شاشاتها محروسة بالراوتر عبر isLawyer/isExpediter، لا عبر هذا الجدول.
-    if (isSideSpecialty(role)) return const [];
+    if (isSideSpecialty(role)) {
+      // المحامي والمعقّب لا يرثان الإدارة، لكنهما يحتاجان صفحات حسابهما
+      // وإشعاراتهما المشتركة تحت /user/*.
+      return const [PermissionKeys.userProfile];
+    }
 
     return permissions
         .where((permission) => role >= permission.minimumRoleForDefault)
