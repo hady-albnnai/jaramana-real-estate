@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_utils.dart';
 
 /// شاشة التقدّم لتصبح وسيطاً
 /// يرسل طلب للإدارة (sts=0) وتراجعه الإدارة لاحقاً
@@ -72,7 +73,7 @@ class _BecomeBrokerScreenState extends State<BecomeBrokerScreen> {
 
     try {
       // ✅ Secure via broker-actions Edge Function (submit_request)
-      await SupabaseService().invokeFunction(
+      final res = await SupabaseService().invokeFunction(
         'broker-actions',
         body: {
           'action': 'submit_request',
@@ -83,6 +84,19 @@ class _BecomeBrokerScreenState extends State<BecomeBrokerScreen> {
           'about': _aboutCtrl.text.trim(),
         },
       );
+
+      // §13: كان الرد يُتجاهل تماماً ⇒ يظهر «تم الإرسال ✅» حتى عند فشل
+      // السيرفر (مثلاً: قيد CHECK رفض الحالة، أو طلب مكرر) والمستخدم
+      // ينتظر رداً لن يأتي لأن الطلب لم يُسجَّل أصلاً.
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : null;
+      if (data == null || data['success'] != true) {
+        if (!mounted) return;
+        setState(() => _submitting = false);
+        _snack(ErrorUtils.arabicMessage(data?['error'] ?? 'UNKNOWN_ERROR'));
+        return;
+      }
 
       await auth.refreshUser();
 
@@ -131,8 +145,10 @@ class _BecomeBrokerScreenState extends State<BecomeBrokerScreen> {
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().userModel;
     final isAlreadyBroker = user?.isBroker == true;
-    final hasPendingRequest =
-        user?.brkNm.isNotEmpty == true && !isAlreadyBroker;
+    // 🤝 BRK-001: كان الاستدلال على «طلب معلّق» بوجود `brkNm` — وهو غير
+    // دقيق (الاسم يبقى محفوظاً بعد الرفض أيضاً). الآن الحالة صريحة من
+    // السيرفر: brk=2 قيد المراجعة · brk=3 مرفوض.
+    final hasPendingRequest = user?.isBrokerPending == true;
     final isNotVerified = user != null && !user.isVerifiedOfficial;
 
     return Scaffold(

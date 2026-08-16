@@ -121,7 +121,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
               size: 18, color: full ? AppTheme.errorRed : AppTheme.primaryGold),
           AppTheme.gapWidthSmall,
           const Expanded(
-            child: Text('عروضك المستخدمة من السقف',
+            child: Text('عروضك المستخدمة من الحد الأقصى',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -148,7 +148,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
         ),
         if (full) ...[
           AppTheme.gapHeightXS,
-          const Text('بلغت الحد — اشترك بباقة لرفع السقف',
+          const Text('بلغت الحد الأقصى — اشترك بباقة لرفعه',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

@@ -191,7 +191,16 @@ class UserModel {
   bool get isActive => sts == 0;
   bool get isFrozen => sts == 1;
   bool get isBanned => sts == 2;
+  /// 🤝 BRK-001 (2026-08-15) — حالات طلب الوساطة:
+  ///   0 ليس وسيطاً · 1 **وسيط معتمد** · 2 طلب قيد المراجعة · 3 طلب مرفوض
+  /// (وُسِّعت `brk` بدل عمود جديد كي لا ينكسر أي كود يفحص `brk == 1`.)
   bool get isBroker => brk == 1;
+
+  /// طلب وساطة قيد مراجعة الإدارة — لم يُمنح الدور بعد.
+  bool get isBrokerPending => brk == 2;
+
+  /// طلب وساطة رُفض (السبب في `brkRsn` إن توفّر).
+  bool get isBrokerRejected => brk == 3;
   bool get isDeleted => iDel == 1;
 
   /// هل هو موظف داخلي (مصور فما فوق)؟

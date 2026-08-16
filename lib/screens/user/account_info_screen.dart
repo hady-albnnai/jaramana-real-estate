@@ -208,8 +208,18 @@ class AccountInfoScreen extends StatelessWidget {
       future: _fetchExpediterTasks(user),
       builder: (context, snapshot) {
         final tasks = snapshot.data ?? const [];
-        final pending = tasks.where((t) => t is Map && (t['status'] == 0 || t['status'] == 1)).length;
-        final done = tasks.where((t) => t is Map && (t['status'] == 2 || t['status'] == 3)).length;
+        // 📊 EXP-001 (2026-08-15): تصحيح تصنيف حالات مهام التعقيب.
+        // الدلالة الموثَّقة والمؤكَّدة حياً (كل مهام الحالة 3 لها
+        // completed_at، ولا شيء منها في 0/1):
+        //   0 بانتظار · 1 قيد الاستخراج · 2 بانتظار مراجعة المكتب · 3 منتهية
+        // كان يُحسب 2 ضمن «منتهية» وهي **لم تنتهِ بعد** — بانتظار مراجعة
+        // المكتب ⇒ رقم المنجَز مضخَّم والمعقّب يظن أنه أنهى ما لم ينتهِ.
+        final pending = tasks
+            .where((t) => t is Map && (t['status'] == 0 || t['status'] == 1))
+            .length;
+        final underReview =
+            tasks.where((t) => t is Map && t['status'] == 2).length;
+        final done = tasks.where((t) => t is Map && t['status'] == 3).length;
         return _roleDetailsContainer(
           title: 'تفاصيل معقب المعاملات',
           icon: Icons.assignment_turned_in_outlined,
@@ -224,6 +234,9 @@ class AccountInfoScreen extends StatelessWidget {
               )
             else ...[
               _infoRow(Icons.pending_actions, 'مهام قيد العمل', '$pending', context),
+              if (underReview > 0)
+                _infoRow(Icons.rate_review_outlined, 'بانتظار مراجعة المكتب',
+                    '$underReview', context),
               _infoRow(Icons.task_alt, 'مهام منتهية', '$done', context),
               _infoRow(Icons.list_alt, 'إجمالي المهام', '${tasks.length}', context),
             ],

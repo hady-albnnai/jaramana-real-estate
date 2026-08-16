@@ -100,6 +100,36 @@ serve(async (req) => {
       return json({ success: data === true });
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // 🤝 BRK-001 (2026-08-15): مراجعة طلبات الوساطة (كانت غائبة كلياً)
+    // ═══════════════════════════════════════════════════════════════
+    // بلاغ المالك: الطلب كان يُفعّل الوساطة فوراً بلا مراجعة أحد.
+    // الآن الطلب يبقى brk=2 (قيد المراجعة) حتى تبتّ الإدارة هنا.
+    if (action === "list_pending_requests") {
+      const { data, error } = await supabaseAdmin
+        .rpc("get_pending_broker_requests_internal", { p_admin_uid: uid });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true });
+    }
+
+    if (action === "review_request") {
+      const targetUid = (body.target_uid ?? body.targetUid)?.toString() ?? "";
+      const approve = body.approve === true;
+      const reason = (body.reason ?? "").toString();
+      if (!targetUid) return json({ success: false, error: "TARGET_UID_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin
+        .rpc("admin_review_broker_request_internal", {
+          p_admin_uid: uid,
+          p_target_uid: targetUid,
+          p_approve: approve,
+          p_reason: reason,
+        });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const r = (data ?? {}) as Record<string, unknown>;
+      return json({ ...r, success: r.success === true }, r.success === true ? 200 : 400);
+    }
+
     return json({ success: false, error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     return json({ success: false, error: error instanceof Error ? error.message : String(error) }, 500);

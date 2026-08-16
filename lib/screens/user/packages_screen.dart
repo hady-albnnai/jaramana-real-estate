@@ -437,7 +437,7 @@ class _PackagesScreenState extends State<PackagesScreen> {
                       _badge('باقتك الحالية', AppTheme.successGreen),
                     if (isCurrent && (user?.pkgXoff ?? 0) > 0)
                       _badge(
-                          '🎯 السقف الفعلي: ${pkg.offers + (user?.pkgXoff ?? 0)} عرض (منها +${user?.pkgXoff ?? 0} مضافة بالتراكم)',
+                          '🎯 الحد الأقصى الفعلي: ${pkg.offers + (user?.pkgXoff ?? 0)} عرض (منها +${user?.pkgXoff ?? 0} مضافة بالتراكم)',
                           Colors.lightGreen),
                     if (isPending && !isCurrent)
                       _badge('دفعة معلقة ⏳', AppTheme.infoBlue),
