@@ -36,18 +36,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
   }
 
   void _parseAndFillOtp(String smsMessage) {
-    // ✅ Fix for Bug #11: Parse numeric OTP instead of Arabic letters
-    final regExp = RegExp(r'(\d{6})');
-    final match = regExp.firstMatch(smsMessage);
-    if (match != null) {
-      final otpText = match.group(1)!;
-      if (otpText.length == 6) {
-        for (int i = 0; i < 6; i++) {
-          _ctrls[i].text = otpText[i];
-        }
-        _verify();
-      }
+    // النظام الأساسي يرسل الرمز كأحرف عربية مموّهة. نبقي الأرقام كاحتياط
+    // للتوافق مع أي رسالة قديمة أو بوابة بديلة.
+    final letters = RegExp(r'[أبتثجحخدذر]')
+        .allMatches(smsMessage)
+        .map((m) => m.group(0)!)
+        .take(6)
+        .join();
+    final numeric = RegExp(r'(\d{6})').firstMatch(smsMessage)?.group(1) ?? '';
+    final otpText = letters.length == 6 ? letters : numeric;
+    if (otpText.length != 6) return;
+    for (int i = 0; i < 6; i++) {
+      _ctrls[i].text = otpText[i];
     }
+    _verify();
   }
 
   void startTimer() {
@@ -129,7 +131,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
             const Text('تحقق من الرمز', style: TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeXL, fontWeight: FontWeight.bold)),
             AppTheme.gapHeightMedium,
             Text(
-              'أدخل الرمز المكون من 6 أرقام المرسل عبر رسالة نصية SMS إلى\n${auth.currentPhone ?? ''}',
+              'أدخل الكلمة المكونة من 6 أحرف عربية المرسلة عبر رسالة نصية إلى\n${auth.currentPhone ?? ''}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeMedium, height: 1.5),
             ),
@@ -142,7 +144,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
                   width: 48,
                   child: TextField(
                     controller: _ctrls[i], focusNode: _nodes[i], textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,  // ✅ Fix for Bug #11: Use number keyboard
+                    keyboardType: TextInputType.text,
                     maxLength: 1,
                     style: const TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeLarge, fontWeight: FontWeight.bold),
                     decoration: InputDecoration(counterText: '', filled: true, fillColor: AppTheme.surfaceBlack, enabledBorder: OutlineInputBorder(borderRadius: AppTheme.radiusLarge, borderSide: const BorderSide(color: Colors.white10)), focusedBorder: OutlineInputBorder(borderRadius: AppTheme.radiusLarge, borderSide: const BorderSide(color: AppTheme.primaryGold, width: 2))),

@@ -81,14 +81,18 @@ serve(async (req) => {
       )
     }
 
-    // ✅ Fix for Bug #11: Send numeric OTP instead of Arabic letters
+    // تمويه بصري لتجاوز فلاتر شركات الاتصال السورية:
+    // لا يخرج الرمز الرقمي في نص الرسالة، بل يتحول إلى 6 أحرف عربية.
+    const maskedOtp = encodeOtp(String(otp));
     const APP_SIGNATURE_HASH = Deno.env.get('APP_SIGNATURE_HASH') ?? '';
 
+    // خمسة نماذج عامية معتمدة — بلا عبارات OTP الرسمية المحظورة.
     const templates = [
-      `رمز التحقق الخاص بك هو: ${otp}`,
-      `كود التفعيل: ${otp}`,
-      `رمز التحقق من الهوية: ${otp}`,
-      `Your verification code is: ${otp}`
+      `لا تهون حط هالكلمة او عطي موافقة ليتم نسخها تلقائيا: ${maskedOtp}`,
+      `بدنا نكلفك تحط هالاحرف او قلو موافق ولحالها رح تنزل: ${maskedOtp}`,
+      `يا غالي بس عطي موافقة لهالكلمات لحتى تنزل عندك: ${maskedOtp}`,
+      `مرحبا، بس وافق على الرسالة لحتى يوصلك الكود: ${maskedOtp}`,
+      `تفضل هدول الاحرف، بس وافق ليتم نسخهم: ${maskedOtp}`
     ];
 
     let randomTemplate = templates[Math.floor(Math.random() * templates.length)];
