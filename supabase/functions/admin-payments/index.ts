@@ -146,7 +146,7 @@ serve(async (req) => {
       const reason = (body.reason ?? "").toString();
       if (!paymentId) return json({ success: false, error: "PAYMENT_ID_REQUIRED" }, 400);
       if (!reason.trim()) return json({ success: false, error: "REVERSAL_REASON_REQUIRED" }, 400);
-      const { data, error } = await supabaseAdmin.rpc("admin_reverse_payment", {
+      const { data, error } = await supabaseAdmin.rpc("admin_reverse_payment_v2", {
         p_admin_uid: adminUid,
         p_payment_id: paymentId,
         p_reason: reason,
