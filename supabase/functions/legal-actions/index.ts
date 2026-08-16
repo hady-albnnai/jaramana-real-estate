@@ -1067,8 +1067,14 @@ serve(async (req) => {
 
       let nextLawyer: string | null = null;
       if (reassignCount <= MAX_REASSIGN) {
-        const { data: picked } = await supabaseAdmin
-          .rpc("pick_next_lawyer", { p_exclude: rejectedBy });
+        const { data: picked, error: pickError } = await supabaseAdmin
+          .rpc("pick_next_lawyer", {
+            p_exclude: rejectedBy,
+            p_require_slots: Number(row.service_type) === 1,
+          });
+        if (pickError) {
+          return json({ success: false, error: "LAWYER_PICK_FAILED" }, 500);
+        }
         nextLawyer = picked ? String(picked) : null;
       }
 
@@ -1357,10 +1363,18 @@ serve(async (req) => {
       // بلا تحديد محامٍ: نأخذ التالي بالدور (متاح ← الأقل انشغالاً ← الأقدم)
       let target = lawyerUid;
       if (!target) {
-        const { data: picked } = await supabaseAdmin.rpc("pick_next_lawyer", { p_exclude: [] });
+        const { data: picked, error: pickError } = await supabaseAdmin.rpc(
+          "pick_next_lawyer",
+          { p_exclude: [], p_require_slots: true },
+        );
+        if (pickError) {
+          return json({ success: false, error: "LAWYER_PICK_FAILED" }, 500);
+        }
         target = picked ? String(picked) : "";
       }
-      if (!target) return json({ success: true, slots: [], lawyer_uid: null });
+      if (!target) {
+        return json({ success: true, slots: [], lawyer_uid: null, reason: "NO_LAWYER_WITH_AVAILABILITY" });
+      }
 
       const { data, error } = await supabaseAdmin
         .rpc("get_lawyer_free_slots", { p_lawyer_uid: target, p_days: days });

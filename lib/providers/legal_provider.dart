@@ -405,12 +405,20 @@ class LegalProvider with ChangeNotifier {
         return {
           'slots': (data!['slots'] as List?)?.map((e) => e.toString()).toList() ?? <String>[],
           'lawyer_alias': data['lawyer_alias']?.toString() ?? '',
+          'reason': data['reason']?.toString() ?? '',
+          'error': '',
         };
       }
-      return {'slots': <String>[], 'lawyer_alias': ''};
+      final code = data?['error']?.toString() ?? 'SLOTS_LOAD_FAILED';
+      return {'slots': <String>[], 'lawyer_alias': '', 'reason': '', 'error': code};
     } catch (e) {
       _error = e.toString();
-      return {'slots': <String>[], 'lawyer_alias': ''};
+      return {
+        'slots': <String>[],
+        'lawyer_alias': '',
+        'reason': '',
+        'error': 'NETWORK_ERROR',
+      };
     }
   }
 

@@ -1148,11 +1148,16 @@ class _State extends State<LegalConsultationBookingScreen>
   /// 🔀 تحويل الهاتفية إلى جلسة حضورية باختيار موعد ودفع الفرق
   Future<void> _convertToOnsite(String id) async {
     final legal = context.read<LegalProvider>();
-    final data = await legal.fetchFreeSlots(days: 14);
+    final data = await legal.fetchFreeSlots(days: 30);
     if (!mounted) return;
+    final slotError = (data['error'] ?? '').toString();
+    if (slotError.isNotEmpty) {
+      _snack(ErrorUtils.arabicMessage(slotError));
+      return;
+    }
     final slots = (data['slots'] as List?)?.cast<String>() ?? <String>[];
     if (slots.isEmpty) {
-      _snack('لا توجد مواعيد متاحة حالياً للتحويل');
+      _snack('لا توجد مواعيد متاحة خلال الثلاثين يوماً القادمة');
       return;
     }
     final diff = _onsitePrice - _phonePrice;
@@ -1653,11 +1658,13 @@ class _State extends State<LegalConsultationBookingScreen>
         ),
       ),
       body: FutureBuilder<Map<String, dynamic>>(
-        future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(days: 14),
+        future: _slotsFuture ??= context.read<LegalProvider>().fetchFreeSlots(days: 30),
         builder: (_, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold));
           }
+          final slotError = (snap.data?['error'] ?? '').toString();
+          if (slotError.isNotEmpty) return _slotsLoadErrorView(slotError);
           final slots = (snap.data?['slots'] as List?)?.cast<String>() ?? <String>[];
           _slotLawyerAlias = (snap.data?['lawyer_alias'] ?? '').toString();
 
@@ -1882,6 +1889,33 @@ class _State extends State<LegalConsultationBookingScreen>
         '${dt.minute.toString().padLeft(2, '0')}';
   }
 
+  Widget _slotsLoadErrorView(String code) {
+    return Center(
+      child: Padding(
+        padding: AppTheme.paddingAllXL,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.cloud_off, size: 56, color: AppTheme.errorRed),
+          AppTheme.gapHeightLarge,
+          Text(
+            ErrorUtils.arabicMessage(code),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppTheme.textWhite, fontSize: 14),
+          ),
+          AppTheme.gapHeightLarge,
+          ElevatedButton.icon(
+            onPressed: () => setState(() {
+              _slotsFuture = null;
+              _selectedSlot = null;
+              _selectedDayKey = null;
+            }),
+            icon: const Icon(Icons.refresh),
+            label: const Text('إعادة المحاولة'),
+          ),
+        ]),
+      ),
+    );
+  }
+
   /// حالة «لا مواعيد» — مفصولة لتُستدعى من موضعين بلا تكرار.
   Widget _noSlotsView() {
     return Center(
@@ -1890,10 +1924,10 @@ class _State extends State<LegalConsultationBookingScreen>
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.event_busy, size: 60, color: AppTheme.warningOrange),
           AppTheme.gapHeightLarge,
-          const Text('لا توجد مواعيد متاحة حالياً',
+          const Text('لا توجد مواعيد خلال 30 يوماً',
               style: TextStyle(color: AppTheme.textWhite, fontSize: 17, fontWeight: FontWeight.bold)),
           AppTheme.gapHeightSmall,
-          const Text('جميع المواعيد محجوزة أو خارج أوقات الدوام.\nجرّب لاحقاً أو اختر استشارة هاتفية.',
+          const Text('جميع مواعيد المحامي محجوزة أو خارج أوقات الدوام.\nجرّب لاحقاً أو اختر استشارة هاتفية.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textGrey, fontSize: 13, height: 1.6)),
           AppTheme.gapHeightXL,
