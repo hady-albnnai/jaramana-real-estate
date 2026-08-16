@@ -289,12 +289,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       return;
     }
 
-    // 📸 وضع التصوير: الخريطة إلزامية — بدون موقع دقيق لا يستطيع المصوّر الوصول
-    if (widget.isPhotographyRequest && _pickedLocation == null) {
-      _snack('يرجى تحديد الموقع الدقيق على الخريطة — ضروري لوصول المصوّر');
-      _goToStep(1); // العودة لخطوة التفاصيل
-      return;
-    }
+    // في طلب التصوير لا نطلب موقعاً دقيقاً أو خريطة؛ يتم التنسيق هاتفياً.
 
     // ═══════════════════════════════════════════════════════════════
     // 🖼️ IMG-001 (2026-08-15): صورة واحدة على الأقل — قرار المالك
@@ -647,8 +642,10 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         if (_selectedType == 0) ...[
           DropdownButtonFormField<String>(value: _selectedCityArea, items: cityItems, onChanged: (v) => setState(() => _selectedCityArea = v), decoration: const InputDecoration(labelText: 'المنطقة الرئيسية', border: OutlineInputBorder())),
           if (_selectedCityArea == _customCityOption) Padding(padding: const EdgeInsets.only(top: 10), child: TextField(controller: _customCityCtrl, decoration: const InputDecoration(labelText: 'اكتب المنطقة يدوياً', border: OutlineInputBorder()))),
-          const SizedBox(height: 15),
-          TextField(controller: _locCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'وصف دقيق للموقع (إلزامي)', hintText: 'بجانب مدرسة... شارع... الطابق...', border: OutlineInputBorder())),
+          if (!widget.isPhotographyRequest) ...[
+            const SizedBox(height: 15),
+            TextField(controller: _locCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'وصف دقيق للموقع', hintText: 'بجانب مدرسة... شارع... الطابق...', border: OutlineInputBorder())),
+          ],
         ],
         if (_selectedType == 1) ...[
           TextField(controller: _carPlateCtrl, decoration: const InputDecoration(labelText: 'رقم اللوحة والمحافظة (إلزامي)', hintText: 'مثال: 123456 - السويداء', border: OutlineInputBorder())),
@@ -699,14 +696,11 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       const SizedBox(height: 15),
       TextField(controller: _descCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'وصف إضافي (اختياري)', hintText: 'أي مميزات أو تفاصيل أخرى تود ذكرها للزبائن...', border: OutlineInputBorder())),
       AppTheme.gapHeightXL,
-      if (_selectedType == 0) ...[
-        // 📸 وضع التصوير: الخريطة إلزامية — الموقع الدقيق ضروري لوصول المصوّر
-        Text(
-          widget.isPhotographyRequest
-              ? 'الموقع الدقيق على الخريطة * (إلزامي لوصول المصوّر)'
-              : 'الموقع الدقيق على الخريطة (اختياري)',
+      if (_selectedType == 0 && !widget.isPhotographyRequest) ...[
+        const Text(
+          'الموقع الدقيق على الخريطة (اختياري)',
           style: TextStyle(
-            color: widget.isPhotographyRequest ? Colors.redAccent : AppTheme.primaryGold,
+            color: AppTheme.primaryGold,
             fontWeight: FontWeight.bold,
             fontSize: AppTheme.fontSizeMedium,
           ),
