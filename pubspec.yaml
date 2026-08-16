@@ -41,9 +41,9 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.2
 
-  # محادثة الاستشارة: تسجيل وتشغيل الرسائل الصوتية
+  # محادثة الاستشارة: التسجيل الصوتي. التشغيل يستخدم video_player الموجود أصلاً
+  # لتجنب إضافة Android plugin آخر يحتاج تنزيل AGP من dl.google.com.
   record: ^5.2.1
-  just_audio: ^0.9.42
 
   # Networking
   http: ^1.2.2
@@ -71,6 +71,12 @@ dependencies:
   # === المرحلة E2: Firebase FCM (Push Notifications) ===
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3
+
+# حل تعارض pub في منصات سطح المكتب: record 5 يسمح بـrecord_linux<1، لكن
+# 0.7.2 لا يطبق startStream. هذا الزوج متوافق مع واجهة record 5.
+dependency_overrides:
+  record_linux: 1.2.1
+  record_platform_interface: 1.4.0
 
 dev_dependencies:
   flutter_test:

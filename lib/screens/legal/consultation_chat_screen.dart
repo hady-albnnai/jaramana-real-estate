@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:record/record.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:video_player/video_player.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_theme.dart';
@@ -29,7 +29,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   final _scrollCtrl = ScrollController();
   final _storage = StorageService();
   final _recorder = AudioRecorder();
-  final _audioPlayer = AudioPlayer();
+  VideoPlayerController? _audioController;
 
   List<Map<String, dynamic>> _messages = [];
   Map<String, dynamic> _chatInfo = {};
@@ -75,7 +75,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     _timer?.cancel();
     _recordingTimer?.cancel();
     unawaited(_recorder.dispose());
-    unawaited(_audioPlayer.dispose());
+    _audioController?.dispose();
     final channel = _realtimeChannel;
     if (channel != null) {
       unawaited(SupabaseService().client.removeChannel(channel));
@@ -241,15 +241,35 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
     final url = (msg['file_signed_url'] ?? msg['file_url'] ?? '').toString();
     if (url.isEmpty) return;
     final id = msg['id']?.toString() ?? url;
-    if (_playingMessageId == id && _audioPlayer.playing) {
-      await _audioPlayer.pause();
+    final current = _audioController;
+    if (_playingMessageId == id && current != null && current.value.isPlaying) {
+      await current.pause();
       if (mounted) setState(() {});
       return;
     }
-    await _audioPlayer.setUrl(url);
-    if (mounted) setState(() => _playingMessageId = id);
-    await _audioPlayer.play();
-    if (mounted) setState(() => _playingMessageId = null);
+    await current?.dispose();
+    final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+    _audioController = controller;
+    try {
+      await controller.initialize();
+      if (!mounted) return;
+      setState(() => _playingMessageId = id);
+      await controller.play();
+      void listener() {
+        if (!controller.value.isInitialized) return;
+        if (controller.value.position >= controller.value.duration &&
+            !controller.value.isPlaying) {
+          controller.removeListener(listener);
+          if (mounted) setState(() => _playingMessageId = null);
+        }
+      }
+      controller.addListener(listener);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _playingMessageId = null);
+        _showAlert('تعذّر تشغيل الرسالة الصوتية');
+      }
+    }
   }
 
   Future<void> _sendText() async {
@@ -567,8 +587,10 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
             if (type == 'voice') InkWell(
               onTap: () => _playVoice(msg),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_playingMessageId == msg['id']?.toString() && _audioPlayer.playing
-                    ? Icons.pause_circle : Icons.play_circle,
+                Icon(_playingMessageId == msg['id']?.toString() &&
+                        (_audioController?.value.isPlaying ?? false)
+                    ? Icons.pause_circle
+                    : Icons.play_circle,
                     color: AppTheme.primaryGold, size: 28),
                 AppTheme.gapWidthSmall,
                 Text('رسالة صوتية (${msg['duration_seconds'] ?? 0}ث)',
