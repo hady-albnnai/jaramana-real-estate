@@ -1820,8 +1820,8 @@ serve(async (req) => {
       // التحقق: المشارك فقط
       const isStudent = row.user_uid === uid;
       const isAssignedLawyer = isLawyer(role) && row.lawyer_uid === uid;
-      const isAdminUser = canManageLawyerProfiles(role);
-      if (!isStudent && !isAssignedLawyer && !isAdminUser) {
+      const isReadOnlyManager = Number(role) === 6;
+      if (!isStudent && !isAssignedLawyer && !isReadOnlyManager) {
         return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
       }
 
@@ -1846,7 +1846,7 @@ serve(async (req) => {
       }));
 
       // تحديد الرسائل غير المقروءة كمقروءة (للطرف الآخر)
-      const otherUid = isStudent ? row.lawyer_uid : row.user_uid;
+      const otherUid = isStudent ? row.lawyer_uid : isAssignedLawyer ? row.user_uid : null;
       if (otherUid) {
         await supabaseAdmin.from("consultation_chats")
           .update({ is_read: true })

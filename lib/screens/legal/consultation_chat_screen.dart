@@ -283,7 +283,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLawyer = context.read<AuthProvider>().isLawyer;
+    final auth = context.read<AuthProvider>();
+    final isLawyer = auth.isLawyer;
+    final isReadOnlyAdmin = auth.isManager;
 
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
@@ -323,7 +325,19 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
                       ),
               ),
               // شريط الإدخال
-              if (_timeUp && !isLawyer)
+              if (isReadOnlyAdmin)
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.fromLTRB(
+                      12, 12, 12, 12 + MediaQuery.of(context).padding.bottom),
+                  color: AppTheme.surfaceBlack,
+                  child: const Text(
+                    'وضع رقابي للمدير — مشاهدة فقط دون تغيير حالة القراءة',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.infoBlue, fontSize: 12),
+                  ),
+                )
+              else if (_timeUp && !isLawyer)
                 _buildRenewBar()
               else if (_timeUp && isLawyer)
                 _buildTimeUpInfo()

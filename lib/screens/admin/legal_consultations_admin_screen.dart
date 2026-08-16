@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/legal_provider.dart';
@@ -276,6 +277,22 @@ class _LegalConsultationsAdminScreenState
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: AppTheme.textGrey, fontSize: 10)),
+        ],
+
+        if (c['chat_started_at'] != null) ...[
+          const Divider(color: Colors.white12, height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/legal/chat/${c['id']}'),
+              icon: const Icon(Icons.visibility_outlined,
+                  color: AppTheme.infoBlue, size: 16),
+              label: const Text('مشاهدة المحادثة — قراءة فقط',
+                  style: TextStyle(color: AppTheme.infoBlue)),
+              style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppTheme.infoBlue)),
+            ),
+          ),
         ],
 
         // أدوات الإدارة: تظهر للطلبات القابلة للتدخل فقط
