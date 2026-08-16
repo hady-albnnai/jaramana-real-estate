@@ -399,7 +399,7 @@ serve(async (req) => {
           staff.map((s) => s.id?.toString() ?? ""),
           1,
           "طلب تصوير عقار جديد",
-          `${fullName || "مستخدم"} يطلب تصوير: ${propertyDesc} — ${propertyLocation}`,
+          `${fullName || "مستخدم"} يطلب تصوير: ${propertyDesc}${propertyLocation ? ` — ${propertyLocation}` : ""}`,
           insertData.id,
           "photography_request_new",
         );

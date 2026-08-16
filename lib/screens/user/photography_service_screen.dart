@@ -135,7 +135,7 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
 
     final nameCtrl = TextEditingController(text: user.nm);
     final descCtrl = TextEditingController();
-    final locCtrl = TextEditingController();
+    // الموقع الدقيق غير مطلوب؛ يتفق المستخدم والمصور عليه هاتفياً.
     // ✅ Fix for Bug #23: تطبيع رقم الهاتف إلى الصيغة المحلية (09xxxxxxxx)
     final normalizedPhone = _normalizePhoneToLocalFormat(user.ph);
     final phoneCtrl = TextEditingController(text: normalizedPhone);
@@ -177,40 +177,6 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
               AppTheme.gapHeightMedium,
               _field(descCtrl, 'وصف العقار *', 'مثال: شقة 3 غرف طابق ثاني',
                   Icons.home_outlined),
-              AppTheme.gapHeightMedium,
-              Container(
-                padding: AppTheme.paddingAllMedium,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGold.withOpacity(0.08),
-                  borderRadius: AppTheme.radiusSmall,
-                  border:
-                      Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline,
-                        color: AppTheme.primaryGold, size: 18),
-                    AppTheme.gapWidthSmall,
-                    Expanded(
-                      child: Text(
-                        'حدد الموقع بدقة: المدينة ← الحي ← الشارع ← أقرب معلم',
-                        style: TextStyle(
-                            color: AppTheme.primaryGold,
-                            fontSize: AppTheme.fontSizeCaption,
-                            height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              AppTheme.gapHeightSmall,
-              _field(
-                locCtrl,
-                'موقع العقار التفصيلي *',
-                'مثال: السويداء، حي المطار، شارع المدرسة الثانوية، بجانب صيدلية النور',
-                Icons.location_on,
-                maxLines: 2,
-              ),
               AppTheme.gapHeightMedium,
               _field(phoneCtrl, 'هاتف التواصل *', 'رقمك للتواصل وتأكيد الموعد',
                   Icons.phone,
@@ -256,7 +222,6 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
                       onPressed: () {
                         if (nameCtrl.text.trim().isEmpty ||
                             descCtrl.text.trim().isEmpty ||
-                            locCtrl.text.trim().isEmpty ||
                             phoneCtrl.text.trim().isEmpty) {
                           // 🐛 إصلاح 2026-07-30: كان يعود صامتاً بلا أي تنبيه
                           ScaffoldMessenger.of(ctx).showSnackBar(
@@ -286,7 +251,21 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) {
+      nameCtrl.dispose();
+      descCtrl.dispose();
+      phoneCtrl.dispose();
+      notesCtrl.dispose();
+      return;
+    }
+    final fullName = nameCtrl.text.trim();
+    final propertyDesc = descCtrl.text.trim();
+    final contactPhone = phoneCtrl.text.trim();
+    final requestNotes = notesCtrl.text.trim();
+    nameCtrl.dispose();
+    descCtrl.dispose();
+    phoneCtrl.dispose();
+    notesCtrl.dispose();
 
     try {
       final response = await SupabaseService().invokeFunction(
@@ -294,11 +273,10 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
         body: {
           'action': 'request_photography',
           'user_uid': user.uid,
-          'full_name': nameCtrl.text.trim(),
-          'property_desc': descCtrl.text.trim(),
-          'property_location': locCtrl.text.trim(),
-          'contact_phone': phoneCtrl.text.trim(),
-          'notes': notesCtrl.text.trim(),
+          'full_name': fullName,
+          'property_desc': propertyDesc,
+          'contact_phone': contactPhone,
+          'notes': requestNotes,
         },
       );
       final data =

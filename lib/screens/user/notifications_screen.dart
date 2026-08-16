@@ -41,7 +41,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
         backgroundColor: AppTheme.scaffoldBackground,
-        title: const Text('الإشعارات'),
+        title: Text(prov.notifications.length >= 100
+            ? 'الإشعارات — أحدث 100'
+            : 'الإشعارات'),
         actions: [
           if (prov.notifications.any((n) => !n.isRead))
             TextButton(
