@@ -809,8 +809,10 @@ Actions المدعومة:
 | action | RPC خلفية | الغرض |
 |---|---|---|
 | `list` | `get_admin_payments_internal` | جلب المدفوعات للإدارة العليا |
+| `signed_proof_url` | Storage بمفتاح الخدمة | توليد رابط مؤقت لإثبات دفعة بعد قراءة المسار من `payment_id` |
 | `approve` | `approve_payment_final` | اعتماد دفعة وتفعيل الباقة |
 | `reject` | `admin_reject_payment_internal` | رفض دفعة |
+| `reverse` | `admin_reverse_payment` | عكس اعتماد دفعة مع إلغاء أثرها |
 
 الحد الأدنى للدور: `role >= 5`.
 

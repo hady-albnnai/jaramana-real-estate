@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -71,35 +70,15 @@ class _State extends State<LegalConsultationBookingScreen>
 
   static const _topicChips = ['عقد إيجار', 'نزاع عقاري', 'إرث', 'مخالفة مرورية', 'سند ملكية', 'عقد عمل', 'أخرى'];
 
-  /// 🔄 SYNC-001 (2026-08-15) — بلاغ المالك: «مؤكدة لكنها ما انعكست
-  /// بشكل مباشر عندي».
-  /// السبب: `_loadAll()` كانت تُستدعى **مرة واحدة فقط** عند فتح الشاشة،
-  /// فتأكيد المحامي (أو اعتماد الإدارة للدفعة) لا يظهر إلا بسحب يدوي
-  /// للتحديث أو إعادة فتح التطبيق.
-  /// الحل بطبقتين:
-  ///   ① `WidgetsBindingObserver`: تحديث فور عودة التطبيق للمقدمة
-  ///      (المستخدم يبدّل للواتساب ويعود ⇒ يرى الحالة الجديدة).
-  ///   ② مؤقّت دوري كل 30 ثانية أثناء بقائه على الشاشة الرئيسية فقط —
-  ///      لا يعمل داخل خطوات المعالج كي لا يُفقد ما يكتبه المستخدم.
-  Timer? _pollTimer;
+  /// تحديث عند عودة التطبيق للمقدمة فقط، إضافةً إلى زر التحديث والسحب اليدوي.
+  /// لا يوجد مؤقّت دوري: التحديث كل 10 ثوانٍ كان يعيد بناء الشاشة أمام
+  /// المستخدم ويضاعف طلبات `user_payments` و`list_my_consultations` بلا داعٍ.
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
-    // 🔄 SYNC-002 (2026-08-15) — بلاغ المالك: «قبول الإدارة/المحامي عم
-    // يتأخر ليظهر عندي».
-    // كان المؤقّت 30 ثانية ويعمل على **الشاشة الرئيسية فقط** ⇒ لو كان
-    // المستخدم في شاشة النجاح (6) أو التقويم ينتظر القبول، لا يصله شيء.
-    // الآن: كل 10 ثوانٍ، ويشمل شاشات **الانتظار** (0 الرئيسية · 6 النجاح)
-    // — ونستثني شاشات الإدخال (الموضوع 4 · الدفع 5) كي لا يُفقد ما يكتبه
-    // المستخدم أو يُعاد بناء الشاشة أثناء رفع الإثبات.
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (!mounted || _submitting) return;
-      const waitingScreens = {0, 6};
-      if (waitingScreens.contains(_screen)) _loadAll();
-    });
   }
 
   @override
@@ -117,7 +96,6 @@ class _State extends State<LegalConsultationBookingScreen>
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _subjectCtrl.dispose(); _refCtrl.dispose(); _senderPhoneCtrl.dispose();
     super.dispose();

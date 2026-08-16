@@ -9,7 +9,6 @@ import '../../models/user_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../providers/config_provider.dart';
-import '../../services/storage_service.dart';
 
 /// 💰 إدارة المدفوعات — موافقة/رفض + تفعيل الباقات
 class PaymentsScreen extends StatefulWidget {
@@ -264,7 +263,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: GestureDetector(
-                onTap: () => _showProof(p.proof),
+                onTap: () => _showProof(p),
                 child: const Row(
                   children: [
                     Icon(Icons.receipt_long, color: AppTheme.primaryGold, size: 16),
@@ -320,26 +319,22 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     );
   }
 
-  /// عرض إثبات الدفع — يدعم الحالتين:
-  ///   1. URL كامل (سجلات قديمة من offer_images bucket عام)
-  ///   2. path داخل bucket payment_proofs (خاص) → نولّد signed URL
-  Future<void> _showProof(String proof) async {
-    String? finalUrl;
-    if (proof.startsWith('http')) {
-      finalUrl = proof;
-    } else {
-      // path داخل payment_proofs → نولّد signed URL (صالح لساعة)
-      try {
-        finalUrl = await SupabaseService()
-            .storage
-            .from(StorageService.paymentProofsBucket)
-            .createSignedUrl(proof, 3600);
-      } catch (e) {_snack('فشل تحميل الإيصال');
-        return;
-      }
-    }
-
+  /// عرض إثبات الدفع.
+  ///
+  /// bucket `payment_proofs` خاص، والتطبيق يوثّق الإدارة بجلسة مخصّصة لا
+  /// بـSupabase Auth JWT؛ لذلك التوقيع المباشر من العميل يُرفض بسياسة RLS.
+  /// الرابط المؤقت يأتي من `admin-payments` بعد التحقق من جلسة الإدارة،
+  /// والدالة تقرأ المسار من payment_id كي لا يستطيع العميل توقيع ملف عشوائي.
+  Future<void> _showProof(PaymentModel payment) async {
+    final adminId = context.read<AuthProvider>().userModel?.uid ?? '';
+    final finalUrl = await context
+        .read<AdminProvider>()
+        .getPaymentProofUrl(payment.id, adminId);
     if (!mounted) return;
+    if (finalUrl == null || finalUrl.isEmpty) {
+      _snack('فشل تحميل الإيصال');
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => Dialog(

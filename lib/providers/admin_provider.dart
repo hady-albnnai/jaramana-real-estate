@@ -379,6 +379,12 @@ class AdminProvider with ChangeNotifier {
     return list;
   }
 
+  Future<String?> getPaymentProofUrl(String paymentId, String adminId) async {
+    final url = await _paymentsAdmin.getPaymentProofUrl(paymentId, adminId);
+    _syncPaymentsError();
+    return url;
+  }
+
   Future<bool> approvePayment(String paymentId, String adminId) async {
     final ok = await _paymentsAdmin.approvePayment(paymentId, adminId);
     _syncPaymentsError();

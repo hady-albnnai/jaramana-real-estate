@@ -94,6 +94,35 @@ serve(async (req) => {
       return json({ success: true, payments: data ?? [] });
     }
 
+    if (action === "signed_proof_url") {
+      const paymentId = (body.payment_id ?? body.paymentId)?.toString() ?? "";
+      if (!paymentId) return json({ success: false, error: "PAYMENT_ID_REQUIRED" }, 400);
+
+      // 🔒 إثباتات الدفع في bucket خاص. التطبيق يستخدم staff_session لا JWT
+      // من Supabase Auth، لذلك createSignedUrl المباشر من العميل يفشل بـRLS.
+      // نقرأ المسار من سجل الدفعة نفسه (لا نقبل path من العميل) ثم نوقّعه
+      // بمفتاح الخدمة بعد نجاح حارس الإدارة أعلاه.
+      const { data: payment, error: paymentError } = await supabaseAdmin
+        .from("payments")
+        .select("proof")
+        .eq("id", paymentId)
+        .maybeSingle();
+      if (paymentError) return json({ success: false, error: paymentError.message }, 400);
+      const proof = payment?.proof?.toString().trim() ?? "";
+      if (!proof) return json({ success: false, error: "PAYMENT_PROOF_NOT_FOUND" }, 404);
+      if (proof.startsWith("http://") || proof.startsWith("https://")) {
+        return json({ success: true, signed_url: proof });
+      }
+
+      const { data: signed, error: signError } = await supabaseAdmin.storage
+        .from("payment_proofs")
+        .createSignedUrl(proof, 3600);
+      if (signError || !signed?.signedUrl) {
+        return json({ success: false, error: signError?.message ?? "SIGNED_URL_FAILED" }, 400);
+      }
+      return json({ success: true, signed_url: signed.signedUrl });
+    }
+
     if (action === "approve") {
       const paymentId = (body.payment_id ?? body.paymentId)?.toString() ?? "";
       if (!paymentId) return json({ success: false, error: "PAYMENT_ID_REQUIRED" }, 400);

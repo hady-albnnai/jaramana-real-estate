@@ -62,6 +62,17 @@ class PaymentsAdminService {
     return list;
   }
 
+  /// رابط مؤقت لإثبات الدفع الخاص — يُولَّد خادمياً بعد التحقق من الإدارة.
+  Future<String?> getPaymentProofUrl(String paymentId, String adminId) async {
+    final data = await _invokeAdminPayments('signed_proof_url', {
+      'admin_uid': adminId,
+      'payment_id': paymentId,
+    });
+    if (data['success'] != true) return null;
+    final url = data['signed_url']?.toString() ?? '';
+    return url.isEmpty ? null : url;
+  }
+
   Future<bool> approvePayment(String paymentId, String adminId) async {
     final data = await _invokeAdminPayments('approve', {
       'admin_uid': adminId,
