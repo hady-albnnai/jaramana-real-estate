@@ -42,6 +42,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   bool _loadingOlder = false;
   bool _hasMore = false;
   bool _recording = false;
+  bool _realtimeConnected = false;
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
   String? _playingMessageId;
@@ -116,7 +117,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           event: 'messages_read',
           callback: (_) => _loadMessages(),
         )
-        .subscribe();
+        .subscribe((status, _) {
+          if (!mounted) return;
+          setState(() {
+            _realtimeConnected =
+                status == RealtimeSubscribeStatus.subscribed;
+          });
+        });
   }
 
   Future<void> _loadMessages({bool older = false}) async {
@@ -216,8 +223,11 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
 
   Future<void> _saveDraft(String value) async {
     final prefs = await SharedPreferences.getInstance();
-    if (value.trim().isEmpty) await prefs.remove(_draftKey);
-    else await prefs.setString(_draftKey, value);
+    if (value.trim().isEmpty) {
+      await prefs.remove(_draftKey);
+    } else {
+      await prefs.setString(_draftKey, value);
+    }
   }
 
   Future<void> _toggleRecording() async {
@@ -541,6 +551,19 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           ]),
         ]),
         actions: [
+          Tooltip(
+            message: _realtimeConnected
+                ? 'متصل — الرسائل تتحدث فورياً'
+                : 'جارٍ استعادة الاتصال',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(
+                _realtimeConnected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                size: 18,
+                color: _realtimeConnected ? AppTheme.successGreen : AppTheme.warningOrange,
+              ),
+            ),
+          ),
           if (!isLawyer && !isReadOnlyAdmin)
             IconButton(
               tooltip: 'إبلاغ الإدارة عن مشكلة',
@@ -650,7 +673,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           onPressed: _sending ? null : _toggleRecording,
         ),
         if (_recording)
-          Text('${_formatTime(_recordingSeconds)}',
+          Text(_formatTime(_recordingSeconds),
               style: const TextStyle(color: AppTheme.errorRed, fontSize: 11)),
         IconButton(icon: const Icon(Icons.image, color: AppTheme.primaryGold), onPressed: _sending ? null : _sendImage),
         Expanded(child: TextField(controller: _msgCtrl, style: const TextStyle(color: AppTheme.textWhite),
