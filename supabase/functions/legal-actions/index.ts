@@ -327,6 +327,21 @@ serve(async (req) => {
       const payment = body.payment && typeof body.payment === "object"
         ? body.payment as Record<string, unknown>
         : {};
+      const proof = (payment.proof ?? "").toString();
+      const channel = (payment.channel ?? "").toString();
+      if (!proof.startsWith(`${uid}/`) || proof.includes("..")) {
+        return json({ success: false, error: "UNAUTHORIZED_FOLDER" }, 403);
+      }
+      const { error: proofError } = await supabaseAdmin.storage
+        .from("payment_proofs").createSignedUrl(proof, 60);
+      if (proofError) return json({ success: false, error: "PAYMENT_PROOF_NOT_FOUND" }, 400);
+      const { data: cfgRow } = await supabaseAdmin.from("app_config")
+        .select("value").eq("key", "main").maybeSingle();
+      const cfg = cfgRow?.value as Record<string, unknown> | undefined;
+      const channels = cfg?.payChannels as Record<string, Record<string, unknown>> | undefined;
+      if (!channel || channels?.[channel]?.enabled !== true) {
+        return json({ success: false, error: "CHANNEL_NOT_ALLOWED" }, 400);
+      }
       const { data, error } = await supabaseAdmin.rpc("create_consultation_payment_v2", {
         p_user_uid: uid,
         p_intent_id: body.intent_id,
