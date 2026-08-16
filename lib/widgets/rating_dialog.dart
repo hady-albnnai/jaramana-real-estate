@@ -108,7 +108,7 @@ class _RatingDialogState extends State<RatingDialog> {
       AppTheme.showSnackBar(context,
         SnackBar(
           content: Text(_stars == 5
-              ? '⭐ شكراً! تم منح الطرف الآخر 200 نقطة مكافأة'
+              ? '⭐ شكراً لتقييمك! أضاف النظام 200 نقطة مكافأة للطرف الآخر، ولم تُخصم من رصيدك.'
               : '✅ تم إرسال تقييمك'),
           backgroundColor: AppTheme.successGreen,
         ),
