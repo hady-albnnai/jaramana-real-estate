@@ -36,6 +36,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
   bool _loading = true;
   bool _sending = false;
   bool _refreshing = false;
+  bool _loadingOlder = false;
+  bool _hasMore = false;
   bool _recording = false;
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
@@ -91,15 +93,19 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
         .subscribe();
   }
 
-  Future<void> _loadMessages() async {
-    if (_refreshing) return;
+  Future<void> _loadMessages({bool older = false}) async {
+    if (_refreshing || (older && _loadingOlder)) return;
     _refreshing = true;
+    if (older && mounted) setState(() => _loadingOlder = true);
     try {
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
       final res = await SupabaseService().invokeFunction(
         'legal-actions', body: {
           'action': 'get_chat_messages', 'user_uid': uid,
           'consultation_id': widget.consultationId,
+          'limit': 50,
+          if (older && _messages.isNotEmpty)
+            'before': _messages.first['ts_crt']?.toString() ?? '',
         },
       );
       final data = res.data as Map<String, dynamic>?;
@@ -108,7 +114,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
         final info = Map<String, dynamic>.from(data['chat_info'] as Map? ?? {});
         if (mounted) {
           setState(() {
-            _messages = msgs;
+            _messages = older ? [...msgs, ..._messages] : msgs;
+            _hasMore = data['has_more'] == true;
+            _loadingOlder = false;
             _chatInfo = info;
             _lawyerAlias = (info['lawyer_alias'] ?? 'محامي المكتب').toString();
             _remainingSeconds = (info['remaining_seconds'] ?? 0) as int;
@@ -123,6 +131,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
       if (mounted) setState(() => _loading = false);
     } finally {
       _refreshing = false;
+      if (mounted && _loadingOlder) setState(() => _loadingOlder = false);
     }
   }
 
@@ -413,8 +422,25 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen> {
                     ? const Center(child: Text('لا توجد رسائل بعد', style: TextStyle(color: AppTheme.textGrey)))
                     : ListView.builder(
                         controller: _scrollCtrl, padding: AppTheme.paddingAllMedium,
-                        itemCount: _messages.length,
-                        itemBuilder: (_, i) => _messageBubble(_messages[i]),
+                        itemCount: _messages.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (_, i) {
+                          if (_hasMore && i == 0) {
+                            return Center(
+                              child: TextButton.icon(
+                                onPressed: _loadingOlder
+                                    ? null
+                                    : () => _loadMessages(older: true),
+                                icon: _loadingOlder
+                                    ? const SizedBox(width: 14, height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.history),
+                                label: const Text('تحميل رسائل أقدم'),
+                              ),
+                            );
+                          }
+                          final index = _hasMore ? i - 1 : i;
+                          return _messageBubble(_messages[index]);
+                        },
                       ),
               ),
               // شريط الإدخال

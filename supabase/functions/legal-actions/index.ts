@@ -1855,16 +1855,19 @@ serve(async (req) => {
         return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
       }
 
-      const { data: messages, error: msgErr } = await supabaseAdmin
-        .from("consultation_chats")
-        .select("*")
-        .eq("consultation_id", consultId)
-        .eq("i_del", 0)
-        .order("ts_crt", { ascending: true });
+      const pageSize = Math.min(100, Math.max(20, Number(body.limit ?? 50)));
+      const before = (body.before ?? "").toString();
+      let messagesQuery = supabaseAdmin.from("consultation_chats")
+        .select("*").eq("consultation_id", consultId).eq("i_del", 0)
+        .order("ts_crt", { ascending: false }).limit(pageSize + 1);
+      if (before) messagesQuery = messagesQuery.lt("ts_crt", before);
+      const { data: rawMessages, error: msgErr } = await messagesQuery;
       if (msgErr) return json({ success: false, error: msgErr.message }, 400);
+      const hasMore = (rawMessages?.length ?? 0) > pageSize;
+      const messages = (rawMessages ?? []).slice(0, pageSize).reverse();
 
       // توقيع روابط الملفات
-      const signedMessages = await Promise.all((messages ?? []).map(async (m: Record<string, unknown>) => {
+      const signedMessages = await Promise.all(messages.map(async (m: Record<string, unknown>) => {
         const msg = { ...m };
         const fileUrl = (msg.file_url ?? "").toString();
         if (fileUrl && !fileUrl.startsWith("http")) {
@@ -1899,6 +1902,7 @@ serve(async (req) => {
       return json({
         success: true,
         messages: signedMessages,
+        has_more: hasMore,
         chat_info: {
           chat_started_at: row.chat_started_at,
           chat_duration_minutes: row.chat_duration_minutes,
