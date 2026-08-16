@@ -396,6 +396,66 @@ serve(async (req) => {
       return json({ success: true, intent: data, reservation });
     }
 
+    if (action === "cancel_legal_appointment_v2") {
+      const { data, error } = await supabaseAdmin.rpc("cancel_legal_appointment_v2", {
+        p_user_uid: uid,
+        p_appointment_id: body.appointment_id,
+        p_reason: body.reason,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "prepare_rejected_payment_retry_v2") {
+      const { data, error } = await supabaseAdmin.rpc("prepare_rejected_payment_retry_v2", {
+        p_user_uid: uid,
+        p_intent_id: body.intent_id,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "retry_consultation_payment_v2") {
+      const payment = body.payment && typeof body.payment === "object"
+        ? body.payment as Record<string, unknown>
+        : {};
+      const proof = (payment.proof ?? "").toString();
+      const channel = (payment.channel ?? "").toString();
+      if (!proof.startsWith(`${uid}/`) || proof.includes("..")) {
+        return json({ success: false, error: "UNAUTHORIZED_FOLDER" }, 403);
+      }
+      const { error: proofError } = await supabaseAdmin.storage
+        .from("payment_proofs").createSignedUrl(proof, 60);
+      if (proofError) return json({ success: false, error: "PAYMENT_PROOF_NOT_FOUND" }, 400);
+      const { data: cfgRow } = await supabaseAdmin.from("app_config")
+        .select("value").eq("key", "main").maybeSingle();
+      const cfg = cfgRow?.value as Record<string, unknown> | undefined;
+      const channels = cfg?.payChannels as Record<string, Record<string, unknown>> | undefined;
+      if (!channel || channels?.[channel]?.enabled !== true) {
+        return json({ success: false, error: "CHANNEL_NOT_ALLOWED" }, 400);
+      }
+      const { data, error } = await supabaseAdmin.rpc("retry_consultation_payment_v2", {
+        p_user_uid: uid,
+        p_intent_id: body.intent_id,
+        p_payment: payment,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "discard_payment_proof_v2") {
+      const path = (body.path ?? "").toString();
+      if (!path.startsWith(`${uid}/`) || path.includes("..")) {
+        return json({ success: false, error: "UNAUTHORIZED_FOLDER" }, 403);
+      }
+      const { count } = await supabaseAdmin.from("payments")
+        .select("id", { count: "exact", head: true }).eq("proof", path);
+      if ((count ?? 0) > 0) return json({ success: false, error: "FILE_ALREADY_LINKED" }, 409);
+      const { error } = await supabaseAdmin.storage.from("payment_proofs").remove([path]);
+      if (error) return json({ success: false, error: "PAYMENT_PROOF_CLEANUP_FAILED" }, 400);
+      return json({ success: true });
+    }
+
     if (action === "reschedule_legal_appointment_v2") {
       const { data, error } = await supabaseAdmin.rpc("reschedule_legal_appointment_v2", {
         p_actor_uid: uid,
@@ -1386,6 +1446,41 @@ serve(async (req) => {
     // الفجوة: بعد رفض كل المحامين تبقى الاستشارة يتيمة للأبد — لا شاشة إدارة
     // ولا إسناد يدوي. قرار المالك: الإدارة تتواصل خارج التطبيق ثم تُسند،
     // أو تمنح «رصيد استشارة» (المبلغ يبقى بالخزينة والعميل لا يدفع ثانيةً).
+
+    if (action === "admin_v2_details") {
+      if (!canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+      const [{ data: intents }, { data: reservations }, { data: sessions }] = await Promise.all([
+        supabaseAdmin.from("consultation_intents")
+          .select("id,user_uid,flow,status,quoted_amount,expires_at,failure_code,reservation_id,ts_crt")
+          .in("status", ["payment_pending", "payment_needs_slot", "failed", "paid"])
+          .order("ts_crt", { ascending: false }).limit(100),
+        supabaseAdmin.from("lawyer_time_reservations")
+          .select("id,lawyer_uid,user_uid,consultation_intent_id,slot_start,slot_end,status,hold_expires_at,appointment_id")
+          .in("status", ["held", "confirmed"]).order("slot_start").limit(100),
+        supabaseAdmin.from("consultation_chat_sessions")
+          .select("id,consultation_id,ordinal,kind,payment_id,duration_minutes,status,join_deadline,starts_at,ends_at")
+          .in("status", ["ready", "join_window", "active"]).order("ts_crt", { ascending: false }).limit(100),
+      ]);
+      return json({ success: true, intents: intents ?? [], reservations: reservations ?? [], sessions: sessions ?? [] });
+    }
+
+    if (action === "admin_release_reservation_v2") {
+      if (!canManageLawyerProfiles(role)) {
+        return json({ success: false, error: "NOT_AUTHORIZED" }, 403);
+      }
+      const reservationId = (body.reservation_id ?? "").toString();
+      const { data: hold, error } = await supabaseAdmin.from("lawyer_time_reservations")
+        .update({ status: "released", ts_upd: new Date().toISOString() })
+        .eq("id", reservationId).eq("status", "held")
+        .select("consultation_intent_id").maybeSingle();
+      if (error || !hold) return json({ success: false, error: "RESERVATION_NOT_HELD" }, 409);
+      await supabaseAdmin.from("consultation_intents")
+        .update({ status: "payment_needs_slot", failure_code: "ADMIN_RELEASED_HOLD", ts_upd: new Date().toISOString() })
+        .eq("id", hold.consultation_intent_id).eq("status", "payment_pending");
+      return json({ success: true });
+    }
 
     // قائمة كل الاستشارات للإدارة (مع فلتر «بلا محامٍ»)
     if (action === "admin_list_consultations") {

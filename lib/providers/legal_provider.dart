@@ -488,6 +488,42 @@ class LegalProvider with ChangeNotifier {
   Map<String, dynamic> _adminV2Overview = {};
   Map<String, dynamic> get adminV2Overview => _adminV2Overview;
 
+  Future<Map<String, List<Map<String, dynamic>>>> fetchAdminV2Details() async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'admin_v2_details',
+        'user_uid': _actorUid,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['success'] != true) return {};
+      List<Map<String, dynamic>> rows(String key) =>
+          ((data?[key] as List?) ?? [])
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+      return {
+        'intents': rows('intents'),
+        'reservations': rows('reservations'),
+        'sessions': rows('sessions'),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<bool> adminReleaseReservation(String reservationId) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'admin_release_reservation_v2',
+        'user_uid': _actorUid,
+        'reservation_id': reservationId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      return data?['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> fetchAdminConsultations({bool onlyOrphan = false}) async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {

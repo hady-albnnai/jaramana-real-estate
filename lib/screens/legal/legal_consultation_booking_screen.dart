@@ -73,6 +73,7 @@ class _State extends State<LegalConsultationBookingScreen>
   String? _v2IdempotencyKey;
   num? _v2QuotedAmount;
   String? _rescheduleAppointmentId;
+  String? _retryRejectedPaymentId;
   final _subjectCtrl = TextEditingController();
   final List<XFile> _attachments = [];
   String _channel = '';
@@ -402,7 +403,7 @@ class _State extends State<LegalConsultationBookingScreen>
     _v2IntentId = null; _v2Flow = ''; _allowOtherLawyer = false;
     _v2IdempotencyKey = null;
     _v2QuotedAmount = null; _rescheduleAppointmentId = null;
-    _viewingPending = false; _selectedSlot = null;
+    _retryRejectedPaymentId = null; _viewingPending = false; _selectedSlot = null;
     // 📅 UI-CAL-001: تصفير حالة التقويم وكاش المواعيد — وإلا عُرضت مواعيد
     // قديمة (وربما محجوزة الآن) عند بدء حجز جديد.
     _selectedDayKey = null; _slotsFuture = null;
@@ -491,6 +492,19 @@ class _State extends State<LegalConsultationBookingScreen>
     } catch (_) { return null; }
   }
 
+  Future<void> _discardPaymentProof(String path) async {
+    if (path.isEmpty) return;
+    try {
+      await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'discard_payment_proof_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'path': path,
+      });
+    } catch (_) {
+      // التنظيف اليومي يبقى خط الدفاع الأخير عند انقطاع التطبيق.
+    }
+  }
+
   Future<void> _payV2(String ref) async {
     setState(() => _submitting = true);
     final user = context.read<AuthProvider>().userModel!;
@@ -507,6 +521,7 @@ class _State extends State<LegalConsultationBookingScreen>
       if (mounted) setState(() => _submitting = false);
       return;
     }
+    var uploadedProof = '';
     try {
       _v2IdempotencyKey ??= _newUuid();
       if (_v2IntentId == null) {
@@ -536,6 +551,7 @@ class _State extends State<LegalConsultationBookingScreen>
         if (mounted) setState(() => _submitting = false);
         return;
       }
+      uploadedProof = proof;
       String sender = '';
       if (_needsSenderPhone) sender = _normPhone(_senderPhoneCtrl.text.trim());
       final quoted = _v2QuotedAmount ??
@@ -545,7 +561,9 @@ class _State extends State<LegalConsultationBookingScreen>
                   ? (_onsitePrice - _phonePrice).clamp(0, _onsitePrice)
                   : _priceFor(_serviceType));
       final pay = await SupabaseService().invokeFunction('legal-actions', body: {
-        'action': 'create_consultation_payment_v2',
+        'action': _retryRejectedPaymentId == null
+            ? 'create_consultation_payment_v2'
+            : 'retry_consultation_payment_v2',
         'user_uid': user.uid,
         'intent_id': _v2IntentId,
         'payment': {
@@ -558,14 +576,18 @@ class _State extends State<LegalConsultationBookingScreen>
       });
       final data = pay.data as Map<String, dynamic>?;
       if (data?['success'] == true) {
+        uploadedProof = '';
         await _loadAll();
         if (!mounted) return;
         _goTo(6);
         _snack('✅ تم إرسال الدفعة — بانتظار اعتماد الإدارة');
       } else {
+        await _discardPaymentProof(uploadedProof);
+        uploadedProof = '';
         _snack(ErrorUtils.arabicMessage(data?['error']));
       }
     } catch (e) {
+      if (uploadedProof.isNotEmpty) await _discardPaymentProof(uploadedProof);
       _snack(ErrorUtils.arabicMessage(e));
     }
     if (mounted) setState(() => _submitting = false);
@@ -998,6 +1020,47 @@ class _State extends State<LegalConsultationBookingScreen>
     );
   }
 
+  Future<void> _retryRejectedPayment(Map<String, dynamic> payment) async {
+    final intentId = payment['consultation_intent_id']?.toString() ?? '';
+    if (intentId.isEmpty) {
+      setState(() {
+        _rejectedPayment = null;
+        _serviceType = (payment['pkg'] ?? 0) as int;
+      });
+      _goTo(4);
+      return;
+    }
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'prepare_rejected_payment_retry_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'intent_id': intentId,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['success'] != true) {
+        _snack(ErrorUtils.arabicMessage(data?['error']));
+        return;
+      }
+      setState(() {
+        _retryRejectedPaymentId = data?['payment_id']?.toString();
+        _v2IntentId = intentId;
+        _v2Flow = data?['flow']?.toString() ?? '';
+        _continueChatId = data?['parent_consultation_id']?.toString();
+        _serviceType = (data?['service_type'] ?? 0) as int;
+        _v2QuotedAmount = data?['quoted_amount'] as num?;
+        _subjectCtrl.text = data?['subject']?.toString() ?? '';
+        _pendingV2Intent = {'status': data?['status']};
+        _proofImage = null;
+        _refCtrl.clear();
+        _channel = '';
+        _screen = data?['status'] == 'payment_needs_slot' ? 7 : 5;
+        _slotsFuture = null;
+      });
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+    }
+  }
+
   /// ❌ الإدارة رفضت الدفعة — كانت الشاشة تتجاهل sts=2 تماماً
   Widget _rejectedPaymentCard(Map<String, dynamic> p) {
     final reason = ((p['meta'] as Map?)?['reject_reason'] ?? '').toString();
@@ -1018,7 +1081,7 @@ class _State extends State<LegalConsultationBookingScreen>
             style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
         AppTheme.gapHeightMedium,
         SizedBox(width: double.infinity, height: 42, child: ElevatedButton.icon(
-          onPressed: () { setState(() { _rejectedPayment = null; _serviceType = pkg; }); _goTo(4); },
+          onPressed: () => _retryRejectedPayment(p),
           icon: const Icon(Icons.refresh, color: Colors.black, size: 18),
           label: const Text('إعادة المحاولة',
               style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
@@ -1655,6 +1718,22 @@ class _State extends State<LegalConsultationBookingScreen>
               Text('$price ل.س', style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold, fontSize: 18))]),
             if (!_isContinuing && _subjectCtrl.text.isNotEmpty) ...[const SizedBox(height: 4), Text(_subjectCtrl.text.trim(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textGrey, fontSize: 11))],
           ])),
+        if (_serviceType == 1) ...[
+          AppTheme.gapHeightMedium,
+          Container(
+            width: double.infinity,
+            padding: AppTheme.paddingAllMedium,
+            decoration: BoxDecoration(
+              color: AppTheme.warningOrange.withOpacity(0.10),
+              borderRadius: AppTheme.radiusSmall,
+              border: Border.all(color: AppTheme.warningOrange.withOpacity(0.45)),
+            ),
+            child: const Text(
+              'تنويه: يمكنك تغيير موعد الجلسة لاحقاً دون دفع جديد. أما الإلغاء النهائي بعد اعتماد الدفعة فلا يعيد المبلغ ولا يحوله إلى رصيد، لذا يرجى التأكد من رغبتك قبل المتابعة.',
+              style: TextStyle(color: AppTheme.warningOrange, fontSize: 11, height: 1.5),
+            ),
+          ),
+        ],
         AppTheme.gapHeightLarge,
         const Text('قناة الدفع:', style: TextStyle(color: AppTheme.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
         AppTheme.gapHeightSmall,
@@ -2117,10 +2196,20 @@ class _State extends State<LegalConsultationBookingScreen>
       });
       final data = res.data as Map<String, dynamic>?;
       if (data?['success'] == true) {
-        await _loadAll();
-        if (mounted) {
-          _goTo(6);
-          _snack('✅ تم تثبيت الموعد الجديد على دفعتك الحالية');
+        if (_retryRejectedPaymentId != null) {
+          if (mounted) {
+            setState(() {
+              _pendingV2Intent = {'status': 'draft'};
+              _screen = 5;
+            });
+            _snack('✅ تم تثبيت الموعد — صحّح إثبات الدفع الآن');
+          }
+        } else {
+          await _loadAll();
+          if (mounted) {
+            _goTo(6);
+            _snack('✅ تم تثبيت الموعد الجديد على دفعتك الحالية');
+          }
         }
       } else {
         _snack(ErrorUtils.arabicMessage(data?['error']));

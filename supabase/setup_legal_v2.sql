@@ -15,3 +15,5 @@
 \ir migrations/2026_08_16_consultation_v2_expired_hold_guard.sql
 \ir migrations/2026_08_16_consultation_v2_exact_sync_reminders.sql
 \ir migrations/2026_08_16_consultation_v2_reschedule.sql
+\ir migrations/2026_08_16_consultation_v2_cancel_retry.sql
+\ir migrations/2026_08_16_consultation_orphan_cleanup_cron.sql

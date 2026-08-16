@@ -65,6 +65,87 @@ class _LegalConsultationsAdminScreenState
         context, SnackBar(content: Text(m), backgroundColor: bg ?? AppTheme.primaryGold));
   }
 
+  Future<void> _showV2Details() async {
+    final legal = context.read<LegalProvider>();
+    final details = await legal.fetchAdminV2Details();
+    if (!mounted) return;
+    final intents = details['intents'] ?? const <Map<String, dynamic>>[];
+    final holds = details['reservations'] ?? const <Map<String, dynamic>>[];
+    final sessions = details['sessions'] ?? const <Map<String, dynamic>>[];
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surfaceBlack,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.82,
+        maxChildSize: 0.95,
+        builder: (_, controller) => ListView(
+          controller: controller,
+          padding: AppTheme.paddingAllLarge,
+          children: [
+            const Text('تفاصيل نظام الاستشارة V2',
+                style: TextStyle(color: AppTheme.primaryGold,
+                    fontSize: 18, fontWeight: FontWeight.bold)),
+            AppTheme.gapHeightLarge,
+            Text('طلبات الدفع والحالات (${intents.length})',
+                style: const TextStyle(color: AppTheme.infoBlue,
+                    fontWeight: FontWeight.bold)),
+            ...intents.map((i) => ListTile(
+              dense: true,
+              title: Text('${i['flow']} — ${i['status']}',
+                  style: const TextStyle(color: AppTheme.textWhite)),
+              subtitle: Text((i['failure_code'] ?? i['id']).toString(),
+                  style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+            )),
+            const Divider(color: Colors.white12),
+            Text('الحجوزات الفعالة (${holds.length})',
+                style: const TextStyle(color: AppTheme.warningOrange,
+                    fontWeight: FontWeight.bold)),
+            ...holds.map((h) => ListTile(
+              dense: true,
+              title: Text('${h['status']} — ${h['slot_start']}',
+                  style: const TextStyle(color: AppTheme.textWhite)),
+              subtitle: Text((h['id'] ?? '').toString(),
+                  style: const TextStyle(color: AppTheme.textGrey, fontSize: 10)),
+              trailing: h['status'] == 'held'
+                  ? TextButton(
+                      onPressed: () async {
+                        final ok = await legal.adminReleaseReservation(h['id'].toString());
+                        if (ctx.mounted && ok) Navigator.pop(ctx);
+                        if (ok) {
+                          _snack('تم تحرير الحجز، وسيختار المستخدم موعداً جديداً');
+                          _load();
+                        }
+                      },
+                      child: const Text('تحرير',
+                          style: TextStyle(color: AppTheme.errorRed)),
+                    )
+                  : null,
+            )),
+            const Divider(color: Colors.white12),
+            Text('الجلسات الحالية (${sessions.length})',
+                style: const TextStyle(color: AppTheme.successGreen,
+                    fontWeight: FontWeight.bold)),
+            ...sessions.map((s) => ListTile(
+              dense: true,
+              title: Text('${s['kind']} — ${s['status']}',
+                  style: const TextStyle(color: AppTheme.textWhite)),
+              subtitle: Text('النهاية: ${s['ends_at'] ?? 'لم تبدأ'}',
+                  style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+            )),
+            if (intents.isEmpty && holds.isEmpty && sessions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: Text('لا توجد حالات V2 تحتاج متابعة',
+                    style: TextStyle(color: AppTheme.textGrey))),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final legal = context.watch<LegalProvider>();
@@ -91,6 +172,12 @@ class _LegalConsultationsAdminScreenState
         title: const Text('⚖️ الاستشارات القانونية'),
         backgroundColor: AppTheme.scaffoldBackground,
         actions: [
+          IconButton(
+            tooltip: 'تفاصيل V2',
+            icon: const Icon(Icons.account_tree_outlined,
+                color: AppTheme.infoBlue),
+            onPressed: _showV2Details,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: AppTheme.primaryGold),
             onPressed: _load,

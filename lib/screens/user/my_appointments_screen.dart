@@ -439,6 +439,17 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                       style: TextStyle(color: AppTheme.primaryGold)),
                 ),
               ),
+              AppTheme.gapHeightSmall,
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () => _cancelLegalAppointment(appt),
+                  icon: const Icon(Icons.cancel_outlined,
+                      color: AppTheme.errorRed),
+                  label: const Text('إلغاء الجلسة نهائياً',
+                      style: TextStyle(color: AppTheme.errorRed)),
+                ),
+              ),
             ],
 
             if (sts == 2 && isLegal && appt.consultationId.isNotEmpty) ...[
@@ -903,6 +914,68 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     if (time == null) return null;
 
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
+  Future<void> _cancelLegalAppointment(AppointmentModel appt) async {
+    final reasonCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('إلغاء الجلسة الحضورية',
+            style: TextStyle(color: AppTheme.errorRed)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'يمكنك تغيير الموعد دون دفع جديد. أما الإلغاء النهائي بعد اعتماد الدفع فلا يعيد المبلغ ولا يمنح رصيداً للخدمة.',
+            style: TextStyle(color: AppTheme.textWhite, height: 1.5),
+          ),
+          AppTheme.gapHeightMedium,
+          TextField(
+            controller: reasonCtrl,
+            minLines: 2,
+            maxLines: 4,
+            style: const TextStyle(color: AppTheme.textWhite),
+            decoration: const InputDecoration(
+              labelText: 'سبب الإلغاء',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('الاحتفاظ بالموعد')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إلغاء نهائياً بلا استرداد'),
+          ),
+        ],
+      ),
+    );
+    final reason = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+    if (confirmed != true) return;
+    if (reason.length < 5) {
+      _snack('اكتب سبباً واضحاً للإلغاء');
+      return;
+    }
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'cancel_legal_appointment_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'appointment_id': appt.id,
+        'reason': reason,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['success'] == true) {
+        _snack('تم إلغاء الجلسة نهائياً');
+        await _load();
+      } else {
+        _snack('تعذّر إلغاء الجلسة');
+      }
+    } catch (_) {
+      _snack('تعذّر إلغاء الجلسة');
+    }
   }
 
   void _showCancelDialog(AppointmentModel appt) {
