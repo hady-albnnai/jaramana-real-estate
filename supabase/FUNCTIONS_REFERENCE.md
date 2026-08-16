@@ -2038,6 +2038,7 @@ NOW() > pkg_grace          → expire_packages     → b_pkg = 0
 | `get_lawyer_appointments` | محامي | مواعيد المحامي. |
 | `get_my_expediting_tasks` | معقب | قائمة مهام المعقب المستلمة. |
 | `upload_consultation_attachment` | مستخدم مسجّل | رفع صورة مستند إلى `consultation_files` بمسار مبني خادمياً من UID. |
+| `discard_consultation_attachments` | صاحب الملفات | تنظيف الرفع غير المكتمل فقط؛ الملفات المرتبطة باستشارة لا تُحذف. |
 | `book_consultation` | مستخدم مسجّل | إنشاء طلب الاستشارة وربط المستندات المرفوعة والدفعة المقبولة. |
 | `get_consultation_files` | صاحب الاستشارة أو المحامي المسند أو الإدارة | توليد روابط مؤقتة لمستندات الاستشارة الخاصة قبل القبول وبعده. |
 | `update_checklist_item` | المحامي أو المعقب صاحب المهمة | تحديث بند من checklist. |

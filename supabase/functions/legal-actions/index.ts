@@ -687,6 +687,34 @@ serve(async (req) => {
       return json({ success: true, path });
     }
 
+    // تنظيف رفع غير مكتمل فقط. لا يُحذف أي ملف مرتبط باستشارة محفوظة.
+    if (action === "discard_consultation_attachments") {
+      const requestedPaths = Array.isArray(body.paths)
+        ? body.paths.map(String).slice(0, 5)
+        : [];
+      const ownPaths = requestedPaths.filter((path) =>
+        path.startsWith(`${uid}/`) && !path.includes("..")
+      );
+      const removable: string[] = [];
+      for (const path of ownPaths) {
+        const { data: linked } = await supabaseAdmin
+          .from("legal_consultations")
+          .select("id")
+          .contains("attachments", [path])
+          .limit(1);
+        if (!linked || linked.length === 0) removable.push(path);
+      }
+      if (removable.length > 0) {
+        const { error: removeError } = await supabaseAdmin.storage
+          .from("consultation_files")
+          .remove(removable);
+        if (removeError) {
+          return json({ success: false, error: "ATTACHMENT_CLEANUP_FAILED" }, 400);
+        }
+      }
+      return json({ success: true, removed: removable.length });
+    }
+
     // ─── حجز استشارة قانونية (من المستخدم العادي) ───
     if (action === "book_consultation") {
       const serviceType = Number(body.service_type ?? 0);

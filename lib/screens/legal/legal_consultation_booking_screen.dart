@@ -387,6 +387,20 @@ class _State extends State<LegalConsultationBookingScreen>
         }
         paths.add(path);
       } catch (_) {
+        if (paths.isNotEmpty) {
+          try {
+            await SupabaseService().invokeFunction(
+              'legal-actions',
+              body: {
+                'action': 'discard_consultation_attachments',
+                'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+                'paths': paths,
+              },
+            );
+          } catch (_) {
+            // التنظيف ثانوي؛ رسالة الفشل الأساسية أهم للمستخدم.
+          }
+        }
         if (mounted) {
           _snack('تعذّر رفع المستندات — لم يتم إرسال الطلب، حاول مجدداً');
         }
