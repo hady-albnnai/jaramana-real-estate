@@ -156,7 +156,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         final joinedData = joined.data as Map<String, dynamic>?;
         if (joinedData?['success'] == true) {
           await _loadMessages();
-          return _loadV2Session();
+          await _loadV2Session();
+          return;
         }
       }
       final status = (session['status'] ?? '').toString();
