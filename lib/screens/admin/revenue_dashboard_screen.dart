@@ -105,8 +105,10 @@ class _RevenueDashboardScreenState extends State<RevenueDashboardScreen> {
       ));
       if (data?['success'] == true) await _load();
     } catch (_) {
-      if (mounted) AppTheme.showSnackBar(context,
-          const SnackBar(content: Text('تعذّر تسجيل الدفع')));
+      if (mounted) {
+        AppTheme.showSnackBar(context,
+            const SnackBar(content: Text('تعذّر تسجيل الدفع')));
+      }
     }
   }
 
