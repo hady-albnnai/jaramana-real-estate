@@ -513,7 +513,51 @@ serve(async (req) => {
       if (tasksError) {
         return json({ success: false, error: tasksError.message }, 400);
       }
-      return json({ success: true, tasks: tasks ?? [] });
+
+      // صاحب الطلب يحتاج رؤية بياناته كاملة منذ لحظة الإرسال، ثم اسم المصور
+      // وموعده بعد الإسناد. الإثراء يتم بعد التحقق من الملكية أعلاه حصراً.
+      const rows = tasks ?? [];
+      const offerIds = [...new Set(rows.map((t) => t.off_id?.toString() ?? "").filter(Boolean))];
+      const photographerIds = [...new Set(rows.map((t) => t.photographer_id?.toString() ?? "").filter(Boolean))];
+      const offersById = new Map<string, Record<string, unknown>>();
+      const photographersById = new Map<string, { name: string; phone: string }>();
+
+      if (offerIds.length > 0) {
+        const { data: offers } = await supabaseAdmin
+          .from("offers")
+          .select("id, ttl, typ, trx, cat, sub, prc, cur, loc, descript, specs, avl, contact_ph, doc_tp, sts, photo_req")
+          .in("id", offerIds)
+          .eq("usr_id", userUid);
+        for (const offer of offers ?? []) offersById.set(offer.id.toString(), offer);
+      }
+      if (photographerIds.length > 0) {
+        const { data: photographers } = await supabaseAdmin
+          .from("users")
+          .select("id, nm, ph")
+          .in("id", photographerIds)
+          .eq("sts", 0)
+          .eq("i_del", 0);
+        for (const photographer of photographers ?? []) {
+          photographersById.set(photographer.id.toString(), {
+            name: photographer.nm?.toString() ?? "",
+            phone: photographer.ph?.toString() ?? "",
+          });
+        }
+      }
+
+      const enriched = rows.map((task) => {
+        const offer = offersById.get(task.off_id?.toString() ?? "");
+        const photographer = photographersById.get(task.photographer_id?.toString() ?? "");
+        return {
+          ...task,
+          offer_details: offer ?? {},
+          is_photo_request: Number(offer?.photo_req ?? 0) === 1,
+          offer_sts: offer?.sts ?? null,
+          photographer_name: photographer?.name ?? "",
+          photographer_phone: photographer?.phone ?? "",
+        };
+      });
+      return json({ success: true, tasks: enriched });
     }
 
     const actor = await validateActor(req, supabaseAdmin, body, 3); // إدارة/موظف مكتبي

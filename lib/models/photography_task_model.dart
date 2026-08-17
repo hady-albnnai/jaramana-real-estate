@@ -13,6 +13,9 @@ class PhotographyTaskModel {
   /// المهمة ناتجة عن طلب تصوير أنشأ مسودة عرض كاملة لدى المستخدم.
   final bool isPhotoRequestOffer;
   final int? offerStatus;
+  final Map<String, dynamic> offerDetails;
+  final String photographerName;
+  final String photographerPhone;
   final DateTime? tsScheduled;
   final DateTime? tsSubmit;
   final DateTime? tsDone;
@@ -33,13 +36,17 @@ class PhotographyTaskModel {
     this.sts = 0,
     this.isPhotoRequestOffer = false,
     this.offerStatus,
+    Map<String, dynamic>? offerDetails,
+    this.photographerName = '',
+    this.photographerPhone = '',
     this.tsScheduled,
     this.tsSubmit,
     this.tsDone,
     required this.tsCrt,
     this.tsUpd,
   })  : loc = loc ?? {},
-        media = media ?? [];
+        media = media ?? [],
+        offerDetails = offerDetails ?? {};
 
   factory PhotographyTaskModel.fromSupabase(Map<String, dynamic> data, String id) {
     return PhotographyTaskModel(
@@ -56,6 +63,11 @@ class PhotographyTaskModel {
       sts: data['sts'] ?? 0,
       isPhotoRequestOffer: data['is_photo_request'] == true || data['is_photo_request'] == 1,
       offerStatus: data['offer_sts'] == null ? null : int.tryParse(data['offer_sts'].toString()),
+      offerDetails: data['offer_details'] is Map
+          ? Map<String, dynamic>.from(data['offer_details'] as Map)
+          : const {},
+      photographerName: data['photographer_name']?.toString() ?? '',
+      photographerPhone: data['photographer_phone']?.toString() ?? '',
       tsScheduled: data['ts_scheduled'] != null ? DateTime.parse(data['ts_scheduled']) : null,
       tsSubmit: data['ts_submit'] != null ? DateTime.parse(data['ts_submit']) : null,
       tsDone: data['ts_done'] != null ? DateTime.parse(data['ts_done']) : null,
@@ -78,6 +90,9 @@ class PhotographyTaskModel {
       'sts': sts,
       'is_photo_request': isPhotoRequestOffer,
       'offer_sts': offerStatus,
+      'offer_details': offerDetails,
+      'photographer_name': photographerName,
+      'photographer_phone': photographerPhone,
       'ts_scheduled': tsScheduled?.toIso8601String(),
       'ts_submit': tsSubmit?.toIso8601String(),
       'ts_done': tsDone?.toIso8601String(),

@@ -8,6 +8,7 @@ import '../../providers/config_provider.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import 'add_offer_screen.dart';
 import '../../core/utils/error_utils.dart';
+import '../../core/utils/app_utils.dart';
 
 /// ════════════════════════════════════════════════════════════════════
 /// شاشة خدمة التصوير العقاري — للمستخدمين العاديين والوسطاء (ليس للإدارة).
@@ -659,7 +660,7 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
   }
 
   Widget _requestCard(PhotographyTaskModel t) {
-    final (label, color) = _statusInfo(t.sts);
+    final (label, color) = _requestStatusInfo(t);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: AppTheme.paddingAllLarge,
@@ -715,6 +716,25 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
               ),
             ],
           ),
+          if (t.photographerName.isNotEmpty) ...[
+            AppTheme.gapHeightXS,
+            Row(
+              children: [
+                const Icon(Icons.person_outline,
+                    size: 13, color: AppTheme.infoBlue),
+                AppTheme.gapWidthXS,
+                Expanded(
+                  child: Text(
+                    'المصوّر: ${t.photographerName}${t.photographerPhone.isNotEmpty ? ' — ${AppUtils.displayPhone(t.photographerPhone)}' : ''}',
+                    style: const TextStyle(
+                        color: AppTheme.infoBlue,
+                        fontSize: AppTheme.fontSizeCaption,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (t.tsScheduled != null) ...[
             AppTheme.gapHeightXS,
             Row(
@@ -803,6 +823,20 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
               ),
             ),
           ],
+          AppTheme.gapHeightSmall,
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showRequestDetails(t),
+              icon: const Icon(Icons.receipt_long_outlined,
+                  color: AppTheme.primaryGold, size: 17),
+              label: const Text('عرض تفاصيل طلب التصوير',
+                  style: TextStyle(color: AppTheme.primaryGold)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: AppTheme.primaryGold.withOpacity(0.45)),
+              ),
+            ),
+          ),
           // زر الإلغاء — فقط للطلبات المعلّقة (لم يبدأ المصور بعد)
           if (t.sts == 0) ...[
             AppTheme.gapHeightSmall,
@@ -842,10 +876,131 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
     );
   }
 
-  (String, Color) _statusInfo(int sts) {
-    switch (sts) {
+  Future<void> _showRequestDetails(PhotographyTaskModel task) async {
+    final d = task.offerDetails;
+    String text(String key) => d[key]?.toString().trim() ?? '';
+    final loc = d['loc'] is Map
+        ? Map<String, dynamic>.from(d['loc'] as Map)
+        : <String, dynamic>{};
+    final specs = d['specs'] is Map
+        ? Map<String, dynamic>.from(d['specs'] as Map)
+        : <String, dynamic>{};
+    final type = int.tryParse(text('typ')) ?? 0;
+    final transaction = int.tryParse(text('trx')) ?? 0;
+    final price = num.tryParse(text('prc')) ?? 0;
+    final currency = int.tryParse(text('cur')) ?? 1;
+    final city = loc['city']?.toString().trim() ?? '';
+    final area = loc['d']?.toString().trim() ?? '';
+    final location = [city, area].where((v) => v.isNotEmpty).join(' — ');
+
+    const specLabels = <String, String>{
+      'area': 'المساحة',
+      'floor': 'الطابق',
+      'finishing': 'الإكساء',
+      'direction': 'الاتجاه',
+      'legal_notes': 'ملاحظات قانونية',
+      'custom_sub': 'التصنيف',
+      'plate': 'رقم اللوحة',
+      'brand': 'الماركة',
+      'model': 'الطراز',
+      'year': 'سنة الصنع',
+      'color': 'اللون',
+      'fuel': 'الوقود',
+      'transmission': 'ناقل الحركة',
+      'plate_type': 'نوع اللوحة',
+    };
+
+    final detailRows = <Widget>[
+      _requestDetailRow('حالة الطلب', _requestStatusInfo(task).$1),
+      _requestDetailRow('نوع العرض', AppUtils.offerTypeText(type)),
+      _requestDetailRow('نوع العملية', AppUtils.transactionText(transaction)),
+      if (price > 0)
+        _requestDetailRow('السعر', AppUtils.formatPrice(price, currency: currency)),
+      if (location.isNotEmpty) _requestDetailRow('الموقع', location),
+      if (text('descript').isNotEmpty)
+        _requestDetailRow('الوصف', text('descript')),
+      if (text('contact_ph').isNotEmpty)
+        _requestDetailRow(
+            'رقم التنسيق', AppUtils.displayPhone(text('contact_ph'))),
+      ...specs.entries.where((e) => e.value.toString().trim().isNotEmpty).map(
+            (e) => _requestDetailRow(
+              specLabels[e.key] ?? 'تفصيل إضافي',
+              e.value.toString(),
+            ),
+          ),
+      if (task.photographerName.isNotEmpty)
+        _requestDetailRow('المصوّر', task.photographerName),
+      if (task.photographerPhone.isNotEmpty)
+        _requestDetailRow(
+            'هاتف المصوّر', AppUtils.displayPhone(task.photographerPhone)),
+      if (task.tsScheduled != null)
+        _requestDetailRow('موعد التصوير', _fmtDateTime(task.tsScheduled!)),
+      _requestDetailRow('تاريخ إرسال الطلب', _fmtDateTime(task.tsCrt)),
+    ];
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: Text(
+          text('ttl').isNotEmpty ? text('ttl') : task.ttl,
+          style: const TextStyle(
+              color: AppTheme.primaryGold, fontWeight: FontWeight.bold),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: detailRows,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _requestDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 105,
+            child: Text(label,
+                style: const TextStyle(
+                    color: AppTheme.textGrey,
+                    fontSize: AppTheme.fontSizeCaption)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontSize: AppTheme.fontSizeSmall,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (String, Color) _requestStatusInfo(PhotographyTaskModel task) {
+    if (task.sts == 0 && task.photographerId.isNotEmpty) {
+      return task.tsScheduled != null
+          ? ('تم قبول الطلب وتحديد الموعد', AppTheme.successGreen)
+          : ('تم قبول الطلب وجارٍ تنسيق الموعد', AppTheme.infoBlue);
+    }
+    switch (task.sts) {
       case 0:
-        return ('بانتظار تعيين المصوّر', AppTheme.warningOrange);
+        return ('قيد مراجعة الإدارة', AppTheme.warningOrange);
       case 1:
         return ('قيد التنفيذ', AppTheme.infoBlue);
       case 2:
