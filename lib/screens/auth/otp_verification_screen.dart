@@ -24,8 +24,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> with Code
   void initState() {
     super.initState();
     startTimer();
-    listenForCode();
-    SmsAutoFill().listenForCode;
+    listenForCode(
+      smsCodeRegexPattern: r'[أبتثجحخدذر](?:\s*[أبتثجحخدذر]){5}',
+    );
   }
 
   @override

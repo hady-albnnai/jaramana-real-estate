@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 import '../core/network/supabase_service.dart';
 import '../core/validation/input_validators.dart';
 
@@ -19,9 +20,20 @@ class AuthService {
   Future<Map<String, dynamic>> sendSMSOTP(String phone) async {
     final fullPhone = _normalizePhone(phone);
     try {
+      String appSignature = '';
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          appSignature = (await SmsAutoFill().getAppSignature).trim();
+        } catch (_) {
+          // Edge تستخدم APP_SIGNATURE_HASH الاحتياطي إذا تعذر جلب التوقيع.
+        }
+      }
       final res = await SupabaseService().invokeFunction(
         'send-sms-otp',
-        body: {'phone': fullPhone},
+        body: {
+          'phone': fullPhone,
+          if (appSignature.isNotEmpty) 'app_signature': appSignature,
+        },
       );
 
       final data = res.data as Map<String, dynamic>?;

@@ -39,7 +39,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phone } = await req.json()
+    const { phone, app_signature } = await req.json()
     if (!phone) throw new Error("Phone number is required")
 
     const normalizedPhone = normalizeSyPhone(phone)
@@ -84,7 +84,10 @@ serve(async (req) => {
     // تمويه بصري لتجاوز فلاتر شركات الاتصال السورية:
     // لا يخرج الرمز الرقمي في نص الرسالة، بل يتحول إلى 6 أحرف عربية.
     const maskedOtp = encodeOtp(String(otp));
-    const APP_SIGNATURE_HASH = Deno.env.get('APP_SIGNATURE_HASH') ?? '';
+    const clientSignature = String(app_signature ?? '').trim();
+    const APP_SIGNATURE_HASH = /^[A-Za-z0-9+/]{11}$/.test(clientSignature)
+      ? clientSignature
+      : (Deno.env.get('APP_SIGNATURE_HASH') ?? '').trim();
 
     // خمسة نماذج عامية معتمدة — بلا عبارات OTP الرسمية المحظورة.
     const templates = [
@@ -96,7 +99,7 @@ serve(async (req) => {
     ];
 
     let randomTemplate = templates[Math.floor(Math.random() * templates.length)];
-    if (APP_SIGNATURE_HASH) {
+    if (/^[A-Za-z0-9+/]{11}$/.test(APP_SIGNATURE_HASH)) {
       randomTemplate = `<#>\n${randomTemplate}\n${APP_SIGNATURE_HASH}`;
     }
 
