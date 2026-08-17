@@ -212,10 +212,14 @@ serve(async (req) => {
       const offer = body.offer as Record<string, unknown>;
       if (!offer) return json({ success: false, error: "OFFER_DATA_REQUIRED" }, 400);
 
-      const { data, error } = await supabaseAdmin.rpc("create_offer_internal", {
-        p_user_uid: uid,
-        p_offer: offer,
-      });
+      const isPhotoRequest = offer.photo_req === true || Number(offer.photo_req ?? 0) === 1;
+      const { data, error } = await supabaseAdmin.rpc(
+        isPhotoRequest ? "create_photography_request_internal" : "create_offer_internal",
+        {
+          p_user_uid: uid,
+          p_offer: offer,
+        },
+      );
       if (error) return json({ success: false, error: error.message }, 400);
       return json({ success: true, offer_id: data }); // قد يرجع ID العرض المنشأ أو true حسب تصميمك
     }

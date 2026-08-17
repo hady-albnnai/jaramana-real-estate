@@ -150,6 +150,21 @@ serve(async (req) => {
       });
       if (error) return json({ success: false, error: error.message }, 400);
 
+      // العرض الناتج عن طلب تصوير صار هنا عرضاً عادياً بالكامل. بعد قرار
+      // المراجعة نغلق مهمة التصوير أيضاً؛ الصور رُبطت ذرياً وقت تسليم المصوّر.
+      if (data === true) {
+        await supabaseAdmin
+          .from("photography_tasks")
+          .update({
+            sts: 3,
+            office_note: approve ? "تمت مراجعة العرض ونشره" : `اكتمل التصوير ورُفض العرض: ${reason}`,
+            ts_done: new Date().toISOString(),
+            ts_upd: new Date().toISOString(),
+          })
+          .eq("off_id", offerId)
+          .eq("sts", 2);
+      }
+
       let socialPublishResult: Record<string, unknown> | null = null;
       if (approve && data === true) {
         try {

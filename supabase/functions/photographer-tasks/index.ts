@@ -167,7 +167,7 @@ serve(async (req) => {
       const { data: me } = await supabaseAdmin
         .from("users").select("nm").eq("id", uid).maybeSingle();
       const { data: staff } = await supabaseAdmin
-        .from("users").select("id").gte("role", 3).eq("sts", 0).eq("i_del", 0);
+        .from("users").select("id").gte("role", 3).lte("role", 6).eq("sts", 0).eq("i_del", 0);
       if (staff && staff.length > 0) {
         await notifyUsers(
           supabaseAdmin,
@@ -262,20 +262,33 @@ serve(async (req) => {
       if (data === true) {
         const { data: task } = await supabaseAdmin
           .from("photography_tasks")
-          .select("id, ttl, requested_by")
+          .select("id, off_id, ttl, requested_by")
           .eq("id", taskId)
           .maybeSingle();
+        const offerId = task?.off_id?.toString() ?? "";
+        let isUserPhotoOffer = false;
+        if (offerId) {
+          const { data: offer } = await supabaseAdmin
+            .from("offers")
+            .select("photo_req, sts")
+            .eq("id", offerId)
+            .maybeSingle();
+          // الـ RPC الذرية تنقل مسودة طلب التصوير إلى المراجعة عند التسليم.
+          isUserPhotoOffer = Number(offer?.photo_req ?? 0) === 1 && Number(offer?.sts ?? -1) === 1;
+        }
         const { data: staff } = await supabaseAdmin
-          .from("users").select("id").gte("role", 3).eq("sts", 0).eq("i_del", 0);
+          .from("users").select("id").gte("role", 3).lte("role", 6).eq("sts", 0).eq("i_del", 0);
         if (staff && staff.length > 0) {
           await notifyUsers(
             supabaseAdmin,
             staff.map((s) => s.id?.toString() ?? ""),
             1,
-            "📥 صور جاهزة للمراجعة",
-            `سلّم المصوّر ${media.length} ملف للمهمة: ${task?.ttl ?? ""} — بانتظار الاعتماد.`,
-            taskId,
-            "photography_task_submitted",
+            isUserPhotoOffer ? "🆕 عرض جديد بانتظار المراجعة" : "📥 صور جاهزة للمراجعة",
+            isUserPhotoOffer
+              ? `اكتمل تصوير العرض: ${task?.ttl ?? ""} — أُرفقت ${cleanMedia.length} وسائط وأصبح العرض جاهزاً للمراجعة.`
+              : `سلّم المصوّر ${cleanMedia.length} وسائط للمهمة: ${task?.ttl ?? ""} — بانتظار اعتماد التصوير.`,
+            isUserPhotoOffer ? offerId : taskId,
+            isUserPhotoOffer ? "offer" : "photography_task_submitted",
           );
         }
         // وإعلام صاحب الطلب أن التصوير انتهى ودخل المراجعة

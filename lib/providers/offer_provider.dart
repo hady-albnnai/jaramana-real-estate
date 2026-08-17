@@ -398,10 +398,13 @@ class OfferProvider with ChangeNotifier {
       if (response == null || (response is! List) || response.isEmpty) return null;
       final row = Map<String, dynamic>.from(response.first as Map);
       final created = OfferModel.fromSupabase(row, row['id'] as String);
-      _offers.insert(0, created);
-      _sortByPriority(); // ترتيب: المثبّت أولاً حتى لو أُضيف عرض جديد
-      
-      notifyListeners();
+      // مسودة طلب التصوير تُتابع من شاشة الخدمة، ولا تصبح من «عروضي» إلا
+      // بعد أن يسلّم المصور الصور وينقلها السيرفر إلى المراجعة.
+      if (!isPhotographyRequest) {
+        _offers.insert(0, created);
+        _sortByPriority(); // ترتيب: المثبّت أولاً حتى لو أُضيف عرض جديد
+        notifyListeners();
+      }
       return created;
     } catch (e) {
       _setError(e);

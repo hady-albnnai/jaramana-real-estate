@@ -10,6 +10,9 @@ class PhotographyTaskModel {
   final String photographerNote;
   final String officeNote;
   final int sts;
+  /// المهمة ناتجة عن طلب تصوير أنشأ مسودة عرض كاملة لدى المستخدم.
+  final bool isPhotoRequestOffer;
+  final int? offerStatus;
   final DateTime? tsScheduled;
   final DateTime? tsSubmit;
   final DateTime? tsDone;
@@ -28,6 +31,8 @@ class PhotographyTaskModel {
     this.photographerNote = '',
     this.officeNote = '',
     this.sts = 0,
+    this.isPhotoRequestOffer = false,
+    this.offerStatus,
     this.tsScheduled,
     this.tsSubmit,
     this.tsDone,
@@ -49,6 +54,8 @@ class PhotographyTaskModel {
       photographerNote: data['photographer_note'] ?? '',
       officeNote: data['office_note'] ?? '',
       sts: data['sts'] ?? 0,
+      isPhotoRequestOffer: data['is_photo_request'] == true || data['is_photo_request'] == 1,
+      offerStatus: data['offer_sts'] == null ? null : int.tryParse(data['offer_sts'].toString()),
       tsScheduled: data['ts_scheduled'] != null ? DateTime.parse(data['ts_scheduled']) : null,
       tsSubmit: data['ts_submit'] != null ? DateTime.parse(data['ts_submit']) : null,
       tsDone: data['ts_done'] != null ? DateTime.parse(data['ts_done']) : null,
@@ -69,6 +76,8 @@ class PhotographyTaskModel {
       'photographer_note': photographerNote,
       'office_note': officeNote,
       'sts': sts,
+      'is_photo_request': isPhotoRequestOffer,
+      'offer_sts': offerStatus,
       'ts_scheduled': tsScheduled?.toIso8601String(),
       'ts_submit': tsSubmit?.toIso8601String(),
       'ts_done': tsDone?.toIso8601String(),

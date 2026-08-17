@@ -253,6 +253,7 @@ serve(async (req) => {
         .from("users")
         .select("id")
         .gte("role", 3)
+        .lte("role", 6)
         .eq("sts", 0)
         .eq("i_del", 0);
       if (staff && staff.length > 0) {
@@ -391,6 +392,7 @@ serve(async (req) => {
         .from("users")
         .select("id")
         .gte("role", 3)
+        .lte("role", 6)
         .eq("sts", 0)
         .eq("i_del", 0);
       if (staff && staff.length > 0) {
@@ -434,10 +436,22 @@ serve(async (req) => {
         .eq("id", taskId)
         .eq("requested_by", userUid)
         .eq("sts", 0)
-        .select("id, ttl, photographer_id")
+        .select("id, off_id, ttl, photographer_id")
         .maybeSingle();
       if (cancelError) return json({ success: false, error: cancelError.message }, 400);
       if (!cancelled) return json({ success: false, error: "TASK_NOT_PENDING" }, 400);
+
+      // طلب المستخدم يحمل مسودة عرض تقنية؛ عند الإلغاء تُخفى نهائياً ولا
+      // يجوز أن تصل لاحقاً إلى مراجعة العروض.
+      const cancelledOfferId = cancelled.off_id?.toString() ?? "";
+      if (cancelledOfferId) {
+        await supabaseAdmin
+          .from("offers")
+          .update({ i_del: 1 })
+          .eq("id", cancelledOfferId)
+          .eq("photo_req", 1)
+          .eq("sts", 0);
+      }
 
       const pid = cancelled.photographer_id?.toString() ?? "";
       if (pid) {
@@ -520,7 +534,33 @@ serve(async (req) => {
       }
       const { data, error } = await query.limit(200);
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: true, tasks: data ?? [] });
+
+      // تمييز مسودة طلب المستخدم عن مهمة تصوير عرض منشور؛ تحتاج الواجهة هذا
+      // للفصل بين «فتح مراجعة العرض» و«اعتماد صور عرض موجود».
+      const tasks = data ?? [];
+      const offerIds = [...new Set(tasks.map((t) => t.off_id?.toString() ?? "").filter(Boolean))];
+      const offerMeta = new Map<string, { photoReq: number; sts: number }>();
+      if (offerIds.length > 0) {
+        const { data: offers } = await supabaseAdmin
+          .from("offers")
+          .select("id, photo_req, sts")
+          .in("id", offerIds);
+        for (const offer of offers ?? []) {
+          offerMeta.set(offer.id.toString(), {
+            photoReq: Number(offer.photo_req ?? 0),
+            sts: Number(offer.sts ?? 0),
+          });
+        }
+      }
+      const enriched = tasks.map((task) => {
+        const meta = offerMeta.get(task.off_id?.toString() ?? "");
+        return {
+          ...task,
+          is_photo_request: meta?.photoReq === 1,
+          offer_sts: meta?.sts ?? null,
+        };
+      });
+      return json({ success: true, tasks: enriched });
     }
 
     // ─── Action: stats — إحصاءات مهام التصوير (نظرة إدارية بأرقام مجمّعة) ───

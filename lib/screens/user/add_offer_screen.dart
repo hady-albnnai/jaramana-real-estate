@@ -420,18 +420,9 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         _snack(ErrorUtils.arabicMessage(offerProv.error ?? 'OFFER_CREATE_FAILED'));
         return;
       }
-      // 📸 وضع التصوير: إنشاء مهمة تصوير مرتبطة بالعرض + إشعار المكتب
+      // 📸 العرض التقني + مهمة التصوير + إشعار المكتب أُنشئت ذرياً في السيرفر؛
+      // لا توجد خطوتان منفصلتان قد تنجح أولاهما وتفشل الثانية.
       if (widget.isPhotographyRequest) {
-        try {
-          await SupabaseService().invokeFunction('admin-photography', body: {
-            'action': 'request_photography_for_offer',
-            'user_uid': user.uid,
-            'offer_id': created.id,
-          });
-        } catch (_) {
-          // فشل إنشاء مهمة التصوير لا يُبطل العرض — الموظف ينشئها يدوياً
-        }
-        if (!mounted) return;
         Navigator.pop(context, true); // true = تم إنشاء طلب تصوير
         _snack('✅ تم إرسال طلب التصوير بنجاح — سيتم التواصل معك قريباً');
         return;

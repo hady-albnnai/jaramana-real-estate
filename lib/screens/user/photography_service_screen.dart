@@ -845,7 +845,7 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
   (String, Color) _statusInfo(int sts) {
     switch (sts) {
       case 0:
-        return ('بانتظار المراجعة', AppTheme.warningOrange);
+        return ('بانتظار تعيين المصوّر', AppTheme.warningOrange);
       case 1:
         return ('قيد التنفيذ', AppTheme.infoBlue);
       case 2:

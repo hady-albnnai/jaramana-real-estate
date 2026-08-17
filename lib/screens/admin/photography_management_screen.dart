@@ -395,27 +395,42 @@ class _PhotographyManagementScreenState extends State<PhotographyManagementScree
                 ),
                 AppTheme.gapHeightSmall,
               ],
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _approveAndAttach(task),
-                      icon: const Icon(Icons.check),
-                      label: Text(task.offId.isEmpty
-                          ? 'اعتماد فقط'
-                          : 'اعتماد وربط بالعرض'),
-                    ),
+              if (task.isPhotoRequestOffer && task.offId.isNotEmpty) ...[
+                const Text(
+                  'اكتملت الصور وأصبح العرض ضمن مراجعة العروض العادية.',
+                  style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall),
+                ),
+                AppTheme.gapHeightSmall,
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => context.push('/admin/review-offers'),
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: const Text('فتح مراجعة العروض'),
                   ),
-                  AppTheme.gapWidthSmall,
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _rejectTask(task),
-                      icon: const Icon(Icons.close, color: AppTheme.errorRed),
-                      label: const Text('رفض', style: TextStyle(color: AppTheme.errorRed)),
+                ),
+              ] else
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _approveAndAttach(task),
+                        icon: const Icon(Icons.check),
+                        label: Text(task.offId.isEmpty
+                            ? 'اعتماد فقط'
+                            : 'اعتماد وربط بالعرض'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                    AppTheme.gapWidthSmall,
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _rejectTask(task),
+                        icon: const Icon(Icons.close, color: AppTheme.errorRed),
+                        label: const Text('رفض', style: TextStyle(color: AppTheme.errorRed)),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ],
         ),
