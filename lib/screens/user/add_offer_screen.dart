@@ -136,7 +136,10 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       final key = day.$1;
       if (_avlDaysEnabled[key] == true) {
         final slots = _avlSlots[key]!
-            .where((s) => s['from']!.isNotEmpty && s['to']!.isNotEmpty)
+            .where((s) =>
+                s['from']!.isNotEmpty &&
+                s['to']!.isNotEmpty &&
+                _timeToMinutes(s['to']!) > _timeToMinutes(s['from']!))
             .map((s) => '${s['from']}-${s['to']}')
             .toList();
         // يوم مفعّل بلا فترة مكتملة يُهمل بالكامل — كان يُكتب كمصفوفة فارغة
@@ -330,6 +333,34 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       return;
     }
 
+    // فحص الحصة والتكرار قبل رفع الصور كي لا ينتظر المستخدم ثم يُرفض الطلب.
+    try {
+      final preflight = await SupabaseService().invokeFunction('user-offers', body: {
+        'action': 'create_preflight',
+        'user_uid': user.uid,
+        'photo_req': widget.isPhotographyRequest ? 1 : 0,
+        'title': _ttlCtrl.text.trim().isNotEmpty ? _ttlCtrl.text.trim() : 'عرض جديد',
+        'price': double.tryParse(
+                InputValidators.normalizeDigits(_priceCtrl.text).replaceAll(',', '')) ??
+            0,
+        'loc': {
+          'city': _selectedType == 1
+              ? (carCity ?? '')
+              : (_selectedCityArea == _customCityOption
+                  ? _customCityCtrl.text
+                  : _selectedCityArea),
+        },
+      });
+      final p = preflight.data as Map<String, dynamic>?;
+      if (p?['success'] != true || p?['allowed'] == false) {
+        _snack(ErrorUtils.arabicMessage(p?['error'] ?? 'UNKNOWN_ERROR'));
+        return;
+      }
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+      return;
+    }
+
     setState(() { _submitting = true; _progressMsg = 'جاري رفع البيانات...'; });
     final docUrl = await _uploadDocImage(user.uid) ?? '';
 
@@ -386,7 +417,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       if (!mounted) return;
       if (created == null) {
         setState(() => _submitting = false);
-        _snack('❌ تعذر إنشاء العرض — تحقق من الاتصال وحاول مجدداً');
+        _snack(ErrorUtils.arabicMessage(offerProv.error ?? 'OFFER_CREATE_FAILED'));
         return;
       }
       // 📸 وضع التصوير: إنشاء مهمة تصوير مرتبطة بالعرض + إشعار المكتب
@@ -863,8 +894,19 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
               ListTile(
                 leading: Icon(enabled ? Icons.check_box : Icons.check_box_outline_blank, color: enabled ? AppTheme.primaryGold : AppTheme.textGrey),
                 title: Text(label, style: TextStyle(color: enabled ? AppTheme.textWhite : AppTheme.textGrey, fontWeight: FontWeight.bold)),
-                onTap: () => setState(() { _avlDaysEnabled[key] = !enabled; if (!enabled && slots.isEmpty) _avlSlots[key]!.add({'from': '', 'to': ''}); }),
-                trailing: enabled ? IconButton(icon: const Icon(Icons.add, color: AppTheme.primaryGold, size: 20), onPressed: () => setState(() => _avlSlots[key]!.add({'from': '', 'to': ''}))) : null,
+                onTap: () => setState(() {
+                  _avlDaysEnabled[key] = !enabled;
+                  if (!enabled && slots.isEmpty) {
+                    _avlSlots[key]!.add({'from': '09:00', 'to': '12:00'});
+                  }
+                }),
+                trailing: enabled
+                    ? IconButton(
+                        icon: const Icon(Icons.add,
+                            color: AppTheme.primaryGold, size: 20),
+                        onPressed: () => setState(() => _avlSlots[key]!
+                            .add({'from': '09:00', 'to': '12:00'})))
+                    : null,
               ),
               if (enabled) ...slots.asMap().entries.map((entry) {
                 final i = entry.key; final slot = entry.value;
@@ -891,7 +933,43 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     isActive: _currentStep >= 3,
   );
 
-  // ✅ Fixed: Use persistent controllers to prevent focus loss on each keystroke
+  int _timeToMinutes(String value) {
+    final parts = value.split(':');
+    if (parts.length != 2) return 0;
+    return (int.tryParse(parts[0]) ?? 0) * 60 +
+        (int.tryParse(parts[1]) ?? 0);
+  }
+
+  String _minutesToTime(int value) {
+    final safe = value.clamp(0, 23 * 60 + 59);
+    return '${(safe ~/ 60).toString().padLeft(2, '0')}:'
+        '${(safe % 60).toString().padLeft(2, '0')}';
+  }
+
+  void _adjustTime(
+      String dayKey, int slotIndex, String field, int deltaMinutes) {
+    final current = _avlSlots[dayKey]![slotIndex][field] ?? '09:00';
+    final next = _minutesToTime(_timeToMinutes(current) + deltaMinutes);
+    setState(() => _avlSlots[dayKey]![slotIndex][field] = next);
+  }
+
+  Future<void> _pickSlotTime(
+      String dayKey, int slotIndex, String field) async {
+    final current = _avlSlots[dayKey]![slotIndex][field] ?? '09:00';
+    final mins = _timeToMinutes(current);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: mins ~/ 60, minute: mins % 60),
+      helpText: field == 'from' ? 'بداية الفترة' : 'نهاية الفترة',
+      cancelText: 'إلغاء',
+      confirmText: 'اعتماد',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _avlSlots[dayKey]![slotIndex][field] =
+        _minutesToTime(picked.hour * 60 + picked.minute));
+  }
+
+  /// وقت فعلي لا hint: الضغط يفتح منتقي الوقت، و± تعدّل نصف ساعة.
   Widget _timeField({
     required String dayKey,
     required int slotIndex,
@@ -899,27 +977,39 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     required String hint,
   }) {
     final controller = _getTimeController(dayKey, slotIndex, field);
-    final currentValue = _avlSlots[dayKey]?[slotIndex]?[field] ?? '';
-    
-    // Update controller text if it differs from stored value
+    final currentValue = _avlSlots[dayKey]?[slotIndex]?[field] ?? hint;
     if (controller.text != currentValue) {
       controller.text = currentValue;
       controller.selection = TextSelection.collapsed(offset: currentValue.length);
     }
-    
     return TextField(
-      controller: controller,  // ✅ Persistent controller
-      keyboardType: TextInputType.datetime,
-      style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody),
+      controller: controller,
+      readOnly: true,
+      textAlign: TextAlign.center,
+      onTap: () => _pickSlotTime(dayKey, slotIndex, field),
+      style: const TextStyle(
+          color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody),
       decoration: InputDecoration(
-        hintText: hint,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        contentPadding: const EdgeInsets.symmetric(vertical: 5),
         isDense: true,
         border: const OutlineInputBorder(),
+        prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+        suffixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+        prefixIcon: IconButton(
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          tooltip: 'نقص نصف ساعة',
+          onPressed: () => _adjustTime(dayKey, slotIndex, field, -30),
+          icon: const Icon(Icons.remove, size: 16),
+        ),
+        suffixIcon: IconButton(
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          tooltip: 'زد نصف ساعة',
+          onPressed: () => _adjustTime(dayKey, slotIndex, field, 30),
+          icon: const Icon(Icons.add, size: 16),
+        ),
       ),
-      onChanged: (v) {
-        setState(() => _avlSlots[dayKey]![slotIndex][field] = v);
-      },
     );
   }
 

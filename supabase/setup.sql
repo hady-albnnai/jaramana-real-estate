@@ -5079,3 +5079,4 @@ GRANT EXECUTE ON FUNCTION public.trg_offer_approved_award_points() TO service_ro
 -- في النشر الاعتيادي تطبق Supabase ملفات migrations زمنياً، فلا حاجة لتشغيله
 -- يدوياً. الملف مستقل فقط لإعادة تأسيس القسم القانوني فوق قاعدة baseline.
 -- Notification retention/latest-100 policy: migrations/2026_08_16_notification_retention_limit.sql
+-- Photo-request quota marker + offer preflight: migrations/2026_08_17_photo_offer_quota_and_availability.sql

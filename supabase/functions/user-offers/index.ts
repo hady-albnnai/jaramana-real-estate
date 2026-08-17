@@ -146,6 +146,47 @@ serve(async (req) => {
     if (!actor.ok) return actor.response;
     const uid = actor.uid;
 
+    if (action === "create_preflight") {
+      const isPhotoRequest = body.photo_req === true || Number(body.photo_req ?? 0) === 1;
+      if (isPhotoRequest) {
+        return json({ success: true, allowed: true, used: 0, limit: 0 });
+      }
+      const { data: user, error: userError } = await supabaseAdmin.from("users")
+        .select("role,b_pkg,pkg_end,pkg_grace,pkg_xoff")
+        .eq("id", uid).eq("sts", 0).eq("i_del", 0).maybeSingle();
+      if (userError || !user) return json({ success: false, error: "USER_NOT_ACTIVE_OR_NOT_FOUND" }, 404);
+      if (Number(user.role) >= 4) return json({ success: true, allowed: true, used: 0, limit: 999999 });
+      const { data: cfgRow } = await supabaseAdmin.from("app_config")
+        .select("value").eq("key", "main").maybeSingle();
+      const cfg = cfgRow?.value as Record<string, unknown> | undefined;
+      const pkg = cfg?.pkg as Record<string, Record<string, unknown>> | undefined;
+      const now = Date.now();
+      const activePkg = Number(user.b_pkg ?? 0) > 0 &&
+        ((user.pkg_grace && new Date(String(user.pkg_grace)).getTime() > now) ||
+         (user.pkg_end && new Date(String(user.pkg_end)).getTime() > now))
+        ? Number(user.b_pkg) : 0;
+      const baseLimit = Number(pkg?.[String(activePkg)]?.o ?? (Number(user.role) === 1 ? 5 : 1));
+      const limit = baseLimit + (activePkg > 0 ? Number(user.pkg_xoff ?? 0) : 0);
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const [{ count: activeCount }, { count: deletedCount }] = await Promise.all([
+        supabaseAdmin.from("offers").select("id", { count: "exact", head: true })
+          .eq("usr_id", uid).eq("i_del", 0).eq("photo_req", 0).in("sts", [0, 1, 2, 5]),
+        supabaseAdmin.from("offers").select("id", { count: "exact", head: true })
+          .eq("usr_id", uid).eq("i_del", 1).eq("photo_req", 0).gte("ts_crt", since),
+      ]);
+      const used = (activeCount ?? 0) + (deletedCount ?? 0);
+      if (used >= limit) return json({ success: false, allowed: false, error: "QUOTA_EXCEEDED", used, limit }, 409);
+      const title = (body.title ?? "").toString().trim();
+      const price = Number(body.price ?? 0);
+      if (title && Number.isFinite(price)) {
+        const { data: duplicate } = await supabaseAdmin.rpc("check_offer_duplicate", {
+          p_ttl: title, p_prc: price, p_loc: body.loc ?? {}, p_usr_id: uid,
+        });
+        if (duplicate === true) return json({ success: false, allowed: false, error: "DUPLICATE_OFFER", used, limit }, 409);
+      }
+      return json({ success: true, allowed: true, used, limit });
+    }
+
     if (action === "list") {
       const { data, error } = await supabaseAdmin.rpc("get_user_offers_internal", { p_user_uid: uid });
       if (error) return json({ success: false, error: error.message }, 400);
