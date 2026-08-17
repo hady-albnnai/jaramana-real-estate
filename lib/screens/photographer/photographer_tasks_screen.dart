@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_utils.dart';
 import '../../models/photography_task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/photography_provider.dart';
@@ -418,12 +419,130 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
 
   // ─── بطاقة مهمة نشطة ───
 
+  Future<void> _showTaskDetails(PhotographyTaskModel task) async {
+    final d = task.offerDetails;
+    String text(String key) => d[key]?.toString().trim() ?? '';
+    final loc = d['loc'] is Map
+        ? Map<String, dynamic>.from(d['loc'] as Map)
+        : task.loc;
+    final specs = d['specs'] is Map
+        ? Map<String, dynamic>.from(d['specs'] as Map)
+        : <String, dynamic>{};
+    final type = int.tryParse(text('typ')) ?? 0;
+    final transaction = int.tryParse(text('trx')) ?? 0;
+    final price = num.tryParse(text('prc')) ?? 0;
+    final currency = int.tryParse(text('cur')) ?? 1;
+    final location = [loc['city'], loc['d']]
+        .map((v) => v?.toString().trim() ?? '')
+        .where((v) => v.isNotEmpty)
+        .join(' — ');
+    const labels = <String, String>{
+      'area': 'المساحة',
+      'floor': 'الطابق',
+      'finishing': 'الإكساء',
+      'direction': 'الاتجاه',
+      'legal_notes': 'ملاحظات قانونية',
+      'custom_sub': 'التصنيف',
+      'plate': 'رقم اللوحة',
+      'brand': 'الماركة',
+      'model': 'الطراز',
+      'year': 'سنة الصنع',
+      'color': 'اللون',
+      'fuel': 'الوقود',
+      'transmission': 'ناقل الحركة',
+      'plate_type': 'نوع اللوحة',
+    };
+
+    final rows = <Widget>[
+      _detailRow('الحالة', task.statusLabel),
+      _detailRow('نوع العرض', AppUtils.offerTypeText(type)),
+      _detailRow('العملية', AppUtils.transactionText(transaction)),
+      if (price > 0)
+        _detailRow('السعر', AppUtils.formatPrice(price, currency: currency)),
+      if (location.isNotEmpty) _detailRow('الموقع', location),
+      if (text('descript').isNotEmpty)
+        _detailRow('الوصف', text('descript')),
+      if (task.requesterName.isNotEmpty)
+        _detailRow('صاحب الطلب', task.requesterName),
+      if (task.requesterPhone.isNotEmpty)
+        _detailRow(
+            'رقم التواصل', AppUtils.displayPhone(task.requesterPhone)),
+      ...specs.entries.where((e) => e.value.toString().trim().isNotEmpty).map(
+            (e) => _detailRow(labels[e.key] ?? 'تفصيل إضافي', e.value.toString()),
+          ),
+      if (task.tsScheduled != null)
+        _detailRow('موعد التصوير', _fmtDate(task.tsScheduled!)),
+      if (task.tsScheduled == null)
+        _detailRow('موعد التصوير', 'لم تحدده الإدارة بعد'),
+      if (task.notes.isNotEmpty) _detailRow('ملاحظات المكتب', task.notes),
+    ];
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: Text(task.ttl.isEmpty ? 'تفاصيل مهمة التصوير' : task.ttl,
+            style: const TextStyle(
+                color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rows,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إغلاق'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(label,
+                style: const TextStyle(
+                    color: AppTheme.textGrey,
+                    fontSize: AppTheme.fontSizeCaption)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontSize: AppTheme.fontSizeSmall,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _taskCard(PhotographyTaskModel task) {
     final taskHash = task.id;
     final isExpanded = _expandedTaskId == taskHash;
     final isUploading = _isUploading[taskHash] ?? false;
     final hasMedia = _tempMedia[taskHash]?.isNotEmpty ?? false;
     final color = _statusColor(task.sts);
+    final offer = task.offerDetails;
+    final offerLoc = offer['loc'] is Map
+        ? Map<String, dynamic>.from(offer['loc'] as Map)
+        : task.loc;
+    final city = offerLoc['city']?.toString().trim() ?? '';
+    final district = offerLoc['d']?.toString().trim() ?? '';
+    final location = [city, district].where((v) => v.isNotEmpty).join(' — ');
+    final description = offer['descript']?.toString().trim() ?? '';
 
     return Card(
       color: AppTheme.surfaceBlack,
@@ -474,13 +593,47 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
               ]),
             ),
           ],
-          if ((task.loc['d'] ?? '').toString().isNotEmpty) ...[
+          if (task.requesterName.isNotEmpty || task.requesterPhone.isNotEmpty) ...[
             const SizedBox(height: 6),
             Row(children: [
-              const Icon(Icons.location_on_outlined, color: AppTheme.textGrey, size: 14),
+              const Icon(Icons.person_outline,
+                  color: AppTheme.infoBlue, size: 14),
               AppTheme.gapWidthXS,
-              Expanded(child: Text(task.loc['d'].toString(),
-                  style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall))),
+              Expanded(
+                child: Text(
+                  'صاحب الطلب: ${task.requesterName}${task.requesterPhone.isNotEmpty ? ' — ${AppUtils.displayPhone(task.requesterPhone)}' : ''}',
+                  style: const TextStyle(
+                      color: AppTheme.infoBlue,
+                      fontSize: AppTheme.fontSizeSmall,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ]),
+          ],
+          if (location.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              const Icon(Icons.location_on_outlined,
+                  color: AppTheme.textGrey, size: 14),
+              AppTheme.gapWidthXS,
+              Expanded(child: Text(location,
+                  style: const TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeSmall))),
+            ]),
+          ],
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.home_work_outlined,
+                  color: AppTheme.textGrey, size: 14),
+              AppTheme.gapWidthXS,
+              Expanded(child: Text(description,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeSmall))),
             ]),
           ],
           if (task.tsScheduled != null) ...[
@@ -502,6 +655,21 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
                   style: TextStyle(color: Colors.amber, fontSize: AppTheme.fontSizeSmall)),
             ]),
           ],
+
+          AppTheme.gapHeightSmall,
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showTaskDetails(task),
+              icon: const Icon(Icons.receipt_long_outlined,
+                  color: AppTheme.primaryGold, size: 17),
+              label: const Text('عرض كامل تفاصيل المهمة',
+                  style: TextStyle(color: AppTheme.primaryGold)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: AppTheme.primaryGold.withOpacity(0.45)),
+              ),
+            ),
+          ),
 
           // زر بدء المهمة أو واجهة الرفع
           if (!isExpanded && (task.isPending || task.isInProgress)) ...[

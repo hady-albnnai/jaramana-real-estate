@@ -27,7 +27,7 @@ async function validateActor(
   body: Record<string, unknown>,
   minRole = 3,
 ): Promise<{ ok: true; uid: string; role: number } | { ok: false; response: Response }> {
-  const requestedUid = (body.admin_uid ?? body.adminUid ?? body.user_uid ?? body.userUid ?? body.admin_id ?? body.adminId)?.toString() ?? "";
+  let requestedUid = (body.admin_uid ?? body.adminUid ?? body.user_uid ?? body.userUid ?? body.admin_id ?? body.adminId)?.toString() ?? "";
   const authHeader = req.headers.get("Authorization") ?? "";
   const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 
@@ -49,8 +49,25 @@ async function validateActor(
   }
 
   const sessionToken = (body.staff_session_token ?? body.staffSessionToken)?.toString() ?? (authHeader && !authHeader.startsWith("Bearer ") ? authHeader.trim() : "");
-  if (!requestedUid || !sessionToken) {
+  if (!sessionToken) {
     return { ok: false, response: json({ success: false, error: "ADMIN_SESSION_REQUIRED" }, 401) };
+  }
+
+  // بعض نسخ APK ترسل رمز جلسة الموظف بلا admin_uid. نحل الممثل من الرمز
+  // سيرفرياً بدلاً من رفض إسناد المصور رغم أن الجلسة صحيحة.
+  if (!requestedUid) {
+    const resolved = await supabaseAdmin.rpc("resolve_staff_session_actor", {
+      p_token: sessionToken,
+      p_min_role: minRole,
+    });
+    if (!resolved.error && resolved.data?.success === true) {
+      requestedUid = resolved.data.user_id?.toString() ?? "";
+      return { ok: true, uid: requestedUid, role: Number(resolved.data.role) };
+    }
+    return {
+      ok: false,
+      response: json({ success: false, error: resolved.data?.error ?? resolved.error?.message ?? "INVALID_ADMIN_SESSION" }, 401),
+    };
   }
 
   const { data, error } = await supabaseAdmin.rpc("validate_staff_session", {
@@ -724,7 +741,8 @@ serve(async (req) => {
         }
       }
 
-      // التحقق أن المُسند إليه مؤهل للتصوير (role >= 2 أو صلاحية photographer_tasks)
+      // التحقق أن المُسند إليه مصوّر فعلياً (الدور 2 أو صلاحية صريحة).
+      // لا نستخدم role>=2 لأن المحامي والمعقب أرقامهما أعلى وليسا مصورين.
       const { data: photographer, error: photographerError } = await supabaseAdmin
         .from("users")
         .select("id, role, perm, sts, i_del")
@@ -736,7 +754,7 @@ serve(async (req) => {
         return json({ success: false, error: "PHOTOGRAPHER_NOT_FOUND" }, 400);
       }
       const permList = Array.isArray(photographer.perm) ? photographer.perm : [];
-      const qualified = Number(photographer.role) >= 2 || permList.includes("photographer_tasks");
+      const qualified = Number(photographer.role) === 2 || permList.includes("photographer_tasks");
       if (!qualified) {
         return json({ success: false, error: "USER_NOT_A_PHOTOGRAPHER" }, 400);
       }

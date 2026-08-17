@@ -20,11 +20,14 @@ class PhotographyProvider with ChangeNotifier {
   /// لأن الاستعلام المباشر محظور بـ RLS على جلسات مخصصة (auth.uid() = NULL).
   Future<List<PhotographyTaskModel>> getAllTasks({int? status}) async {
     try {
-      final token = await AuthService().getStaffSessionToken();
+      final auth = AuthService();
+      final token = await auth.getStaffSessionToken();
+      final adminUid = await auth.getSavedUserId();
       final res = await SupabaseService().invokeFunction(
         'admin-photography',
         body: {
           'action': 'list_tasks',
+          'admin_uid': adminUid,
           'staff_session_token': token,
           if (status != null) 'status': status,
         },
@@ -53,11 +56,14 @@ class PhotographyProvider with ChangeNotifier {
     DateTime? scheduledAt,
   }) async {
     try {
-      final token = await AuthService().getStaffSessionToken();
+      final auth = AuthService();
+      final token = await auth.getStaffSessionToken();
+      final adminUid = await auth.getSavedUserId();
       final res = await SupabaseService().invokeFunction(
         'admin-photography',
         body: {
           'action': 'assign_photographer',
+          'admin_uid': adminUid,
           'staff_session_token': token,
           'task_id': taskId,
           'photographer_id': photographerId,

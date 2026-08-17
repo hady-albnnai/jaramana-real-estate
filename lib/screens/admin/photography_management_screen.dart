@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_utils.dart';
 import '../../models/offer_model.dart';
 import '../../models/photography_task_model.dart';
 import '../../models/user_model.dart';
@@ -648,9 +649,14 @@ class _PhotographyManagementScreenState extends State<PhotographyManagementScree
                         scheduledAt: scheduledAt,
                       );
                   if (!mounted) return;
-                  Navigator.pop(ctx);
-                  _snack(ok ? 'تم إسناد المهمة للمصور' : 'فشل الإسناد');
-                  _load();
+                  if (ok) {
+                    Navigator.pop(ctx);
+                    _snack('تم إسناد المهمة للمصور');
+                    _load();
+                  } else {
+                    final error = context.read<PhotographyProvider>().error;
+                    _snack(ErrorUtils.arabicMessage(error ?? 'ASSIGNMENT_FAILED'));
+                  }
                 },
                 icon: const Icon(Icons.person_add_alt_1),
                 label: const Text('إسناد المهمة'),

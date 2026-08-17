@@ -133,7 +133,49 @@ serve(async (req) => {
     if (action === "list") {
       const { data, error } = await supabaseAdmin.rpc("get_photographer_tasks_internal", { p_photographer_uid: uid });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: true, tasks: data ?? [] });
+
+      // المهمة الخام لا تحمل إلا عنواناً وموقعاً مختصراً؛ نضيف للمصور كل ما
+      // يحتاجه للوصول والتنفيذ من العرض وصاحب الطلب، بعد حصر الصفوف به عبر RPC.
+      const tasks = data ?? [];
+      const offerIds = [...new Set(tasks.map((t) => t.off_id?.toString() ?? "").filter(Boolean))];
+      const requesterIds = [...new Set(tasks.map((t) => t.requested_by?.toString() ?? "").filter(Boolean))];
+      const offersById = new Map<string, Record<string, unknown>>();
+      const requestersById = new Map<string, { name: string; phone: string }>();
+
+      if (offerIds.length > 0) {
+        const { data: offers } = await supabaseAdmin
+          .from("offers")
+          .select("id, ttl, typ, trx, cat, sub, prc, cur, loc, descript, specs, avl, contact_ph, doc_tp, sts, photo_req")
+          .in("id", offerIds);
+        for (const offer of offers ?? []) offersById.set(offer.id.toString(), offer);
+      }
+      if (requesterIds.length > 0) {
+        const { data: requesters } = await supabaseAdmin
+          .from("users")
+          .select("id, nm, ph")
+          .in("id", requesterIds)
+          .eq("i_del", 0);
+        for (const requester of requesters ?? []) {
+          requestersById.set(requester.id.toString(), {
+            name: requester.nm?.toString() ?? "",
+            phone: requester.ph?.toString() ?? "",
+          });
+        }
+      }
+
+      const enriched = tasks.map((task) => {
+        const offer = offersById.get(task.off_id?.toString() ?? "");
+        const requester = requestersById.get(task.requested_by?.toString() ?? "");
+        return {
+          ...task,
+          offer_details: offer ?? {},
+          is_photo_request: Number(offer?.photo_req ?? 0) === 1,
+          offer_sts: offer?.sts ?? null,
+          requester_name: requester?.name ?? "",
+          requester_phone: requester?.phone ?? "",
+        };
+      });
+      return json({ success: true, tasks: enriched });
     }
 
     // ─── Action: decline — اعتذار المصوّر عن مهمة (2026-07-30) ───

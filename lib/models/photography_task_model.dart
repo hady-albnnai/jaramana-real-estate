@@ -16,6 +16,8 @@ class PhotographyTaskModel {
   final Map<String, dynamic> offerDetails;
   final String photographerName;
   final String photographerPhone;
+  final String requesterName;
+  final String requesterPhone;
   final DateTime? tsScheduled;
   final DateTime? tsSubmit;
   final DateTime? tsDone;
@@ -39,6 +41,8 @@ class PhotographyTaskModel {
     Map<String, dynamic>? offerDetails,
     this.photographerName = '',
     this.photographerPhone = '',
+    this.requesterName = '',
+    this.requesterPhone = '',
     this.tsScheduled,
     this.tsSubmit,
     this.tsDone,
@@ -68,6 +72,8 @@ class PhotographyTaskModel {
           : const {},
       photographerName: data['photographer_name']?.toString() ?? '',
       photographerPhone: data['photographer_phone']?.toString() ?? '',
+      requesterName: data['requester_name']?.toString() ?? '',
+      requesterPhone: data['requester_phone']?.toString() ?? '',
       tsScheduled: data['ts_scheduled'] != null ? DateTime.parse(data['ts_scheduled']) : null,
       tsSubmit: data['ts_submit'] != null ? DateTime.parse(data['ts_submit']) : null,
       tsDone: data['ts_done'] != null ? DateTime.parse(data['ts_done']) : null,
@@ -93,6 +99,8 @@ class PhotographyTaskModel {
       'offer_details': offerDetails,
       'photographer_name': photographerName,
       'photographer_phone': photographerPhone,
+      'requester_name': requesterName,
+      'requester_phone': requesterPhone,
       'ts_scheduled': tsScheduled?.toIso8601String(),
       'ts_submit': tsSubmit?.toIso8601String(),
       'ts_done': tsDone?.toIso8601String(),
