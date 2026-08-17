@@ -178,6 +178,82 @@ serve(async (req) => {
       return json({ success: true, tasks: enriched });
     }
 
+    // ─── تعديل الموعد مباشرة من المصور — قرار المالك 2026-08-17 ───
+    if (action === "reschedule") {
+      const taskId = (body.task_id ?? body.taskId)?.toString() ?? "";
+      const scheduledAt = (body.ts_scheduled ?? body.scheduled_at)?.toString() ?? "";
+      if (!taskId || !scheduledAt) {
+        return json({ success: false, error: "TASK_AND_SCHEDULE_REQUIRED" }, 400);
+      }
+      const when = new Date(scheduledAt);
+      if (isNaN(when.getTime())) {
+        return json({ success: false, error: "INVALID_SCHEDULE_DATE" }, 400);
+      }
+      if (when.getTime() < Date.now() - 5 * 60 * 1000) {
+        return json({ success: false, error: "SCHEDULE_IN_THE_PAST" }, 400);
+      }
+
+      const { error: conflictError } = await supabaseAdmin.rpc("assert_photographer_free", {
+        p_photographer_uid: uid,
+        p_dt: scheduledAt,
+        p_exclude_task: taskId,
+      });
+      if (conflictError) {
+        const message = conflictError.message ?? "";
+        if (message.includes("PHOTOGRAPHER_TIME_CONFLICT")) {
+          return json({
+            success: false,
+            error: "PHOTOGRAPHER_TIME_CONFLICT",
+            detail: "لديك مهمة أخرى قريبة من هذا الموعد — اختر وقتاً آخر.",
+          }, 409);
+        }
+        return json({ success: false, error: message }, 400);
+      }
+
+      const { data: task, error } = await supabaseAdmin
+        .from("photography_tasks")
+        .update({ ts_scheduled: scheduledAt, rmnd_1h: 0, ts_upd: new Date().toISOString() })
+        .eq("id", taskId)
+        .eq("photographer_id", uid)
+        .in("sts", [0, 1, 4])
+        .select("id, ttl, requested_by, ts_scheduled")
+        .maybeSingle();
+      if (error) return json({ success: false, error: error.message }, 400);
+      if (!task) return json({ success: false, error: "TASK_NOT_FOUND_OR_NOT_ALLOWED" }, 404);
+
+      const whenText = new Intl.DateTimeFormat("ar-SY", {
+        timeZone: "Asia/Damascus",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      }).format(when);
+      const requester = task.requested_by?.toString() ?? "";
+      if (requester) {
+        await notifyUsers(
+          supabaseAdmin,
+          [requester],
+          1,
+          "📅 تم تعديل موعد التصوير",
+          `حدد المصوّر موعد تصوير «${task.ttl ?? ""}» بتاريخ ${whenText}.`,
+          taskId,
+          "photography_schedule_changed",
+        );
+      }
+      const { data: staff } = await supabaseAdmin
+        .from("users").select("id").gte("role", 3).lte("role", 6).eq("sts", 0).eq("i_del", 0);
+      if (staff && staff.length > 0) {
+        await notifyUsers(
+          supabaseAdmin,
+          staff.map((s) => s.id?.toString() ?? ""),
+          1,
+          "📅 المصوّر عدّل موعد مهمة",
+          `موعد «${task.ttl ?? ""}» أصبح ${whenText}.`,
+          taskId,
+          "photography_schedule_changed_staff",
+        );
+      }
+      return json({ success: true, task });
+    }
+
     // ─── Action: decline — اعتذار المصوّر عن مهمة (2026-07-30) ───
     // كان المصوّر لا يملك أي مخرج: بس list/start/submit. لو مرض أو تعذّر وصوله
     // تبقى المهمة مسكّرة عليه والمكتب لا يعلم. الآن يعتذر بسبب، فترجع المهمة
@@ -200,7 +276,7 @@ serve(async (req) => {
         })
         .eq("id", taskId)
         .eq("photographer_id", uid)
-        .in("sts", [0, 1])
+        .in("sts", [0, 1, 4])
         .select("id, ttl, requested_by")
         .maybeSingle();
       if (error) return json({ success: false, error: error.message }, 400);

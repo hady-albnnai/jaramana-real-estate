@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
+import '../../core/utils/error_utils.dart';
 import '../../models/photography_task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/photography_provider.dart';
@@ -23,6 +25,7 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
   late TabController _tab;
   List<PhotographyTaskModel> _allTasks = [];
   bool _loading = true;
+  String? _loadError;
 
   // للتبويب المؤجلة — تقويم
   DateTime _focusedDay = DateTime.now();
@@ -51,12 +54,19 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     final userId = context.read<AuthProvider>().userModel?.uid ?? '';
-    final tasks = await context.read<PhotographyProvider>().getPhotographerTasks(userId);
+    final provider = context.read<PhotographyProvider>();
+    final tasks = await provider.getPhotographerTasks(userId);
     if (!mounted) return;
     setState(() {
       _allTasks = tasks;
+      _loadError = provider.error == null
+          ? null
+          : ErrorUtils.arabicMessage(provider.error!);
       _loading = false;
     });
   }
@@ -65,33 +75,43 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
 
   List<PhotographyTaskModel> get _todayTasks {
     final now = DateTime.now();
-    return _allTasks.where((t) =>
-        (t.sts == 0 || t.sts == 1) &&
-        (t.tsScheduled == null ||
-            (t.tsScheduled!.year == now.year &&
-                t.tsScheduled!.month == now.month &&
-                t.tsScheduled!.day == now.day))).toList();
+    final tomorrow = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 1));
+    final tasks = _allTasks.where((t) =>
+        (t.sts == 0 || t.sts == 1 || t.sts == 4) &&
+        (t.tsScheduled == null || t.tsScheduled!.isBefore(tomorrow))).toList();
+    tasks.sort((a, b) {
+      if (a.tsScheduled == null) return 1;
+      if (b.tsScheduled == null) return -1;
+      return a.tsScheduled!.compareTo(b.tsScheduled!);
+    });
+    return tasks;
   }
 
   List<PhotographyTaskModel> get _postponedTasks {
     final now = DateTime.now();
-    return _allTasks.where((t) =>
-        (t.sts == 0 || t.sts == 1) &&
+    final tomorrow = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 1));
+    final tasks = _allTasks.where((t) =>
+        (t.sts == 0 || t.sts == 1 || t.sts == 4) &&
         t.tsScheduled != null &&
-        t.tsScheduled!.isAfter(DateTime(now.year, now.month, now.day).add(const Duration(days: 1)))).toList();
+        !t.tsScheduled!.isBefore(tomorrow)).toList();
+    tasks.sort((a, b) => a.tsScheduled!.compareTo(b.tsScheduled!));
+    return tasks;
   }
 
   List<PhotographyTaskModel> get _completedTasks {
-    return _allTasks.where((t) => t.sts == 2 || t.sts == 3 || t.sts == 4 || t.sts == 5).toList();
+    return _allTasks.where((t) => t.sts == 2 || t.sts == 3 || t.sts == 5).toList();
   }
 
   List<PhotographyTaskModel> get _selectedDayTasks {
     if (_selectedDay == null) return [];
     return _postponedTasks.where((t) {
       if (t.tsScheduled == null) return false;
-      return t.tsScheduled!.year == _selectedDay!.year &&
-          t.tsScheduled!.month == _selectedDay!.month &&
-          t.tsScheduled!.day == _selectedDay!.day;
+      final local = t.tsScheduled!.toLocal();
+      return local.year == _selectedDay!.year &&
+          local.month == _selectedDay!.month &&
+          local.day == _selectedDay!.day;
     }).toList();
   }
 
@@ -103,7 +123,8 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
       final ok = await context.read<PhotographyProvider>().startTask(userId, task.id);
       if (!mounted) return;
       if (!ok) {
-        _snack('تعذّر بدء المهمة');
+        final error = context.read<PhotographyProvider>().error;
+        _snack(ErrorUtils.arabicMessage(error ?? 'TASK_START_FAILED'));
         return;
       }
     }
@@ -200,7 +221,74 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
         .read<PhotographyProvider>()
         .declineTask(uid, task.id, reason);
     if (!mounted) return;
-    _snack(ok ? 'تم الاعتذار — رجعت المهمة للمكتب' : 'تعذّر الاعتذار');
+    final provider = context.read<PhotographyProvider>();
+    _snack(ok
+        ? 'تم الاعتذار — رجعت المهمة للمكتب'
+        : ErrorUtils.arabicMessage(provider.error ?? 'TASK_DECLINE_FAILED'));
+    if (ok) _load();
+  }
+
+  Future<void> _callRequester(PhotographyTaskModel task) async {
+    final phone = task.requesterPhone.trim();
+    if (phone.isEmpty) {
+      _snack('رقم صاحب الطلب غير متوفر');
+      return;
+    }
+    final launched = await launchUrl(Uri(scheme: 'tel', path: phone));
+    if (!launched) _snack('تعذر فتح تطبيق الاتصال');
+  }
+
+  Future<void> _editSchedule(PhotographyTaskModel task) async {
+    final now = DateTime.now();
+    final current = task.tsScheduled?.toLocal();
+    final initialDate = current != null && current.isAfter(now) ? current : now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: current != null
+          ? TimeOfDay.fromDateTime(current)
+          : TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+    final scheduledAt = DateTime(
+      date.year, date.month, date.day, time.hour, time.minute,
+    );
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: const Text('تأكيد موعد التصوير',
+            style: TextStyle(color: AppTheme.textWhite)),
+        content: Text(
+          'سيصبح موعد المهمة ${_fmtDate(scheduledAt)} وسيتم إشعار صاحب الطلب والإدارة.',
+          style: const TextStyle(color: AppTheme.textGrey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('تراجع'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('اعتماد الموعد'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+    final provider = context.read<PhotographyProvider>();
+    final ok = await provider.rescheduleTask(uid, task.id, scheduledAt);
+    if (!mounted) return;
+    _snack(ok
+        ? 'تم تعديل الموعد وإشعار صاحب الطلب والإدارة'
+        : ErrorUtils.arabicMessage(provider.error ?? 'SCHEDULE_UPDATE_FAILED'));
     if (ok) _load();
   }
 
@@ -209,6 +297,18 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
     if (files.isNotEmpty) {
       setState(() {
         _tempMedia.putIfAbsent(taskHash, () => []).addAll(files);
+      });
+    }
+  }
+
+  Future<void> _takePhoto(String taskHash) async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 92,
+    );
+    if (file != null && mounted) {
+      setState(() {
+        _tempMedia.putIfAbsent(taskHash, () => []).add(file);
       });
     }
   }
@@ -229,36 +329,50 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
 
     setState(() => _isUploading[taskHash] = true);
 
-    final userId = context.read<AuthProvider>().userModel?.uid ?? '';
-    final urls = await StorageService().uploadOfferImages(
-      files: media,
-      userId: userId,
-      offerId: 'photography_${task.id}',
-    );
-    // الدمج المحلي يحافظ على ترتيب العرض فوراً؛ والسيرفر يدمج تراكمياً كذلك
-    // (submit_photography_task_internal) فلا تُفقد صور سابقة عند إعادة التسليم.
-    final allMedia = <String>{...task.media, ...urls}.toList();
-    final notes = _notesControllers[taskHash]?.text.trim() ?? '';
-
-    final ok = await context.read<PhotographyProvider>().submitTask(
-      photographerUid: userId,
-      taskId: task.id,
-      media: allMedia,
-      photographerNote: notes,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _isUploading[taskHash] = false;
-      if (ok) {
-        _tempMedia.remove(taskHash);
-        _notesControllers[taskHash]?.dispose();
-        _notesControllers.remove(taskHash);
-        _expandedTaskId = null;
+    try {
+      final userId = context.read<AuthProvider>().userModel?.uid ?? '';
+      final urls = await StorageService().uploadOfferImages(
+        files: media,
+        userId: userId,
+        offerId: 'photography_${task.id}',
+      );
+      if (urls.isEmpty) {
+        if (mounted) {
+          setState(() => _isUploading[taskHash] = false);
+          _snack('تعذر رفع الصور — تحقق من الاتصال وحاول مجدداً');
+        }
+        return;
       }
-    });
-    _snack(ok ? 'تم إرسال التصوير للمكتب ✓' : 'فشل إرسال التصوير');
-    if (ok) _load();
+      // الدمج المحلي يحافظ على الصور السابقة عند إعادة تسليم مهمة مرفوضة.
+      final allMedia = <String>{...task.media, ...urls}.toList();
+      final notes = _notesControllers[taskHash]?.text.trim() ?? '';
+      final provider = context.read<PhotographyProvider>();
+      final ok = await provider.submitTask(
+        photographerUid: userId,
+        taskId: task.id,
+        media: allMedia,
+        photographerNote: notes,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _isUploading[taskHash] = false;
+        if (ok) {
+          _tempMedia.remove(taskHash);
+          _notesControllers[taskHash]?.dispose();
+          _notesControllers.remove(taskHash);
+          _expandedTaskId = null;
+        }
+      });
+      _snack(ok
+          ? 'تم إرسال التصوير للمكتب ✓'
+          : ErrorUtils.arabicMessage(provider.error ?? 'PHOTO_SUBMIT_FAILED'));
+      if (ok) _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isUploading[taskHash] = false);
+      _snack(ErrorUtils.arabicMessage(e));
+    }
   }
 
   // ─── البناء ───
@@ -281,7 +395,7 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
           labelColor: AppTheme.primaryGold,
           unselectedLabelColor: AppTheme.textGrey,
           tabs: [
-            Tab(text: 'مهام اليوم (${_todayTasks.length})'),
+            Tab(text: 'الحالية (${_todayTasks.length})'),
             Tab(text: 'القادمة (${_postponedTasks.length})'),
             Tab(text: 'المنفذة (${_completedTasks.length})'),
           ],
@@ -289,14 +403,83 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
-          : TabBarView(
-              controller: _tab,
+          : _loadError != null
+              ? _loadErrorView()
+              : Column(
               children: [
-                _buildTodayTab(),
-                _buildPostponedTab(),
-                _buildCompletedTab(),
+                _summaryBar(),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tab,
+                    children: [
+                      _buildTodayTab(),
+                      _buildPostponedTab(),
+                      _buildCompletedTab(),
+                    ],
+                  ),
+                ),
               ],
             ),
+    );
+  }
+
+  Widget _loadErrorView() {
+    return Center(
+      child: Padding(
+        padding: AppTheme.paddingAllLarge,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                color: AppTheme.errorRed, size: 42),
+            AppTheme.gapHeightMedium,
+            Text(_loadError ?? 'تعذر تحميل المهام',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.textWhite)),
+            AppTheme.gapHeightMedium,
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryBar() {
+    final active = _allTasks.where((t) => t.isPending || t.isInProgress || t.isRejected).length;
+    final waitingOffice = _allTasks.where((t) => t.isSubmitted).length;
+    final done = _allTasks.where((t) => t.isApproved).length;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      color: AppTheme.surfaceBlack,
+      child: Row(
+        children: [
+          Expanded(child: _summaryItem('الحالية', active, AppTheme.infoBlue)),
+          Expanded(child: _summaryItem('اليوم', _todayTasks.length, AppTheme.primaryGold)),
+          Expanded(child: _summaryItem('لدى المكتب', waitingOffice, Colors.purple)),
+          Expanded(child: _summaryItem('مكتملة', done, AppTheme.successGreen)),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryItem(String label, int value, Color color) {
+    return Column(
+      children: [
+        Text('$value',
+            style: TextStyle(
+                color: color,
+                fontSize: AppTheme.fontSizeSubtitle,
+                fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(
+                color: AppTheme.textGrey,
+                fontSize: AppTheme.fontSizeCaption)),
+      ],
     );
   }
 
@@ -304,7 +487,7 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
 
   Widget _buildTodayTab() {
     final tasks = _todayTasks;
-    if (tasks.isEmpty) return _empty('لا توجد مهام تصوير اليوم');
+    if (tasks.isEmpty) return _empty('لا توجد مهام حالية');
     return RefreshIndicator(
       color: AppTheme.primaryGold,
       onRefresh: _load,
@@ -326,7 +509,8 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
     final tasksByDate = <DateTime, List<PhotographyTaskModel>>{};
     for (final t in tasks) {
       if (t.tsScheduled != null) {
-        final key = DateTime(t.tsScheduled!.year, t.tsScheduled!.month, t.tsScheduled!.day);
+        final local = t.tsScheduled!.toLocal();
+        final key = DateTime(local.year, local.month, local.day);
         tasksByDate.putIfAbsent(key, () => []).add(t);
       }
     }
@@ -359,7 +543,10 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
           Wrap(
             spacing: 6,
             runSpacing: 6,
-            children: tasksByDate.keys.map((date) {
+            children: tasksByDate.keys
+                .where((date) => date.year == _focusedDay.year &&
+                    date.month == _focusedDay.month)
+                .map((date) {
               final isSelected = _selectedDay != null &&
                   date.year == _selectedDay!.year &&
                   date.month == _selectedDay!.month &&
@@ -490,7 +677,37 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: rows,
+              children: [
+                ...rows,
+                if (task.media.isNotEmpty) ...[
+                  const Divider(color: Colors.white12),
+                  const Text('الوسائط المرفوعة',
+                      style: TextStyle(
+                          color: AppTheme.primaryGold,
+                          fontWeight: FontWeight.bold)),
+                  AppTheme.gapHeightSmall,
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: task.media.map((url) => ClipRRect(
+                      borderRadius: AppTheme.radiusSmall,
+                      child: Image.network(
+                        url,
+                        width: 88,
+                        height: 88,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 88,
+                          height: 88,
+                          color: AppTheme.deepBlack,
+                          child: const Icon(Icons.broken_image,
+                              color: AppTheme.textGrey),
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
@@ -657,22 +874,38 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
           ],
 
           AppTheme.gapHeightSmall,
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => _showTaskDetails(task),
-              icon: const Icon(Icons.receipt_long_outlined,
-                  color: AppTheme.primaryGold, size: 17),
-              label: const Text('عرض كامل تفاصيل المهمة',
-                  style: TextStyle(color: AppTheme.primaryGold)),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: AppTheme.primaryGold.withOpacity(0.45)),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _showTaskDetails(task),
+                icon: const Icon(Icons.receipt_long_outlined,
+                    color: AppTheme.primaryGold, size: 17),
+                label: const Text('التفاصيل',
+                    style: TextStyle(color: AppTheme.primaryGold)),
               ),
-            ),
+              if (task.requesterPhone.isNotEmpty)
+                OutlinedButton.icon(
+                  onPressed: () => _callRequester(task),
+                  icon: const Icon(Icons.call_outlined,
+                      color: AppTheme.successGreen, size: 17),
+                  label: const Text('اتصال',
+                      style: TextStyle(color: AppTheme.successGreen)),
+                ),
+              if (task.isPending || task.isInProgress || task.isRejected)
+                OutlinedButton.icon(
+                  onPressed: () => _editSchedule(task),
+                  icon: const Icon(Icons.edit_calendar_outlined,
+                      color: AppTheme.infoBlue, size: 17),
+                  label: Text(task.tsScheduled == null ? 'تحديد الموعد' : 'تعديل الموعد',
+                      style: const TextStyle(color: AppTheme.infoBlue)),
+                ),
+            ],
           ),
 
           // زر بدء المهمة أو واجهة الرفع
-          if (!isExpanded && (task.isPending || task.isInProgress)) ...[
+          if (!isExpanded && (task.isPending || task.isInProgress || task.isRejected)) ...[
             AppTheme.gapHeightSmall,
             Row(
               children: [
@@ -746,11 +979,28 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
                 }).toList(),
               ),
             AppTheme.gapHeightSmall,
-            OutlinedButton.icon(
-              onPressed: isUploading ? null : () => _pickMedia(taskHash),
-              icon: const Icon(Icons.add_photo_alternate, color: AppTheme.primaryGold),
-              label: Text('إضافة صور (${_tempMedia[taskHash]?.length ?? 0})',
-                  style: const TextStyle(color: AppTheme.primaryGold)),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isUploading ? null : () => _takePhoto(taskHash),
+                    icon: const Icon(Icons.photo_camera_outlined,
+                        color: AppTheme.primaryGold),
+                    label: const Text('الكاميرا',
+                        style: TextStyle(color: AppTheme.primaryGold)),
+                  ),
+                ),
+                AppTheme.gapWidthSmall,
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: isUploading ? null : () => _pickMedia(taskHash),
+                    icon: const Icon(Icons.photo_library_outlined,
+                        color: AppTheme.primaryGold),
+                    label: Text('المعرض (${_tempMedia[taskHash]?.length ?? 0})',
+                        style: const TextStyle(color: AppTheme.primaryGold)),
+                  ),
+                ),
+              ],
             ),
             AppTheme.gapHeightSmall,
             TextField(
@@ -811,6 +1061,7 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
       shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusLarge),
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
+        onTap: () => _showTaskDetails(task),
         leading: CircleAvatar(
           backgroundColor: color.withOpacity(0.14),
           child: Icon(
@@ -824,10 +1075,17 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
           Text(task.statusLabel, style: TextStyle(color: color, fontSize: AppTheme.fontSizeSmall)),
           Text('${task.media.length} وسائط',
               style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+          if (task.tsDone != null)
+            Text('أُغلقت: ${_fmtDate(task.tsDone!)}',
+                style: const TextStyle(
+                    color: AppTheme.textGrey,
+                    fontSize: AppTheme.fontSizeCaption)),
           if (task.isSubmitted)
             const Text('بانتظار معالجة المكتب',
                 style: TextStyle(color: Colors.purple, fontSize: AppTheme.fontSizeCaption)),
         ]),
+        trailing: const Icon(Icons.chevron_left,
+            color: AppTheme.primaryGold),
       ),
     );
   }

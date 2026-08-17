@@ -260,6 +260,9 @@ class ErrorUtils {
     'USER_CAN_ONLY_CANCEL_PENDING': 'لا يمكن إلغاء موعد مؤكَّد — راسل المكتب.',
     'NO_SUPERVISOR_AVAILABLE': 'لا يوجد مشرف متاح حالياً — حاول لاحقاً.',
     'SCHEDULE_IN_THE_PAST': 'لا يمكن الجدولة في وقت مضى.',
+    'SCHEDULE_UPDATE_FAILED': 'تعذر تعديل الموعد. تحقق من الوقت وحاول مجدداً.',
+    'TASK_AND_SCHEDULE_REQUIRED': 'اختر تاريخ ووقت الموعد أولاً.',
+    'PHOTO_SUBMIT_FAILED': 'تعذر إرسال الصور للمكتب. حاول مجدداً.',
     'INVALID_SCHEDULE_DATE': 'تاريخ الجدولة غير صالح.',
 
     // ── الاستشارات القانونية ──

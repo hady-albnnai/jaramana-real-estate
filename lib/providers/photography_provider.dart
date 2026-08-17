@@ -97,9 +97,10 @@ class PhotographyProvider with ChangeNotifier {
       );
       final data = res.data;
       if (data == null || data['success'] != true) {
-        _error = data?['error'] ?? 'Unknown error';
+        _error = data?['error'] ?? 'تعذر تحميل مهام التصوير';
         return [];
       }
+      _error = null;
       return (data['tasks'] as List)
           .map((row) => PhotographyTaskModel.fromSupabase(
                 Map<String, dynamic>.from(row),
@@ -109,6 +110,34 @@ class PhotographyProvider with ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       return [];
+    }
+  }
+
+  Future<bool> rescheduleTask(
+      String photographerUid, String taskId, DateTime scheduledAt) async {
+    try {
+      final token = await AuthService().getStaffSessionToken();
+      final res = await SupabaseService().invokeFunction(
+        'photographer-tasks',
+        body: {
+          'action': 'reschedule',
+          'user_uid': photographerUid,
+          'staff_session_token': token,
+          'task_id': taskId,
+          'ts_scheduled': scheduledAt.toIso8601String(),
+        },
+      );
+      final data = res.data;
+      if (data != null && data['success'] == true) {
+        _error = null;
+        notifyListeners();
+        return true;
+      }
+      _error = data?['error']?.toString();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      return false;
     }
   }
 
