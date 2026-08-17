@@ -582,6 +582,22 @@ serve(async (req) => {
 
     const adminUid = actor.uid;
 
+    // قائمة المصورين الفعليين للإسناد. لا نستخدم admin_users لأنها مخصصة
+    // للمستخدمين والوسطاء فقط (role 0/1)، وهذا كان يجعل القائمة فارغة دائماً.
+    if (action === "list_photographers") {
+      const { data, error } = await supabaseAdmin
+        .from("users")
+        .select("id, nm, ph, eml, ad, role, sts, i_del, perm, usr, ts_crt, ts_upd")
+        .eq("sts", 0)
+        .eq("i_del", 0)
+        .order("nm", { ascending: true });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const photographers = (data ?? []).filter((u) =>
+        Number(u.role) === 2 || (Array.isArray(u.perm) && u.perm.includes("photographer_tasks"))
+      );
+      return json({ success: true, photographers });
+    }
+
     // عرض كل مهام التصوير للإدارة — الاستعلام المباشر من العميل محظور بـ RLS
     // (جلسات مخصصة لا تحمل auth.uid())، فكان المكتب يرى قائمة فارغة.
     if (action === "list_tasks") {

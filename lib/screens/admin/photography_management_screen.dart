@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/network/supabase_service.dart';
-import '../../core/services/permission_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/error_utils.dart';
 import '../../models/offer_model.dart';
@@ -41,17 +40,15 @@ class _PhotographyManagementScreenState extends State<PhotographyManagementScree
     final admin = context.read<AdminProvider>();
     final results = await Future.wait([
       photo.getAllTasks(status: _filter),
-      admin.getOffersForMediaReview(context.read<AuthProvider>().userModel?.uid ?? ''),
-      admin.getAllUsers(),
+      admin.getOffersForMediaReview(
+          context.read<AuthProvider>().userModel?.uid ?? ''),
+      photo.getAvailablePhotographers(),
     ]);
     if (!mounted) return;
-    final users = results[2] as List<UserModel>;
     setState(() {
       _tasks = results[0] as List<PhotographyTaskModel>;
       _offers = results[1] as List<OfferModel>;
-      _photographers = users
-          .where((user) => PermissionService.has(user, PermissionKeys.photographerTasks))
-          .toList();
+      _photographers = results[2] as List<UserModel>;
       _loading = false;
     });
     _loadStats();
@@ -441,7 +438,7 @@ class _PhotographyManagementScreenState extends State<PhotographyManagementScree
 
   Future<void> _showCreateTaskSheet() async {
     if (_photographers.isEmpty) {
-      _snack('لا يوجد مستخدمون لديهم صلاحية photographer_tasks');
+      _snack('لا يوجد مصوّر فعّال متاح للإسناد');
       return;
     }
     OfferModel? selectedOffer;
@@ -584,7 +581,7 @@ class _PhotographyManagementScreenState extends State<PhotographyManagementScree
   /// إسناد مصور لمهمة بانتظار — يخدم بشكل خاص طلبات التصوير القادمة من المستخدمين
   Future<void> _assignPhotographer(PhotographyTaskModel task) async {
     if (_photographers.isEmpty) {
-      _snack('لا يوجد مستخدمون لديهم صلاحية photographer_tasks');
+      _snack('لا يوجد مصوّر فعّال متاح للإسناد');
       return;
     }
     UserModel? selected;

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../core/network/supabase_service.dart';
 import '../models/offer_model.dart';
 import '../models/photography_task_model.dart';
+import '../models/user_model.dart';
 import '../services/auth_service.dart';
 
 class PhotographyProvider with ChangeNotifier {
@@ -40,6 +41,38 @@ class PhotographyProvider with ChangeNotifier {
       return (data['tasks'] as List)
           .map((row) => PhotographyTaskModel.fromSupabase(
                 Map<String, dynamic>.from(row),
+                row['id'].toString(),
+              ))
+          .toList();
+    } catch (e) {
+      _error = e.toString();
+      return [];
+    }
+  }
+
+  Future<List<UserModel>> getAvailablePhotographers() async {
+    try {
+      final auth = AuthService();
+      final token = await auth.getStaffSessionToken();
+      final adminUid = await auth.getSavedUserId();
+      final res = await SupabaseService().invokeFunction(
+        'admin-photography',
+        body: {
+          'action': 'list_photographers',
+          'admin_uid': adminUid,
+          'staff_session_token': token,
+        },
+      );
+      final data = res.data;
+      if (data == null || data['success'] != true ||
+          data['photographers'] is! List) {
+        _error = data?['error']?.toString() ?? 'تعذر تحميل قائمة المصورين';
+        return [];
+      }
+      _error = null;
+      return (data['photographers'] as List)
+          .map((row) => UserModel.fromSupabase(
+                Map<String, dynamic>.from(row as Map),
                 row['id'].toString(),
               ))
           .toList();
