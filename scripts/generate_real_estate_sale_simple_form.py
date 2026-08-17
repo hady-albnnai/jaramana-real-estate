@@ -85,7 +85,7 @@ def build():
     lines(d,['الأيام أو الأوقات المناسبة للمعاينة'],1)
     p=rtl(d.add_paragraph()); r=p.add_run('☐ أقر بأن البيانات المكتوبة صحيحة بحسب علمي، وأوافق على تواصل المكتب معي للتحقق والتصوير وتجهيز الإعلان. هذه الورقة لجمع بيانات أولية وليست عقد بيع أو سند ملكية.'); r.font.size=Pt(6.8)
     lines(d,['الاسم والتوقيع','ملاحظات موظف المكتب'],2)
-    f=s.footer; p=rtl(f.paragraphs[0],True); r=p.add_run('المكتب العقاري الإلكتروني — السويداء   |   0934222900   |   بياناتك الخاصة لا تُنشر للعموم'); r.font.size=Pt(7); r.font.color.rgb=RGBColor.from_string(GOLD)
+    f=s.footer; p=rtl(f.paragraphs[0],True); r=p.add_run('المكتب العقاري الإلكتروني — السويداء   |   0958750199   |   بياناتك الخاصة لا تُنشر للعموم'); r.font.size=Pt(7); r.font.color.rgb=RGBColor.from_string(GOLD)
     d.save(OUT); print(OUT)
 
 if __name__=='__main__': build()

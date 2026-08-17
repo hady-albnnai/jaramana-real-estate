@@ -186,7 +186,7 @@ def add_footer(section):
     f = section.footer
     p = rtl(f.paragraphs[0])
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.add_run('المكتب العقاري الإلكتروني — السويداء   |   0934222900   |   صفحة ')
+    p.add_run('المكتب العقاري الإلكتروني — السويداء   |   0958750199   |   صفحة ')
     fld = OxmlElement('w:fldSimple')
     fld.set(qn('w:instr'), 'PAGE')
     p._p.append(fld)
