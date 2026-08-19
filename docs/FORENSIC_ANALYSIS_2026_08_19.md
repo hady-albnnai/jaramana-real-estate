@@ -105,3 +105,51 @@
 3. ترك `deploy_supabase.sh` + `deploy-supabase-workflow.yml.example` بنفس الطريقة المكسورة (PATCH + `import_map_path:null` = سبب الـ 500) — انحراف داخلي جديد.
 4. تجاهل CI الأحمر رغم الدستور §14 («أي كود يسبب build failed مسؤولية الوكيل») — دفعت 4 مرات فوق main أحمر.
 5. إهمال قاعدة «التوثيق بعد كل خطوة» — لا أثر مكتوب لنتائج محاولات النشر نفسها.
+
+---
+
+## ملحق 1 (نفس اليوم — بعد فتح قناة GitHub Actions)
+
+### 🔴 الاكتشاف الأهم: دالة admin-dashboard **مفقودة تماماً من السيرفر**
+الفحص الحي (بروب عبر مفتاح anon العام — بلا أسرار):
+- `POST /functions/v1/admin-dashboard` ← `{"code":"NOT_FOUND","message":"Requested function was not found"}`
+- `POST /functions/v1/legal-actions` ← `{"success":false,"error":"AUTH_TOKEN_REQUIRED"}` (موجودة وتجاوب)
+
+⇒ **الخلاصة:** المحادثة الفاشلة حذفت `admin-dashboard` ولم يُعِد نشرها (سكربتها:
+DELETE ثم POST — الـ POST كان يفشل 500). هذا يفسّر أعراض «مستخدم بدون اسم»
+والواجهات الإدارية المكسورة أشد مما وثّق ملف التسليم.
+
+### ✅ سبب الـ CI الأحمر (مُشخَّص ومُصلَح)
+1. `flutter analyze`: 32 ملاحظة (استيرادات ميتة، دوال ميتة، print، أقواس if،
+   استدعاء notifyListeners محمي من 4 مواضع) — **صُفّرت كلها** ⇒ No issues found.
+2. `flutter test`: اختباران قديمان يفشلان:
+   - error_utils (يتوقع قص النص الطويل بينما I18N-ERR-001 يعمّم اللاتيني الصرف)
+   - admin_rbac (يتوقع «المدير فقط» بينما LOGIC_SPEC §7.2 يمنح النائب كمان)
+   ⇒ حُدّثا ليطابقا الدستور ⇒ **60/60 passed**.
+3. نسخة CI: Flutter 3.47.0 (stable أحدث) — كشفت التحذيرات التي لم تكن موجودة
+   وقت Flutter 3.44.8.
+
+### 🔧 الإصلاحات في الكود (بلا أي تغيير سلوكي)
+| الملف | التعديل |
+|---|---|
+| `admin_provider.dart` | دالة عامة `refresh()` بدل استدعاء notifyListeners من الخارج |
+| `offers_review_screen.dart` | 4 استدعاءات عبر `refresh()` + حذف استيراد ميت |
+| `payments_screen.dart` | استكمال نصوص + إزالة `!` ميتة |
+| `complete_deal_screen.dart` | حذف print (الدستور §) |
+| `verifications_review_screen.dart` | إزالة فحص null ميت (أثبته محلل التدفق) |
+| `legal_consultation_booking_screen.dart` + `lawyer_dashboard_screen.dart` | أقواس if |
+| `add_offer_screen.dart` | متغير ميت + سلسلة `?[` غير صالحة |
+| `boost/featured/payment/photography` | حذف 4 دوال ميتة (منها نموذج تصوير قديم استُبدل بـ AddOfferScreen) |
+| `app.dart`, `user_home`, `push_channels`, `expediter_tasks`, `offer_detail`, `lawyer_profile_model` | استيرادات ميتة |
+
+### 📦 البنية الجديدة للـ CI والنشر (أنشأها المالك عبر واجهة GitHub)
+- `.github/workflows/ci-and-deploy.yml` (بأمر المالك — لأن بيئة Arena بلا صلاحية workflows):
+  - عند كل دفع على main/arena: فحص حي للدالتين بلا أسرار + تشخيص analyze/test عبر annotations.
+  - عند Run workflow يدوي: نشر كامل (SQL idempotent + الدالتان) عبر السر `SUPABASE_PAT`.
+- `deploy_supabase.sh` حُوِّل لنقطة النشر الصحيحة `POST /functions/deploy?slug=` (كان PATCH → 500).
+
+### المتبقي
+1. المالك يشغّل «Run workflow» يدوياً (النشر).
+2. التحقق بعد النشر: بروب admin-dashboard يجب أن يرجع حراس الجلسة بدل NOT_FOUND.
+3. مزامنة `main` مع فرع arena (fast-forward — قرار المالك).
+4. تدوير التوكنين المُسربين في الشات.
