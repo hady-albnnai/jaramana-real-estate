@@ -9,7 +9,8 @@ name: Deploy Supabase
 #   الاسم: SUPABASE_PAT   القيمة: sbp_... (توكن إدارة المشروع)
 #
 # السلوك:
-#   • عند أي push إلى main أو arena/** → ينشر دوال Edge فقط (آمن).
+#   • عند أي push إلى main أو arena/** → نشر دوال Edge فقط (آمن — نقطة
+#     POST /functions/deploy?slug={slug} تنشئ/تحدّث بلا PATCH).
 #   • عند التشغيل اليدوي (Run workflow) → كل شيء:
 #     تحقق حي → تطبيق تعديلات SQL 2026_08_19 → (اختياري) حذف بيانات
 #     مستخدم الاختبار → نشر الدوال.
