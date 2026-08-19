@@ -540,7 +540,19 @@ serve(async (req) => {
         p_consultation_id: consultationId,
       });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json(data as Record<string, unknown>);
+      const result = data as Record<string, unknown>;
+      // 🔄 2026-08-19: هل توجد دفعة تجديد (continue_chat) لهذه المحادثة قيد
+      // مراجعة الإدارة؟ الواجهة تُظهر شريط «بانتظار الاعتماد» بدل «انتهى —
+      // جدد»، ولا تُظهر حوار خيارات التجديد بينما الدفع معلّق.
+      const { count } = await supabaseAdmin
+        .from("payments")
+        .select("id", { count: "exact", head: true })
+        .eq("uid", uid)
+        .eq("tp", 2)
+        .eq("sts", 0)
+        .eq("meta->>continue_chat", consultationId);
+      result["pending_renewal"] = (count ?? 0) > 0;
+      return json(result);
     }
 
     if (action === "extend_chat_session_v2") {

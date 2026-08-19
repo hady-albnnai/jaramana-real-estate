@@ -82,6 +82,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   bool _timeUp = false; // الوقت خلص بس المحادثة لسه مفتوحة
   int _renewCount = 0;
 
+  // 🔄 2026-08-19 (ربط الدفعة بالمحادثة): هل توجد دفعة تجديد قيد مراجعة
+  // الإدارة لهذه المحادثة؟ عندها لا نعرض «انتهى — جدد» ولا حوار الخيارات،
+  // بل شريط «بانتظار اعتماد الدفعة» (تأتي من get_chat_session_v2).
+  bool _pendingRenewal = false;
+
+  /// استطلاع خفيف يلتقط اعتماد دفعة التجديد/استئناف المحامي أثناء الانتظار.
+  Timer? _renewalPollTimer;
+
   @override
   void initState() {
     super.initState();
@@ -96,6 +104,16 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       await _loadV2Session();
       await _loadMessages();
     });
+    // 🔄 2026-08-19: استطلاع خفيف (20 ث) — يلتقط اعتماد دفعة التجديد أثناء
+    // انتظار المستخدم (الجلسة الجديدة ready تُنشأ سيرفرياً عند الاعتماد)،
+    // ويلتقط استئناف المحامي/بدء الجلسة. يُلغى عند مغادرة الشاشة.
+    _renewalPollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!mounted) return;
+      final isLawyer = context.read<AuthProvider>().isLawyer;
+      if (_pendingRenewal || (_timeUp && !isLawyer)) {
+        _loadV2Session();
+      }
+    });
   }
 
   @override
@@ -104,6 +122,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     _timer?.cancel();
+    _renewalPollTimer?.cancel();
     _recordingTimer?.cancel();
     unawaited(_recorder.dispose());
     _audioController?.dispose();
@@ -184,13 +203,18 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         }
       }
       final status = (session['status'] ?? '').toString();
+      // 🔄 2026-08-19: دفعة تجديد قيد مراجعة الإدارة لهذه المحادثة؟
+      final pendingRenewal = data?['pending_renewal'] == true;
       setState(() {
         _v2Session = session;
         _joinWindowSeconds = (data?['seconds_until_auto_start'] ?? 0) as int;
         _remainingSeconds = (data?['remaining_seconds'] ?? 0) as int;
         _timeUp = status == 'ended';
+        _pendingRenewal = pendingRenewal;
       });
-      if (_timeUp && !isLawyer && !_endDialogShown) {
+      // 🔄 2026-08-19: لا حوار خيارات (تجديد/تحويل/تقييم) بينما دفعة التجديد
+      // قيد المراجعة — سيصله إشعار الاعتماد ويُفتح الشريط الجديد تلقائياً.
+      if (_timeUp && !isLawyer && !_endDialogShown && !pendingRenewal) {
         _endDialogShown = true;
         WidgetsBinding.instance.addPostFrameCallback((_) => _showEndOptions());
       }
@@ -250,7 +274,17 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
 
   void _startTimer() {
     _timer?.cancel();
-    if (_timeUp || _remainingSeconds <= 0) { setState(() => _timeUp = true); return; }
+    final v2 = context.read<ConfigProvider>().config?.consultationFlowV2 == true;
+    if (v2) {
+      // 🔄 2026-08-19: مع V2، _timeUp مصدره حالة الجلسة حصراً (في _loadV2Session).
+      // كان _startTimer يضبط _timeUp=true تلقائياً عند remaining<=0، فتُظهر
+      // جلسة 'ready' (تجديد معتمد — بانتظار استئناف المحامي) واجهة «انتهى —
+      // جدد» وتنبيه «بقي 3 دقائق» الخاطئ. هنا لا نلمس _timeUp إطلاقاً.
+      if (_remainingSeconds <= 0 || _v2Session == null) { _timer?.cancel(); return; }
+    } else if (_timeUp || _remainingSeconds <= 0) {
+      setState(() => _timeUp = true);
+      return;
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) { _timer?.cancel(); return; }
       var refreshV2 = false;
@@ -860,7 +894,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                   'بانتظار انضمام العميل — يبدأ العداد تلقائياً خلال ${_formatTime(_joinWindowSeconds)}',
                 )
               else if (_timeUp && !isLawyer)
-                _buildRenewBar()
+                // 🔄 2026-08-19: دفعة تجديد قيد المراجعة ⇒ شريط انتظار بدل
+                // شريط «جدد» (كان يسمح بإنشاء دفعة مكررة وشاشة دفع جديدة)
+                _pendingRenewal ? _buildPendingRenewalBar() : _buildRenewBar()
               else if (_timeUp && isLawyer)
                 _buildTimeUpInfo()
               else
@@ -881,6 +917,32 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         textAlign: TextAlign.center,
         style: const TextStyle(color: AppTheme.warningOrange, fontSize: 12),
       ),
+    );
+  }
+
+  /// 🔄 2026-08-19: دفعة تجديد قيد مراجعة الإدارة — شريط انتظار بلا أزرار
+  /// دفع (يمنع إنشاء دفعة مكررة)، يُستبدل تلقائياً عند الاعتماد (يستطلع
+  /// كل 20 ث ويظهر «بانتظار استئناف المحامي» ثم يبدأ العداد).
+  Widget _buildPendingRenewalBar() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(12, 10, 12, 10 + MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(
+        color: AppTheme.warningOrange.withOpacity(0.12),
+        border: Border(top: BorderSide(color: AppTheme.warningOrange.withOpacity(0.4))),
+      ),
+      child: Column(children: [
+        const Row(children: [
+          SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.warningOrange)),
+          SizedBox(width: 10),
+          Expanded(child: Text('⏳ دفعة تجديد المحادثة قيد مراجعة الإدارة',
+              style: TextStyle(color: AppTheme.warningOrange, fontSize: 13, fontWeight: FontWeight.bold))),
+        ]),
+        const SizedBox(height: 6),
+        const Text('ستُفتح المحادثة تلقائياً فور الاعتماد — لا ترسل دفعة جديدة.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+      ]),
     );
   }
 

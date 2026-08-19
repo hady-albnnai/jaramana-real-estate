@@ -356,20 +356,38 @@ class _State extends State<LegalConsultationBookingScreen>
         _loading = false;
       });
 
-      // 🔄 SYNC-002: اعتُمدت دفعته وهو ينتظر ⇒ ننقله لشاشة كتابة الموضوع
-      // مباشرةً بدل أن يبقى على «قيد المراجعة» ويكتشف بنفسه أن عليه
-      // العودة والضغط على «إرسال الطلب للمحامي».
+      // 🔄 SYNC-002: اعتُمدت دفعته وهو ينتظر ⇒ ننقله للخطوة التالية مباشرةً
+      // بدل أن يبقى على «قيد المراجعة» ويكتشف بنفسه أن عليه العودة والضغط.
       if (mounted && wasWaitingPayment && nowApproved) {
-        final pkg = (approved['pkg'] ?? 0) as int;
-        setState(() {
-          _serviceType = pkg;
-          _viewingPending = false;
-          _screen = 4; // نموذج موضوع الاستشارة
-        });
-        AppTheme.showSnackBar(context, const SnackBar(
-          content: Text('✅ اعتُمدت دفعتك — اكتب موضوع استشارتك وأرسلها للمحامي'),
-          backgroundColor: AppTheme.successGreen,
-        ));
+        // 🔄 2026-08-19 (ربط الدفعة بالمحادثة): إذا كانت دفعة **تجديد**
+        // (continue_chat) نفتح المحادثة القديمة مباشرة — هي استكمال لا
+        // استشارة جديدة، ففتح نموذج «موضوع استشارة» كان خطأً والدفعة
+        // نفسها لا تصلح لاستشارة جديدة (خطأ سيرفر عند الإرسال).
+        final continueChat =
+            ((approved['meta'] as Map?)?['continue_chat'] ?? '').toString();
+        if (continueChat.isNotEmpty) {
+          setState(() {
+            _viewingPending = false;
+            _pendingPayment = null;
+            _screen = 0;
+          });
+          AppTheme.showSnackBar(context, const SnackBar(
+            content: Text('✅ اعتُمدت دفعتك — المحادثة جاهزة، افتحها للمتابعة'),
+            backgroundColor: AppTheme.successGreen,
+          ));
+          context.push('/legal/chat/$continueChat');
+        } else {
+          final pkg = (approved['pkg'] ?? 0) as int;
+          setState(() {
+            _serviceType = pkg;
+            _viewingPending = false;
+            _screen = 4; // نموذج موضوع الاستشارة (استشارة جديدة)
+          });
+          AppTheme.showSnackBar(context, const SnackBar(
+            content: Text('✅ اعتُمدت دفعتك — اكتب موضوع استشارتك وأرسلها للمحامي'),
+            backgroundColor: AppTheme.successGreen,
+          ));
+        }
       }
     } catch (_) { if (mounted) setState(() => _loading = false); }
     context.read<LegalProvider>().fetchActiveLawyers();
@@ -1157,23 +1175,38 @@ class _State extends State<LegalConsultationBookingScreen>
     );
   }
 
-  /// ✅ دفعة معتمدة — أرسل طلبك للمحامي
+  /// ✅ دفعة معتمدة — إرسال الطلب (جديدة) أو فتح المحادثة (تجديد)
   Widget _approvedCard(Map<String, dynamic> p) {
     final pkg = (p['pkg'] ?? 0) as int;
+    // 🔄 2026-08-19: دفعة التجديد (continue_chat) تعني المحادثة جاهزة —
+    // زر «فتح المحادثة» مباشرة بدل «إرسال الطلب للمحامي» (الذي كان يفتح
+    // نموذج استشارة جديدة خطأً ثم يفشل سيرفرياً لأن الدفعة renewal).
+    final continueChat =
+        ((p['meta'] as Map?)?['continue_chat'] ?? '').toString();
+    final isRenewal = continueChat.isNotEmpty;
     return _statusCard(
       icon: Icons.check_circle, color: AppTheme.successGreen,
-      title: 'تم تأكيد دفعتك',
+      title: isRenewal ? 'تم تأكيد دفعتك — المحادثة جاهزة' : 'تم تأكيد دفعتك',
       children: [
-        Text('${_fmt((p['amt'] as num?)?.toInt() ?? 0)} ل.س — ${_typeName(pkg)}',
+        Text('${_fmt((p['amt'] as num?)?.toInt() ?? 0)} ل.س — ${_typeName(pkg)}'
+            '${isRenewal ? ' (تجديد محادثة)' : ''}',
             style: const TextStyle(color: AppTheme.textWhite, fontSize: 13)),
         AppTheme.gapHeightMedium,
         _timeline(2, phone: pkg == 0),
         AppTheme.gapHeightMedium,
         SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
-          onPressed: () { _serviceType = pkg; _goTo(4); },
-          icon: const Icon(Icons.send, color: Colors.black, size: 18),
-          label: const Text('إرسال الطلب للمحامي',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+          onPressed: () {
+            if (isRenewal) {
+              context.push('/legal/chat/$continueChat');
+            } else {
+              _serviceType = pkg;
+              _goTo(4);
+            }
+          },
+          icon: Icon(isRenewal ? Icons.chat_bubble : Icons.send,
+              color: Colors.black, size: 18),
+          label: Text(isRenewal ? 'فتح المحادثة' : 'إرسال الطلب للمحامي',
+              style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
         )),
       ],
@@ -1613,6 +1646,16 @@ class _State extends State<LegalConsultationBookingScreen>
             final alias = (c['lawyer_alias'] ?? 'محامي المكتب').toString();
             final dt = DateTime.tryParse(c['chat_started_at']?.toString() ?? '');
             final daysLeft = dt != null ? 7 - DateTime.now().difference(dt).inDays : 0;
+            // 🔄 2026-08-19: هل المحادثة نشطة فعلاً (وقت متبقٍ من تجديد معتمد)؟
+            // بعد اعتماد دفعة التجديد يُمَدّد chat_duration_minutes ⇒ المتبقي > 0
+            // ⇒ نفتح المحادثة مباشرة بدل طلب دفع جديد (كان يفتح دفع الألف رغم
+            // أن الدفعة قُبلت — خطأ ربط الدفعة بالمحادثة).
+            final startedAt = dt;
+            final durationMin = (c['chat_duration_minutes'] ?? 15) as int;
+            final remainingMin = startedAt != null
+                ? durationMin - DateTime.now().difference(startedAt).inMinutes
+                : 0;
+            final hasTimeLeft = remainingMin > 0;
             return GestureDetector(onTap: () => setState(() => _continueChatId = sel ? null : id),
               child: Container(margin: const EdgeInsets.only(bottom: 8), padding: AppTheme.paddingAllMedium,
                 decoration: BoxDecoration(color: sel ? AppTheme.primaryGold.withOpacity(0.12) : AppTheme.surfaceBlack, borderRadius: AppTheme.radiusMedium, border: Border.all(color: sel ? AppTheme.primaryGold : Colors.white12)),
@@ -1621,17 +1664,41 @@ class _State extends State<LegalConsultationBookingScreen>
                   AppTheme.gapWidthSmall,
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(subject, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 13)),
-                    Text('⚖️ $alias  •  📅 $daysLeft أيام متبقية', style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                    Text(hasTimeLeft
+                        ? '⚖️ $alias  •  نشطة — متبقي $remainingMin دقيقة'
+                        : '⚖️ $alias  •  📅 $daysLeft أيام متبقية',
+                        style: TextStyle(color: hasTimeLeft ? AppTheme.successGreen : AppTheme.textGrey, fontSize: 11)),
                   ])),
                 ])));
           }),
           AppTheme.gapHeightLarge,
-          if (_continueChatId != null) SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
-            onPressed: () { if (_guardPending(0)) return; _isContinuing = true; _goTo(5); }, // مباشر للدفع
-            icon: const Icon(Icons.payment, color: Colors.black),
-            label: Text('متابعة — دفع ${_fmt(_renewPrice)} ل.س', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
-          )),
+          if (_continueChatId != null) Builder(builder: (_) {
+            final c = chats.firstWhere((x) => x['id'].toString() == _continueChatId, orElse: () => const {});
+            final dt = DateTime.tryParse(c['chat_started_at']?.toString() ?? '');
+            final durationMin = (c['chat_duration_minutes'] ?? 15) as int;
+            final remainingMin = dt != null
+                ? durationMin - DateTime.now().difference(dt).inMinutes
+                : 0;
+            final hasTimeLeft = remainingMin > 0;
+            // نشطة (تجديد معتمد سابقاً) ⇒ فتح المحادثة مباشرة
+            return SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
+              onPressed: () {
+                if (hasTimeLeft) {
+                  context.push('/legal/chat/$_continueChatId');
+                  return;
+                }
+                if (_guardPending(0)) return; // دفعة معلّقة ⇒ شاشة الانتظار
+                _isContinuing = true;
+                _goTo(5); // انتهت فعلاً ⇒ دفع تجديد
+              },
+              icon: Icon(hasTimeLeft ? Icons.chat_bubble : Icons.payment, color: Colors.black),
+              label: Text(hasTimeLeft
+                  ? 'متابعة المحادثة'
+                  : 'متابعة — دفع ${_fmt(_renewPrice)} ل.س',
+                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+            ));
+          }),
           AppTheme.gapHeightMedium,
         ],
         SizedBox(width: double.infinity, height: 48, child: OutlinedButton.icon(
@@ -2417,9 +2484,27 @@ class _State extends State<LegalConsultationBookingScreen>
       if (pending != null) ...[
         AppTheme.gapHeightSmall,
         SizedBox(width: double.infinity, height: 44, child: OutlinedButton.icon(
-          onPressed: () { _resetWizard(); _loadAll(); },
+          // 🔄 2026-08-19: كان ينفذ _resetWizard() فيصفّر _screen و_continueChatId
+          // قبل _loadAll ⇒ يفقد منطق النقل التلقائي (SYNC-002) بعد الاعتماد.
+          // الآن: تحديث مباشر من نفس الشاشة — إذا اعتُمدت الدفعة في الخلفية
+          // سينتقل تلقائياً (لفتح المحادثة للـ renewal أو نموذج الموضوع للجديد).
+          onPressed: () { _loadAll(); },
           icon: const Icon(Icons.refresh, color: AppTheme.primaryGold),
           label: const Text('تحديث الحالة', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
+          style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
+        )),
+      ],
+      // 🔄 2026-08-19: تجديد مدفوع معلّق — زر لقراءة المحادثة القديمة
+      // (رسائلها) أثناء انتظار الاعتماد، ليفهم المستخدم أي محادثة يرتبط بها الدفع.
+      if (pending != null && isCont) ...[
+        AppTheme.gapHeightSmall,
+        SizedBox(width: double.infinity, height: 44, child: OutlinedButton.icon(
+          onPressed: () {
+            final chatId = ((pending['meta'] as Map?)?['continue_chat'] ?? '').toString();
+            if (chatId.isNotEmpty) context.push('/legal/chat/$chatId');
+          },
+          icon: const Icon(Icons.chat_bubble_outline, color: AppTheme.primaryGold),
+          label: const Text('فتح المحادثة المرتبطة', style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
           style: OutlinedButton.styleFrom(side: const BorderSide(color: AppTheme.primaryGold)),
         )),
       ],
