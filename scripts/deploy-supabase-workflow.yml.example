@@ -1,0 +1,50 @@
+name: Deploy Supabase
+
+# ═══════════════════════════════════════════════════════════════════
+# النشر التلقائي على Supabase من سيرفرات GitHub (لديهما إنترنت كامل —
+# بيئة الوكيل المحلية تحجب نطاقات supabase.com فلا يمكن النشر منها).
+#
+# ⚠️ يتطلب سرّاً واحداً في GitHub:
+#   Settings → Secrets and variables → Actions → New repository secret
+#   الاسم: SUPABASE_PAT   القيمة: sbp_... (توكن إدارة المشروع)
+#
+# السلوك:
+#   • عند أي push إلى main أو arena/** → ينشر دوال Edge فقط (آمن).
+#   • عند التشغيل اليدوي (Run workflow) → كل شيء:
+#     تحقق حي → تطبيق تعديلات SQL 2026_08_19 → (اختياري) حذف بيانات
+#     مستخدم الاختبار → نشر الدوال.
+# ═══════════════════════════════════════════════════════════════════
+on:
+  push:
+    branches: [main, 'arena/**']
+  workflow_dispatch:
+    inputs:
+      apply_migrations:
+        description: 'تطبيق تعديلات قاعدة البيانات المعلّقة (2026_08_19)'
+        type: boolean
+        default: true
+      cleanup_test_user:
+        description: 'حذف بيانات مستخدم الاختبار للبدء من جديد'
+        type: boolean
+        default: true
+      test_user_name:
+        description: 'اسم مستخدم الاختبار المراد حذف بياناته'
+        type: string
+        default: 'هناء العيسمي'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: نشر Supabase (تحقق → SQL → تنظيف → دوال)
+        env:
+          SUPABASE_PROJECT_REF: vsgkgnjtebjxyqwpuopz
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+          APPLY_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.apply_migrations }}
+          CLEANUP: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup_test_user }}
+          TEST_USER_NAME: ${{ inputs.test_user_name }}
+          DEPLOY_FUNCTIONS: 'true'
+        run: bash scripts/deploy_supabase.sh
