@@ -153,3 +153,25 @@ DELETE ثم POST — الـ POST كان يفشل 500). هذا يفسّر أعر�
 2. التحقق بعد النشر: بروب admin-dashboard يجب أن يرجع حراس الجلسة بدل NOT_FOUND.
 3. مزامنة `main` مع فرع arena (fast-forward — قرار المالك).
 4. تدوير التوكنين المُسربين في الشات.
+
+---
+
+## ملحق 2 (2026-08-20) — النشر اكتمل وتُحقق منه حياً ✅
+
+### سلسلة الإنجاز
+1. المالك شغّل `deploy_supabase.ps1` (النسخة قبل الأخيرة):
+   - فحوصات حية: HTTP 201 (تريغرات offers/payments سليمة، ttl_patched=true، ref_patched=true)
+   - إعادة SQL migrations 08_19: HTTP 201 (idempotent)
+   - نشر الدوال فشل: HTTP 400 «Invalid metadata JSON payload» — كسر PowerShell 5.1
+     لعلامات التنصيص في `--form-string "metadata=…"`.
+2. الإصلاح: metadata تُرسل كملف مؤقت عبر `-F "metadata=@file;type=application/json"`
+   (كوميت على فرع arena) — تجنّب تمرير JSON عبر وسيطات العملية نهائياً.
+3. المالك شغّل النسخة المصلحة (`-SkipMigrations -SkipCleanup`): نشر الدالتين بنجاح.
+4. التحقق الحي عبر فحص GitHub Actions (بلا أسرار):
+   - `admin-dashboard` ← `{"success":false,"error":"USER_NOT_FOUND"}` ⇒ الدالة الجديدة
+     حية ووصل الطلب إلى معالج users_by_ids (قبلها كانت NOT_FOUND كلياً).
+   - `legal-actions` ← `AUTH_TOKEN_REQUIRED` (الحارس يعمل طبيعياً).
+
+### الدرس الجديد المضاف للدستور
+- **PowerShell 5.1 + curl.exe**: لا تمرّر JSON عبر وسيطات/`--form-string` مطلقاً
+  (علامات التنصيص تُشوّه) — مرّره بملف مؤقت `-F "field=@file;type=application/json"`.
