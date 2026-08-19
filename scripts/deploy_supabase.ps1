@@ -72,11 +72,11 @@ function Deploy-Fn {
         if ($del -ne '200' -and $del -ne '204') { throw "FAILED delete $Slug (HTTP $del)" }
         Start-Sleep -Seconds 2
     }
-    # Without import_map_path - its null value was breaking the management API
+    # Metadata must be sent as a raw JSON string (--form-string), NOT as a
+    # file (@file). Sending it as a file makes the Supabase API return
+    # HTTP 500 "Cannot read properties of undefined (reading 'toString')".
     $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
         ConvertTo-Json -Compress
-    $metaTmp = Join-Path $env:TEMP ("meta_" + [guid]::NewGuid().ToString('N') + ".json")
-    [System.IO.File]::WriteAllText($metaTmp, $meta, (New-Object System.Text.UTF8Encoding($false)))
     $filePath = Join-Path $Root "supabase\functions\$Slug\index.ts"
     $out = Join-Path $env:TEMP ("fn_" + [guid]::NewGuid().ToString('N') + ".json")
 
@@ -85,12 +85,11 @@ function Deploy-Fn {
     # GET/PATCH/DELETE. POST to /functions/<slug> returns 404.
     $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions" `
         -H "Authorization: Bearer $PAT" `
-        -F "metadata=@$metaTmp;type=application/json" `
+        --form-string "metadata=$meta" `
         -F "file=@$filePath;type=text/plain" 2>$null
     Write-Host "  HTTP $code"
     if (Test-Path $out) { Get-Content $out -Raw -Encoding UTF8; Write-Host '' }
 
-    Remove-Item $metaTmp -ErrorAction SilentlyContinue
     Remove-Item $out -ErrorAction SilentlyContinue
 
     if ($code -ne '200' -and $code -ne '201') { throw "FAILED deploy $Slug (HTTP $code)" }
