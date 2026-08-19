@@ -61,17 +61,25 @@ function Invoke-Sql {
 
 function Deploy-Fn {
     param([string]$Slug)
+    # PATCH على دالة موجودة يفشل أحياناً بـ 500 (Cannot read 'toString' of undefined)
+    # بسبب import_map_path:null. الحل الموثوق: DELETE ثم POST (إنشاء نظيف).
     $exists = & curl.exe -sS -o NUL -w "%{http_code}" --max-time 60 "$API/functions/$Slug" -H "Authorization: Bearer $PAT" 2>$null
-    $method = if ($exists -eq '200') { 'PATCH' } else { 'POST' }
-    $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts'; import_map_path = $null } |
+    if ($exists -eq '200') {
+        Write-Host "  Delete $Slug (re-create cleanly)"
+        $del = & curl.exe -sS -o NUL -w "%{http_code}" --max-time 60 -X DELETE "$API/functions/$Slug" -H "Authorization: Bearer $PAT" 2>$null
+        Write-Host "  DELETE HTTP $del"
+        if ($del -ne '200' -and $del -ne '204') { throw "FAILED delete $Slug (HTTP $del)" }
+    }
+    # بدون import_map_path — قيمته null كانت تكسر خادم الإدارة
+    $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
         ConvertTo-Json -Compress
     $metaTmp = Join-Path $env:TEMP ("meta_" + [guid]::NewGuid().ToString('N') + ".json")
     [System.IO.File]::WriteAllText($metaTmp, $meta, (New-Object System.Text.UTF8Encoding($false)))
     $filePath = Join-Path $Root "supabase\functions\$Slug\index.ts"
     $out = Join-Path $env:TEMP ("fn_" + [guid]::NewGuid().ToString('N') + ".json")
 
-    Write-Host "  Deploy $Slug [$method]"
-    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X $method "$API/functions/$Slug" `
+    Write-Host "  Create $Slug [POST]"
+    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions/$Slug" `
         -H "Authorization: Bearer $PAT" `
         -F "metadata=@$metaTmp;type=application/json" `
         -F "file=@$filePath;type=text/plain" 2>$null
