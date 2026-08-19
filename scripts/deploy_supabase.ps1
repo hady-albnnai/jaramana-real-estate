@@ -66,19 +66,27 @@ function Deploy-Fn {
     # It creates the function if missing, or UPDATES it if exists -
     # no need to DELETE first. (POST /functions => 500 'toString' error,
     #  POST /functions/{slug} => 404.)
+    #
+    # FIX 2026-08-19: metadata is sent as a FILE-BACKED form field.
+    # Passing it inline via --form-string breaks on PowerShell 5.1
+    # (embedded double quotes get mangled when calling native curl.exe),
+    # and the API rejects the payload: "Invalid metadata JSON payload".
     $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
         ConvertTo-Json -Compress
     $filePath = Join-Path $Root "supabase\functions\$Slug\index.ts"
+    $metaFile = Join-Path $env:TEMP ("meta_" + [guid]::NewGuid().ToString('N') + ".json")
     $out = Join-Path $env:TEMP ("fn_" + [guid]::NewGuid().ToString('N') + ".json")
+    [System.IO.File]::WriteAllText($metaFile, $meta, (New-Object System.Text.UTF8Encoding($false)))
 
     Write-Host "  Deploy $Slug [POST /functions/deploy?slug=]"
     $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions/deploy?slug=$Slug" `
         -H "Authorization: Bearer $PAT" `
-        --form-string "metadata=$meta" `
+        -F "metadata=@$metaFile;type=application/json" `
         -F "file=@$filePath;type=text/plain" 2>$null
     Write-Host "  HTTP $code"
     if (Test-Path $out) { Get-Content $out -Raw -Encoding UTF8; Write-Host '' }
 
+    Remove-Item $metaFile -ErrorAction SilentlyContinue
     Remove-Item $out -ErrorAction SilentlyContinue
 
     if ($code -ne '200' -and $code -ne '201') { throw "FAILED deploy $Slug (HTTP $code)" }
