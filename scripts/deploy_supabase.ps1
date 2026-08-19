@@ -61,8 +61,9 @@ function Invoke-Sql {
 
 function Deploy-Fn {
     param([string]$Slug)
-    # PATCH على دالة موجودة يفشل أحياناً بـ 500 (Cannot read 'toString' of undefined)
-    # بسبب import_map_path:null. الحل الموثوق: DELETE ثم POST (إنشاء نظيف).
+    # PATCH on an existing function sometimes fails with HTTP 500
+    # ("Cannot read 'toString' of undefined") - likely caused by
+    # import_map_path:null in the metadata. Reliable fix: DELETE then POST.
     $exists = & curl.exe -sS -o NUL -w "%{http_code}" --max-time 60 "$API/functions/$Slug" -H "Authorization: Bearer $PAT" 2>$null
     if ($exists -eq '200') {
         Write-Host "  Delete $Slug (re-create cleanly)"
@@ -70,7 +71,7 @@ function Deploy-Fn {
         Write-Host "  DELETE HTTP $del"
         if ($del -ne '200' -and $del -ne '204') { throw "FAILED delete $Slug (HTTP $del)" }
     }
-    # بدون import_map_path — قيمته null كانت تكسر خادم الإدارة
+    # Without import_map_path - its null value was breaking the management API
     $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
         ConvertTo-Json -Compress
     $metaTmp = Join-Path $env:TEMP ("meta_" + [guid]::NewGuid().ToString('N') + ".json")
