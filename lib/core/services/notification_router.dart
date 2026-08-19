@@ -48,7 +48,10 @@ class NotificationRouter {
     'legal_appointment_nudge': [UserRole.lawyer],
     'consultation_reactivated': [UserRole.lawyer],
     'legal_user_joined': [UserRole.lawyer],
-    'legal_renewal_paid_ready': [UserRole.lawyer],
+    // 🔄 2026-08-19: إشعار «تم اعتماد تجديد المحادثة» يصلك أنت (المستخدم)
+    // والمحامي معاً — الضغط يفتح المحادثة. كان مقصوراً على المحامي فقط
+    // فيُرفض ضغط المستخدم («هذا الإشعار يخصّ دوراً آخر»).
+    'legal_renewal_paid_ready': [UserRole.user, UserRole.lawyer],
     'lawyer_payout_paid': [UserRole.lawyer],
     'legal_consultation_admin': [UserRole.deputy, UserRole.manager],
     'legal_consultation_escalated': [UserRole.deputy, UserRole.manager],

@@ -1236,7 +1236,26 @@ serve(async (req) => {
         .eq("i_del", 0)
         .order("ts_crt", { ascending: false });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: true, consultations: data ?? [] });
+      const consRows = (data ?? []) as Record<string, unknown>[];
+      // 🔄 2026-08-19: هل عليها جلسة V2 حية (ready/join_window/active)؟
+      // تجديد معتمد = جلسة ready ⇒ المحادثة قابلة للمتابعة مباشرة (لا دفع
+      // جديد). كان الاعتماد يتم على chat_started_at + chat_duration_minutes
+      // (حقول لا يمدّدها مسار V2) فيظهر «منتهية» رغم وجود مدة مدفوعة.
+      const ids = consRows.map((c) => c.id).filter(Boolean);
+      let liveIds = new Set<string>();
+      if (ids.length > 0) {
+        const { data: live } = await supabaseAdmin
+          .from("consultation_chat_sessions")
+          .select("consultation_id")
+          .in("consultation_id", ids)
+          .in("status", ["ready", "join_window", "active"]);
+        liveIds = new Set((live ?? []).map((r: Record<string, unknown>) => String(r.consultation_id)));
+      }
+      const enriched = consRows.map((c) => ({
+        ...c,
+        has_live_session: liveIds.has(String(c.id)),
+      }));
+      return json({ success: true, consultations: enriched });
     }
 
     // ─── استشارات المحامي (محامي: خاصة به — إدارة: الكل) ───

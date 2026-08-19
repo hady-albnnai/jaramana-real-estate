@@ -122,6 +122,9 @@ class _State extends State<LegalConsultationBookingScreen>
     if (_v2Flow == 'phone_renew') {
       _isContinuing = true;
       _serviceType = 0;
+      // 🔄 2026-08-19: حارس الدفعة المعلّقة — كان غائباً في هذا المسار فيمكن
+      // إنشاء دفعة تجديد ثانية بينما الأولى قيد المراجعة (ازدواج دفعات).
+      if (_guardPending(0)) return;
       setState(() => _screen = 5);
     } else if (_v2Flow == 'onsite_convert' ||
         _v2Flow == 'onsite_reschedule') {
@@ -316,6 +319,14 @@ class _State extends State<LegalConsultationBookingScreen>
         if (status == 1 && chatStarted == null && active == null) {
           active = c;
         }
+
+        // 🔄 2026-08-19: استشارة «منتهية» (status=2) لكن عليها جلسة V2 حية
+        // (تجديد معتمد بانتظار المحامي أو جلسة جارية) ⇒ تُعرض للمتابعة —
+        // الاعتماد على الحقول القديمة كان يعرضها «منتهية» فيُطلب دفع مكرر.
+        if (status == 2 && c['has_live_session'] == true) {
+          previous.add(c);
+          continue;
+        }
       }
 
       // 🎁 رصيد ممنوح من الإدارة (بديل الاسترداد) — يسمح بطلب بلا دفع
@@ -414,6 +425,13 @@ class _State extends State<LegalConsultationBookingScreen>
   bool _hasApprovedPaymentFor(int serviceType) {
     final p = _approvedPayment;
     if (p == null) return false;
+    // 🔄 2026-08-19: دفعة **التجديد** (meta.continue_chat) ليست لاستشارة
+    // جديدة — تمريرها لزر «إرسال الطلب للمحامي» كان يخطيء سيرفرياً
+    // (create_legal_consultation_internal يستبعد continue_chat) فتُقبل
+    // الواجهة ثم يفشل الإرسال «بخلل بالاتصال». بطاقتها الخاصة (فتح المحادثة)
+    // تبقى ظاهرة في الرئيسية.
+    final cont = ((p['meta'] as Map?)?['continue_chat'] ?? '').toString();
+    if (cont.isNotEmpty) return false;
     return ((p['pkg'] ?? 0) as int) == serviceType;
   }
 
@@ -1646,16 +1664,10 @@ class _State extends State<LegalConsultationBookingScreen>
             final alias = (c['lawyer_alias'] ?? 'محامي المكتب').toString();
             final dt = DateTime.tryParse(c['chat_started_at']?.toString() ?? '');
             final daysLeft = dt != null ? 7 - DateTime.now().difference(dt).inDays : 0;
-            // 🔄 2026-08-19: هل المحادثة نشطة فعلاً (وقت متبقٍ من تجديد معتمد)؟
-            // بعد اعتماد دفعة التجديد يُمَدّد chat_duration_minutes ⇒ المتبقي > 0
-            // ⇒ نفتح المحادثة مباشرة بدل طلب دفع جديد (كان يفتح دفع الألف رغم
-            // أن الدفعة قُبلت — خطأ ربط الدفعة بالمحادثة).
-            final startedAt = dt;
-            final durationMin = (c['chat_duration_minutes'] ?? 15) as int;
-            final remainingMin = startedAt != null
-                ? durationMin - DateTime.now().difference(startedAt).inMinutes
-                : 0;
-            final hasTimeLeft = remainingMin > 0;
+            // 🔄 2026-08-19: المصدر الموثوق = جلسة V2 الحية (has_live_session)
+            // من السيرفر — لا الحقول القديمة التي لا يمدّدها مسار V2.
+            // تجديد معتمد = جلسة ready ⇒ «للمتابعة» مباشرة (لا دفع مكرر).
+            final live = c['has_live_session'] == true;
             return GestureDetector(onTap: () => setState(() => _continueChatId = sel ? null : id),
               child: Container(margin: const EdgeInsets.only(bottom: 8), padding: AppTheme.paddingAllMedium,
                 decoration: BoxDecoration(color: sel ? AppTheme.primaryGold.withOpacity(0.12) : AppTheme.surfaceBlack, borderRadius: AppTheme.radiusMedium, border: Border.all(color: sel ? AppTheme.primaryGold : Colors.white12)),
@@ -1664,26 +1676,21 @@ class _State extends State<LegalConsultationBookingScreen>
                   AppTheme.gapWidthSmall,
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(subject, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 13)),
-                    Text(hasTimeLeft
-                        ? '⚖️ $alias  •  نشطة — متبقي $remainingMin دقيقة'
+                    Text(live
+                        ? '⚖️ $alias  •  جلسة مدفوعة جاهزة للمتابعة'
                         : '⚖️ $alias  •  📅 $daysLeft أيام متبقية',
-                        style: TextStyle(color: hasTimeLeft ? AppTheme.successGreen : AppTheme.textGrey, fontSize: 11)),
+                        style: TextStyle(color: live ? AppTheme.successGreen : AppTheme.textGrey, fontSize: 11)),
                   ])),
                 ])));
           }),
           AppTheme.gapHeightLarge,
           if (_continueChatId != null) Builder(builder: (_) {
             final c = chats.firstWhere((x) => x['id'].toString() == _continueChatId, orElse: () => const {});
-            final dt = DateTime.tryParse(c['chat_started_at']?.toString() ?? '');
-            final durationMin = (c['chat_duration_minutes'] ?? 15) as int;
-            final remainingMin = dt != null
-                ? durationMin - DateTime.now().difference(dt).inMinutes
-                : 0;
-            final hasTimeLeft = remainingMin > 0;
-            // نشطة (تجديد معتمد سابقاً) ⇒ فتح المحادثة مباشرة
+            // 🔄 2026-08-19: جلسة حية ⇒ فتح المحادثة مباشرة؛ منتهية فعلاً ⇒ دفع
+            final live = c['has_live_session'] == true;
             return SizedBox(width: double.infinity, height: 48, child: ElevatedButton.icon(
               onPressed: () {
-                if (hasTimeLeft) {
+                if (live) {
                   context.push('/legal/chat/$_continueChatId');
                   return;
                 }
@@ -1691,8 +1698,8 @@ class _State extends State<LegalConsultationBookingScreen>
                 _isContinuing = true;
                 _goTo(5); // انتهت فعلاً ⇒ دفع تجديد
               },
-              icon: Icon(hasTimeLeft ? Icons.chat_bubble : Icons.payment, color: Colors.black),
-              label: Text(hasTimeLeft
+              icon: Icon(live ? Icons.chat_bubble : Icons.payment, color: Colors.black),
+              label: Text(live
                   ? 'متابعة المحادثة'
                   : 'متابعة — دفع ${_fmt(_renewPrice)} ل.س',
                   style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),

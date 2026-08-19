@@ -110,7 +110,11 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     _renewalPollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!mounted) return;
       final isLawyer = context.read<AuthProvider>().isLawyer;
-      if (_pendingRenewal || (_timeUp && !isLawyer)) {
+      final st = (_v2Session?['status'] ?? '').toString();
+      // 🔄 2026-08-19: يشمل 'ready' — لو فشل بث Realtime (السبب الأصلي لكل
+      // الاستطلاعات هنا) يبقى المستخدم يلتقط استئناف المحامي (join_window)
+      // واعتماد دفعة التجديد بالاستطلاع.
+      if (!isLawyer && (_pendingRenewal || _timeUp || st == 'ready')) {
         _loadV2Session();
       }
     });
