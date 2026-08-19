@@ -56,7 +56,7 @@ function Invoke-Sql {
     Remove-Item $tmp -ErrorAction SilentlyContinue
     Remove-Item $out -ErrorAction SilentlyContinue
 
-    if ($Fatal -and $code -ne '200') { throw "FAILED: $Label (HTTP $code)" }
+    if ($Fatal -and $code -ne '200' -and $code -ne '201') { throw "FAILED: $Label (HTTP $code)" }
 }
 
 function Deploy-Fn {
@@ -93,7 +93,8 @@ Invoke-Sql -Label 'payments triggers' -Sql "SELECT tgname FROM pg_trigger t JOIN
 Invoke-Sql -Label 'admin_review_offer_internal' -Sql "SELECT pg_get_functiondef('public.admin_review_offer_internal(uuid,uuid,boolean,text)'::regprocedure) LIKE '%30 days%' AS ttl_patched;"
 Invoke-Sql -Label 'trg_consultation_payment_v2' -Sql "SELECT pg_get_functiondef('public.trg_consultation_payment_v2()'::regprocedure) LIKE '%v_ref%' AS ref_patched;"
 if (-not $SkipCleanup) {
-    Invoke-Sql -Label 'find test user' -Sql "SELECT id, nm, usr, role, sts FROM public.users WHERE nm = $($TestUserName | ConvertTo-Json) OR usr = $($TestUserName | ConvertTo-Json);"
+    $qname = "'" + $TestUserName.Replace("'", "''") + "'"
+    Invoke-Sql -Label 'find test user' -Sql "SELECT id, nm, usr, role, sts FROM public.users WHERE nm = $qname OR usr = $qname;"
 }
 
 # --- 2) Apply pending migrations 2026_08_19 ----------------------------------
