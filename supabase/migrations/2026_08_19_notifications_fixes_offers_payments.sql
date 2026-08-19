@@ -277,12 +277,15 @@ AFTER INSERT ON payments
 FOR EACH ROW EXECUTE FUNCTION public.trg_payment_new_notify();
 
 -- ──────────────────────────────────────────────────────────────────────
--- ⑤ م13: تسريع Push الأحداث الحرجة للاستشارة (مهلة انضمام دقيقتين)
--- المشكلة: كل Push الاستشارات يمر عبر outbox يعالجه كرون كل دقيقة ⇒
--- «تأخر إشعار بدأ الجلسة» رغم أن مهلة انضمام المستخدم دقيقتان فقط.
--- الحل: للأحداث الحرجة (المحامي جاهز / العميل انضم) يُرسل push فوراً من
--- التريغر، ويبقى outbox كاحتياط موثوق (لو فشل FCM يعيد المعالج المحاولة).
--- إعادة تعريف enqueue_consultation_notification_push بالنسخة الحية + الإضافة.
+-- ⑤ مزامنة enqueue_consultation_notification_push مع النسخة الحية
+-- 🔍 اكتشاف أثناء المراجعة (2026-08-19): النسخة الأولى من هذا القسم كانت
+-- ستُسقط 3 أحداث من قائمة الـ outbox ('legal_payment_needs_new_slot',
+-- 'legal_appointment_reminder'، شرط legal_consultation_update) وتضيف
+-- push فورياً مكرراً لإشعار lawyer_ready (الإيدج يرسله مباشرة أصلاً).
+-- الحل: هذا القسم يطابق النسخة الحية حرفياً (من
+-- 2026_08_16_consultation_v2_exact_sync_reminders.sql) — إعادة تعريف
+-- صريحة لضمان التطابق بلا انحراف، وبدون أي إضافة قد تسبب ازدواجاً.
+-- أما تسريع push للمحامي الجاهز فمُسلَّم عبر الإيدج lawyer_ready_chat_v2.
 -- ──────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.enqueue_consultation_notification_push()
 RETURNS trigger
@@ -292,25 +295,15 @@ AS $function$
 DECLARE v_role integer;
 BEGIN
   SELECT role INTO v_role FROM public.users WHERE id=NEW.uid;
-  IF NEW.act IN ('legal_session_auto_started','legal_session_ended','legal_waitlist_available')
-     OR (NEW.act='legal_onsite_confirmed' AND v_role=7) THEN
+  IF NEW.act IN ('legal_session_auto_started','legal_session_ended','legal_waitlist_available',
+     'legal_payment_needs_new_slot','legal_appointment_reminder')
+     OR (NEW.act='legal_onsite_confirmed' AND v_role=7)
+     OR (NEW.act='legal_consultation_update' AND NEW.ttl LIKE '✅ قبل المحامي%') THEN
     INSERT INTO public.consultation_event_outbox(event_key,event_type,recipient_uid,reference_id,payload)
     VALUES('notification:'||NEW.id,NEW.act,NEW.uid,
       CASE WHEN NEW.ref_id ~* '^[0-9a-f-]{36}$' THEN NEW.ref_id::uuid ELSE NULL END,
       jsonb_build_object('title',NEW.ttl,'body',NEW.bdy,'act',NEW.act,'ref_id',NEW.ref_id))
     ON CONFLICT(event_key) DO NOTHING;
-  END IF;
-
-  -- م13 (2026-08-19): الأحداث الحرجة تُرسل push فوراً — لا انتظار كرون الدقيقة
-  -- (مهلة انضمام المستخدم دقيقتان فقط؛ أي تأخير يكسر التجربة). الـ outbox
-  -- أعلاه يبقى احتياطاً: لو فشل FCM هنا سيعيد المعالج المحاولة.
-  IF NEW.act IN ('legal_lawyer_ready','legal_user_joined') THEN
-    BEGIN
-      PERFORM public.send_push_notification(NEW.uid, NEW.ttl, NEW.bdy,
-        jsonb_build_object('act', NEW.act, 'ref_id', NEW.ref_id));
-    EXCEPTION WHEN OTHERS THEN
-      NULL; -- فشل FCM هنا لا يُسقط الإشعار — outbox يتكفل
-    END;
   END IF;
   RETURN NEW;
 END;
