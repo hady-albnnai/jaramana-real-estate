@@ -8,6 +8,7 @@ import '../core/network/supabase_service.dart';
 import '../core/router/app_router.dart';
 import '../core/services/notification_router.dart';
 import '../core/utils/error_utils.dart';
+import '../providers/notification_provider.dart';
 
 /// خدمة Firebase Cloud Messaging (FCM)
 class FCMService {
@@ -125,10 +126,12 @@ class FCMService {
   }
 
   /// إشعار وصل والتطبيق مفتوح → نعرضه + نحفظه في DB
-  void _handleForegroundMessage(RemoteMessage message) async {final notification = message.notification;
+  void _handleForegroundMessage(RemoteMessage message) async {
+    final notification = message.notification;
     final data = message.data;
+    final suppressBanner = _shouldSuppressBanner(data);
 
-    if (notification != null) {
+    if (notification != null && !suppressBanner) {
       // 1) عرض local notification
       _localNotifications.show(
         notification.hashCode,
@@ -154,12 +157,54 @@ class FCMService {
       );
     }
 
-    // 2) حفظ في DB ليظهر داخل التطبيق
+    // 2) حفظ في DB ليظهر داخل التطبيق — يبقى في كل الحالات (الشارة والقائمة تتحدثان)
     await _saveNotificationToDb(
       title: notification?.title ?? '',
       body: notification?.body ?? '',
       data: data,
     );
+
+    // 🔄 2026-08-19: وصول Push والتطبيق مفتوح ⇒ تحديث فوري للقوائم والشارات
+    // (شاشة الإشعارات تستمع وتعيد الجلب — بلا استطلاع دوري ثقيل)
+    NotificationProvider.requestRefresh();
+  }
+
+  /// 🚫 نظام «واتساب» (2026-08-19): لا نعرض بانر Push والمستخدم مفتوح على
+  /// شاشة الإشعارات (يرى القائمة نفسها)، ولا لإشعارات المحادثة وهو داخل
+  /// تلك المحادثة تحديداً (المحادثة تُحدَّث عبر Realtime خاص بها أصلاً).
+  /// الحجب جانب عرضي فقط — الحفظ في DB يتم دائماً.
+  bool _shouldSuppressBanner(Map<String, dynamic> data) {
+    try {
+      final path =
+          AppRouter.router.routerDelegate.currentConfiguration.uri.path;
+      // شاشة الإشعارات: نحجب كل البانرات — المستخدم يرى القائمة نفسها.
+      if (path == '/user/notifications') return true;
+
+      // داخل محادثة: نحجب إشعارات تلك المحادثة فقط، وتبقى باقي الإشعارات
+      // (عروض، مواعيد...) تصل بانر عادي — تماماً كواتساب.
+      if (path.startsWith('/legal/chat/')) {
+        final chatId = path.substring('/legal/chat/'.length);
+        final act = (data['act'] ?? data['action'] ?? '').toString();
+        final refId = (data['ref_id'] ?? data['id'] ?? '').toString();
+        const chatActs = {
+          'chat_started',
+          'chat_message',
+          'chat_renewed',
+          'chat_extended',
+          'legal_lawyer_ready',
+          'legal_user_joined',
+          'legal_session_auto_started',
+          'legal_session_started',
+          'legal_session_ended',
+          'legal_renewal_paid_ready',
+        };
+        if (chatActs.contains(act)) return refId.isEmpty || refId == chatId;
+        return refId == chatId;
+      }
+    } catch (_) {
+      // أي خطأ في قراءة المسار الحالي ⇒ لا نحجب (نعرض البانر) — لا كتمان في الشك.
+    }
+    return false;
   }
 
   /// المستخدم ضغط على إشعار → نتنقل للشاشة المناسبة

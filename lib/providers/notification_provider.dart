@@ -4,6 +4,16 @@ import '../core/network/supabase_service.dart';
 import '../core/constants/db_constants.dart';
 
 class NotificationProvider with ChangeNotifier {
+  /// 🔔 إشارة تحديث فوري (2026-08-19): يطلقها FCMService عند وصول Push
+  /// والتطبيق مفتوح، فتستمع إليها الشاشات المفتوحة (شاشة الإشعارات)
+  /// وتعيد الجلب لحظياً — بدل استطلاع دوري ثقيل أو انتظار إعادة الدخول.
+  /// أُضيفت كإشارة ثابتة عمداً لأن FCMService بلا BuildContext،
+  /// والشاشات تُضيف/تزيل مستمعها في initState/dispose.
+  static final ValueNotifier<int> refreshSignal = ValueNotifier<int>(0);
+
+  /// طلب تحديث القوائم/الشارات من أي مكان (بلا سياق).
+  static void requestRefresh() => refreshSignal.value++;
+
   List<NotificationModel> _notifications = [];
   bool _isLoading = false;
   int _unreadCount = 0;

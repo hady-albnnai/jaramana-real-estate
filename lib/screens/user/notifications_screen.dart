@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -19,10 +21,32 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  /// استطلاع احتياطي خفيف (كل 30 ث) أثناء فتح الشاشة فقط — يغطي تأخير/فشل
+  /// الـ Push (المعالج الخلفي للاستشارات يعمل كل دقيقة) ويُلغى عند مغادرة
+  /// الشاشة فلا يشكّل أي حمل على السيرفر خارجها. التحديث الأساسي لحظي
+  /// عبر `NotificationProvider.refreshSignal` (يطلقه FCMService عند وصول Push).
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _load();
+    });
+    NotificationProvider.refreshSignal.addListener(_onExternalRefresh);
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    NotificationProvider.refreshSignal.removeListener(_onExternalRefresh);
+    super.dispose();
+  }
+
+  /// 🔄 تحديث فوري عند وصول Push والتطبيق مفتوح (من FCMService).
+  void _onExternalRefresh() {
+    if (mounted) _load();
   }
 
   void _load() {
