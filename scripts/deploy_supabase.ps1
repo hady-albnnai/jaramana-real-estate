@@ -61,29 +61,18 @@ function Invoke-Sql {
 
 function Deploy-Fn {
     param([string]$Slug)
-    # PATCH on an existing function sometimes fails with HTTP 500
-    # ("Cannot read 'toString' of undefined") - likely caused by
-    # import_map_path:null in the metadata. Reliable fix: DELETE then POST.
-    $exists = & curl.exe -sS -o NUL -w "%{http_code}" --max-time 60 "$API/functions/$Slug" -H "Authorization: Bearer $PAT" 2>$null
-    if ($exists -eq '200') {
-        Write-Host "  Delete $Slug (re-create cleanly)"
-        $del = & curl.exe -sS -o NUL -w "%{http_code}" --max-time 60 -X DELETE "$API/functions/$Slug" -H "Authorization: Bearer $PAT" 2>$null
-        Write-Host "  DELETE HTTP $del"
-        if ($del -ne '200' -and $del -ne '204') { throw "FAILED delete $Slug (HTTP $del)" }
-        Start-Sleep -Seconds 2
-    }
-    # Metadata must be sent as a raw JSON string (--form-string), NOT as a
-    # file (@file). Sending it as a file makes the Supabase API return
-    # HTTP 500 "Cannot read properties of undefined (reading 'toString')".
+    # CORRECT endpoint (from Supabase official docs/discussions):
+    #   POST /v1/projects/{ref}/functions/deploy?slug={slug}
+    # It creates the function if missing, or UPDATES it if exists -
+    # no need to DELETE first. (POST /functions => 500 'toString' error,
+    #  POST /functions/{slug} => 404.)
     $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
         ConvertTo-Json -Compress
     $filePath = Join-Path $Root "supabase\functions\$Slug\index.ts"
     $out = Join-Path $env:TEMP ("fn_" + [guid]::NewGuid().ToString('N') + ".json")
 
-    Write-Host "  Create $Slug [POST]"
-    # IMPORTANT: create endpoint is /functions (no slug) - slug is only for
-    # GET/PATCH/DELETE. POST to /functions/<slug> returns 404.
-    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions" `
+    Write-Host "  Deploy $Slug [POST /functions/deploy?slug=]"
+    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions/deploy?slug=$Slug" `
         -H "Authorization: Bearer $PAT" `
         --form-string "metadata=$meta" `
         -F "file=@$filePath;type=text/plain" 2>$null
