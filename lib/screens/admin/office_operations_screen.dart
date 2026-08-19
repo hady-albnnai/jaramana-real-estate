@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -21,10 +23,23 @@ class _OfficeOperationsScreenState extends State<OfficeOperationsScreen> {
   Map<String, int> _counts = {};
   Map<String, dynamic> _stats = {};
 
+  Timer? _countsTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    // م5 (2026-08-19): استطلاع خفيف للعدّادات أثناء فتح الشاشة — الشارات
+    // كانت جامدة (تُحمَّل مرة واحدة) فيبقى الرقم القديم بعد المعالجة.
+    _countsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _countsTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {

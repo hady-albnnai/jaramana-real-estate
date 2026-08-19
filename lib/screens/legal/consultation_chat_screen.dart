@@ -51,6 +51,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   String? _playingMessageId;
   RealtimeChannel? _realtimeChannel;
 
+  // ── م14 (2026-08-19): رسائل محلية متفائلة بنمط واتساب ──
+  // رسالة تظهر فور الضغط على الإرسال بحالة «جارٍ الإرسال»، وعند الفشل
+  // تتحول إلى «فشل — اضغط لإعادة المحاولة» بدل الانتظار الصامت أو الفقدان.
+  final List<Map<String, dynamic>> _pendingMessages = [];
+  String? _currentRecordingPath; // مسار التسجيل الجاري (للإلغاء/الحذف)
+  bool _cancelRecording = false; // سحب لأعلى أثناء التسجيل = إلغاء (واتساب)
+
   // ⚖️ سعر التجديد ومدة المحادثة من الإعدادات (2026-08-14) — كانا ثابتين نصاً
   int get _renewPrice =>
       context.read<ConfigProvider>().config?.legalRenewPrice ?? 500;
@@ -82,8 +89,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _subscribeRealtime();
       _restoreDraft();
-      await _loadMessages();
+      // م13 (2026-08-19): جلسة V2 (consultation_chat_sessions) هي مصدر الحقيقة
+      // للوقت — تُحمَّل **أولاً** ثم الرسائل. كان العكس فيظهر «انتهى الوقت/
+      // التجديد» لثانيتين لأن get_chat_messages يحسب من حقول الاستشارة القديمة
+      // (قبل التجديد) ثم تصحّحها V2 لاحقاً.
       await _loadV2Session();
+      await _loadMessages();
     });
   }
 
@@ -207,6 +218,10 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       if (data != null && data['success'] == true) {
         final msgs = List<Map<String, dynamic>>.from(data['messages'] as List? ?? []);
         final info = Map<String, dynamic>.from(data['chat_info'] as Map? ?? {});
+        // م13 (2026-08-19): مع تفعيل V2 لا نعتمد على حساب get_chat_messages
+        // القديم (chat_started_at + duration في جدول الاستشارة) لأنه يسبق
+        // التجديدات ولا يعكس الجلسة الحقيقية — الوقت مصدره جلسة V2 فقط.
+        final v2 = context.read<ConfigProvider>().config?.consultationFlowV2 == true;
         if (mounted) {
           setState(() {
             _messages = older ? [...msgs, ..._messages] : msgs;
@@ -214,8 +229,10 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
             _loadingOlder = false;
             _chatInfo = info;
             _lawyerAlias = (info['lawyer_alias'] ?? 'محامي المكتب').toString();
-            _remainingSeconds = (info['remaining_seconds'] ?? 0) as int;
-            _timeUp = (info['chat_expired'] ?? false) as bool;
+            if (!v2) {
+              _remainingSeconds = (info['remaining_seconds'] ?? 0) as int;
+              _timeUp = (info['chat_expired'] ?? false) as bool;
+            }
             _renewCount = (info['renew_count'] ?? 0) as int;
             _loading = false;
           });
@@ -298,15 +315,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     }
   }
 
-  Future<void> _toggleRecording() async {
-    if (_recording) {
-      final path = await _recorder.stop();
-      _recordingTimer?.cancel();
-      final duration = _recordingSeconds;
-      if (mounted) setState(() { _recording = false; _recordingSeconds = 0; });
-      if (path != null && duration > 0) await _sendVoice(path, duration);
-      return;
-    }
+  /// م14: بدء التسجيل — يُستدعى من ضغطة مطوّلة على زر المايك (مثل واتساب)
+  Future<void> _startRecording() async {
+    if (_recording || _sending) return;
     if (!await _recorder.hasPermission()) {
       _showAlert('يلزم السماح باستخدام الميكروفون لتسجيل رسالة صوتية');
       return;
@@ -315,12 +326,82 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
     if (!mounted) return;
-    setState(() { _recording = true; _recordingSeconds = 0; });
+    setState(() {
+      _recording = true;
+      _recordingSeconds = 0;
+      _cancelRecording = false;
+      _currentRecordingPath = path;
+    });
     _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted || !_recording) return;
       setState(() => _recordingSeconds++);
-      if (_recordingSeconds >= 60) await _toggleRecording();
+      if (_recordingSeconds >= 60) await _stopAndSend();
     });
+  }
+
+  /// م14: إنهاء التسجيل (رفع الإصبع) — يرسل أو يلغي حسب موضع السحب
+  Future<void> _stopAndSend() async {
+    if (!_recording) return;
+    _recordingTimer?.cancel();
+    final path = _currentRecordingPath;
+    final duration = _recordingSeconds;
+    if (mounted) {
+      setState(() { _recording = false; _recordingSeconds = 0; _currentRecordingPath = null; });
+    }
+    if (_cancelRecording) {
+      // سحب لأعلى = إلغاء (واتساب): احذف الملف ولا ترسل شيئاً
+      _cancelRecording = false;
+      if (path != null) {
+        try { await File(path).delete(); } catch (_) {}
+      }
+      return;
+    }
+    if (path != null && duration > 0) await _sendVoice(path, duration);
+  }
+
+  /// م14: إلغاء التسجيل عند انقطاع اللمس (onLongPressCancel)
+  Future<void> _cancelRecordingNow() async {
+    if (!_recording) return;
+    _recordingTimer?.cancel();
+    final path = _currentRecordingPath;
+    if (mounted) {
+      setState(() { _recording = false; _recordingSeconds = 0; _cancelRecording = false; _currentRecordingPath = null; });
+    }
+    if (path != null) {
+      try { await File(path).delete(); } catch (_) {}
+    }
+  }
+
+  // ── رسائل متفائلة (حالات الإرسال) ──
+  String _addPending({required String type, String content = '', String fileUrl = '', String fileName = '', int duration = 0}) {
+    final id = 'local_${DateTime.now().microsecondsSinceEpoch}';
+    _pendingMessages.add({
+      'id': id,
+      'message_type': type,
+      'content': content,
+      'file_url': fileUrl,
+      'file_name': fileName,
+      'duration_seconds': duration,
+      'ts_crt': DateTime.now(),
+      'status': 'sending',
+      'is_mine': true,
+    });
+    if (mounted) setState(() {});
+    _scrollToBottom();
+    return id;
+  }
+
+  void _removePending(String id) {
+    _pendingMessages.removeWhere((m) => m['id'] == id);
+    if (mounted) setState(() {});
+  }
+
+  void _markPendingFailed(String id) {
+    final i = _pendingMessages.indexWhere((m) => m['id'] == id);
+    if (i != -1) {
+      _pendingMessages[i]['status'] = 'failed';
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _discardUploadedFile(String path) async {
@@ -338,6 +419,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   }
 
   Future<void> _sendVoice(String path, int duration) async {
+    // م14: رسالة متفائلة «جارٍ الإرسال» تظهر فوراً (واتساب)
+    final pendingId = _addPending(
+        type: 'voice', fileName: 'رسالة صوتية.m4a', duration: duration);
     setState(() => _sending = true);
     var remotePath = '';
     try {
@@ -351,10 +435,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
       remotePath = data?['path']?.toString() ?? '';
       if (data?['success'] != true || remotePath.isEmpty) throw Exception();
+      // احفظ مسار الملف في الرسالة المتفائلة ليتاح لإعادة المحاولة عند الفشل
+      final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
+      if (pi != -1) _pendingMessages[pi]['file_url'] = remotePath;
       final sent = await _sendMessage('voice', '', fileUrl: remotePath,
-          fileName: 'رسالة صوتية.m4a', duration: duration);
+          fileName: 'رسالة صوتية.m4a', duration: duration, pendingId: pendingId);
       if (!sent) await _discardUploadedFile(remotePath);
     } catch (_) {
+      _markPendingFailed(pendingId);
       if (remotePath.isNotEmpty) await _discardUploadedFile(remotePath);
       _showAlert('فشل إرسال الرسالة الصوتية');
     }
@@ -398,18 +486,21 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
 
   Future<void> _sendText() async {
     final text = _msgCtrl.text.trim();
-    if (text.isEmpty) return;
-    final sent = await _sendMessage('text', text);
-    if (sent) {
-      _msgCtrl.clear();
-      await _saveDraft('');
-    }
+    if (text.isEmpty || _sending) return;
+    // م14: تظهر الرسالة فوراً بحالة «جارٍ الإرسال» بدل الانتظار الصامت
+    _msgCtrl.clear();
+    await _saveDraft('');
+    final pendingId = _addPending(type: 'text', content: text);
+    final sent = await _sendMessage('text', text, pendingId: pendingId);
+    if (!sent && mounted) _markPendingFailed(pendingId);
   }
 
   Future<void> _sendImage() async {
     final picker = ImagePicker();
     final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1280);
     if (file == null) return;
+    // م14: رسالة متفائلة «جارٍ الإرسال» تظهر فوراً (واتساب)
+    final pendingId = _addPending(type: 'image', fileName: file.name);
     setState(() => _sending = true);
     var remotePath = '';
     try {
@@ -434,16 +525,41 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       if (data?['success'] != true || remotePath.isEmpty) {
         throw Exception('CHAT_IMAGE_UPLOAD_FAILED');
       }
-      final sent = await _sendMessage('image', '', fileUrl: remotePath, fileName: file.name);
+      // احفظ مسار الملف في الرسالة المتفائلة ليتاح لإعادة المحاولة عند الفشل
+      final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
+      if (pi != -1) _pendingMessages[pi]['file_url'] = remotePath;
+      final sent = await _sendMessage('image', '', fileUrl: remotePath, fileName: file.name, pendingId: pendingId);
       if (!sent) await _discardUploadedFile(remotePath);
     } catch (_) {
+      _markPendingFailed(pendingId);
       if (remotePath.isNotEmpty) await _discardUploadedFile(remotePath);
       _showAlert('فشل رفع الصورة');
     }
     if (mounted) setState(() => _sending = false);
   }
 
-  Future<bool> _sendMessage(String type, String content, {String? fileUrl, String? fileName, int? duration}) async {
+  /// م14: إعادة محاولة رسالة فاشلة (اضغط على «إعادة المحاولة»)
+  Future<void> _retryPending(Map<String, dynamic> msg) async {
+    final id = msg['id'].toString();
+    final type = (msg['message_type'] ?? 'text').toString();
+    final i = _pendingMessages.indexWhere((m) => m['id'] == id);
+    if (i == -1) return;
+    setState(() => _pendingMessages[i]['status'] = 'sending');
+    if (type == 'text') {
+      final sent = await _sendMessage('text', (msg['content'] ?? '').toString(), pendingId: id);
+      if (!sent) _markPendingFailed(id);
+    } else {
+      final fileUrl = (msg['file_url'] ?? '').toString();
+      if (fileUrl.isEmpty) { _markPendingFailed(id); return; }
+      final sent = await _sendMessage(type, '', fileUrl: fileUrl,
+          fileName: (msg['file_name'] ?? '').toString(),
+          duration: (msg['duration_seconds'] ?? 0) as int, pendingId: id);
+      if (!sent) _markPendingFailed(id);
+    }
+  }
+
+  Future<bool> _sendMessage(String type, String content,
+      {String? fileUrl, String? fileName, int? duration, String? pendingId}) async {
     setState(() => _sending = true);
     var sent = false;
     final clientMessageId = _newClientMessageId();
@@ -459,19 +575,27 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       final data = res.data as Map<String, dynamic>?;
       if (data != null && data['success'] == true) {
         sent = true;
+        // م14: نجح الإرسال ⇒ الرسالة المتفائلة اختفت (ستظهر من الخادم)
+        if (pendingId != null) _removePending(pendingId);
         await _loadMessages();
       } else {
         final error = data?['error']?.toString() ?? '';
         if (error == 'CHAT_EXPIRED_7DAYS') {
+          if (pendingId != null) _markPendingFailed(pendingId);
           _showAlert('انتهت صلاحية المحادثة (7 أيام)');
         } else if (error == 'CHAT_TIME_EXPIRED') {
           _timeUp = true;
+          if (pendingId != null) _markPendingFailed(pendingId);
           _showAlert('انتهى وقت المحادثة — يلزم التجديد للمتابعة');
         } else {
+          if (pendingId != null) _markPendingFailed(pendingId);
           _showAlert('فشل إرسال الرسالة');
         }
       }
-    } catch (e) { _showAlert('فشل إرسال الرسالة'); }
+    } catch (e) {
+      if (pendingId != null) _markPendingFailed(pendingId);
+      _showAlert('فشل إرسال الرسالة');
+    }
     if (mounted) setState(() => _sending = false);
     return sent;
   }
@@ -686,11 +810,11 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
           : Column(children: [
               Expanded(
-                child: _messages.isEmpty
+                child: _messages.isEmpty && _pendingMessages.isEmpty
                     ? const Center(child: Text('لا توجد رسائل بعد', style: TextStyle(color: AppTheme.textGrey)))
                     : ListView.builder(
                         controller: _scrollCtrl, padding: AppTheme.paddingAllMedium,
-                        itemCount: _messages.length + (_hasMore ? 1 : 0),
+                        itemCount: _messages.length + _pendingMessages.length + (_hasMore ? 1 : 0),
                         itemBuilder: (_, i) {
                           if (_hasMore && i == 0) {
                             return Center(
@@ -707,7 +831,12 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                             );
                           }
                           final index = _hasMore ? i - 1 : i;
-                          return _messageBubble(_messages[index]);
+                          if (index < _messages.length) {
+                            return _messageBubble(_messages[index]);
+                          }
+                          // م14: رسالة محلية متفائلة (جارٍ الإرسال / فشل)
+                          final pi = index - _messages.length;
+                          return _messageBubble(_pendingMessages[pi], pending: true);
                         },
                       ),
               ),
@@ -797,14 +926,51 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(color: AppTheme.surfaceBlack, border: Border(top: BorderSide(color: Colors.white12))),
       child: Row(children: [
-        IconButton(
-          icon: Icon(_recording ? Icons.stop_circle : Icons.mic,
-              color: _recording ? AppTheme.errorRed : AppTheme.primaryGold),
-          onPressed: _sending ? null : _toggleRecording,
+        // م14: تسجيل بنمط واتساب — ضغطة مطوّلة للبدء، اترك الزر للإرسال،
+        // اسحب لأعلى خارج الزر للإلغاء
+        Tooltip(
+          message: 'اضغط مطولاً للتسجيل',
+          child: GestureDetector(
+            onLongPressStart: (_) => _startRecording(),
+            onLongPressEnd: (_) => _stopAndSend(),
+            onLongPressMoveUpdate: (d) {
+              final cancelling = d.localPosition.dy < -50;
+              if (cancelling != _cancelRecording && mounted) {
+                setState(() => _cancelRecording = cancelling);
+              }
+            },
+            onLongPressCancel: _cancelRecordingNow,
+            child: Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(
+                color: _recording
+                    ? (_cancelRecording ? AppTheme.errorRed : AppTheme.warningOrange)
+                    : AppTheme.scaffoldBackground,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _recording ? Icons.stop_circle : Icons.mic,
+                color: _recording ? Colors.white : AppTheme.primaryGold,
+                size: 22,
+              ),
+            ),
+          ),
         ),
-        if (_recording)
+        if (_recording) ...[
+          const SizedBox(width: 6),
           Text(_formatTime(_recordingSeconds),
               style: const TextStyle(color: AppTheme.errorRed, fontSize: 11)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              _cancelRecording ? 'اترك الزر للإلغاء' : 'اسحب لأعلى للإلغاء',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: _cancelRecording ? AppTheme.errorRed : AppTheme.textGrey,
+                  fontSize: 10),
+            ),
+          ),
+        ],
         IconButton(icon: const Icon(Icons.image, color: AppTheme.primaryGold), onPressed: _sending ? null : _sendImage),
         Expanded(child: TextField(controller: _msgCtrl, style: const TextStyle(color: AppTheme.textWhite),
           decoration: const InputDecoration(hintText: 'اكتب رسالتك...', hintStyle: TextStyle(color: AppTheme.textGrey, fontSize: 13),
@@ -821,12 +987,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     );
   }
 
-  Widget _messageBubble(Map<String, dynamic> msg) {
+  Widget _messageBubble(Map<String, dynamic> msg, {bool pending = false}) {
     final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-    final isMine = msg['sender_id'] == uid;
+    // م14: الرسالة المتفائلة دائماً «لي» (أرسلها هذا الجهاز للتو)
+    final isMine = pending ? true : msg['sender_id'] == uid;
     final type = (msg['message_type'] ?? 'text').toString();
     final content = (msg['content'] ?? '').toString();
-    final ts = msg['ts_crt']?.toString().substring(11, 16) ?? '';
+    final ts = pending ? '' : msg['ts_crt']?.toString().substring(11, 16) ?? '';
 
     if (type == 'system') {
       return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Center(child: Container(
@@ -858,6 +1025,21 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                 msg['file_signed_url']?.toString() ?? msg['file_url'].toString(),
                 width: 200, height: 150, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 40))),
+            // م14: صورة قيد الرفع بلا رابط بعد — مربع مع مؤشر/أيقونة
+            if (type == 'image' && pending && (msg['file_url'] == null || (msg['file_url'] as String).isEmpty))
+              Container(
+                width: 200, height: 120,
+                decoration: BoxDecoration(
+                  color: AppTheme.scaffoldBackground,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Center(
+                  child: (msg['status'] ?? 'sending') == 'sending'
+                      ? const SizedBox(width: 22, height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGold))
+                      : const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 36),
+                ),
+              ),
             if (type == 'voice') InkWell(
               onTap: () => _playVoice(msg),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -896,7 +1078,40 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                 ),
               ],
             ]),
+            // م14: حالة الرسالة المتفائلة (جارٍ الإرسال / فشل + إعادة محاولة)
+            if (pending) ...[
+              const SizedBox(height: 4),
+              _pendingStatusRow(msg),
+            ],
           ]))),
       ]));
+  }
+
+  /// م14: صف حالة الرسالة المتفائلة — واتساب
+  Widget _pendingStatusRow(Map<String, dynamic> msg) {
+    final status = (msg['status'] ?? 'sending').toString();
+    if (status == 'sending') {
+      return Row(mainAxisSize: MainAxisSize.min, children: const [
+        SizedBox(width: 10, height: 10,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.textGrey)),
+        SizedBox(width: 5),
+        Text('جارٍ الإرسال...',
+            style: TextStyle(color: AppTheme.textGrey, fontSize: 10)),
+      ]);
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.error_outline, size: 14, color: AppTheme.errorRed),
+      const SizedBox(width: 4),
+      TextButton(
+        onPressed: () => _retryPending(msg),
+        style: TextButton.styleFrom(
+          minimumSize: Size.zero,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: const Text('إعادة المحاولة',
+            style: TextStyle(color: AppTheme.errorRed, fontSize: 11)),
+      ),
+    ]);
   }
 }

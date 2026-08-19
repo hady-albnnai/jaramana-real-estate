@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -25,7 +27,8 @@ class UserHomeScreen extends StatefulWidget {
   State<UserHomeScreen> createState() => _UserHomeScreenState();
 }
 
-class _UserHomeScreenState extends State<UserHomeScreen> {
+class _UserHomeScreenState extends State<UserHomeScreen>
+    with WidgetsBindingObserver {
   final _searchCtrl = TextEditingController();
   int? _filterType; // null=الكل, 0=عقار, 1=سيارة
   int? _filterTrx;  // null=الكل, 0=بيع, 1=إيجار
@@ -38,9 +41,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   // 🔒 Fix: نحتفظ بمرجع OfferProvider لاستخدامه في dispose بأمان
   OfferProvider? _offerProvRef;
 
+  /// م7 (2026-08-19): استطلاع خفيف احتياطي — الـ Realtime قد لا يعمل لجلسات
+  /// موظفي الهاتف بلا JWT فيبقى العرض المنشور حديثاً غائباً حتى تحديث يدوي.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (!mounted) return;
+      final offerProv = Provider.of<OfferProvider>(context, listen: false);
+      if (!_isSearching) offerProv.fetchOffers();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final config = Provider.of<ConfigProvider>(context, listen: false);
       await config.loadConfig();
@@ -70,7 +83,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // م7 (2026-08-19): عند العودة للتطبيق نحدّث العروض والإشعارات فوراً —
+    // كان العرض المنشور حديثاً لا يظهر إلا بتحديث يدوي.
+    if (state == AppLifecycleState.resumed) {
+      final offerProv = Provider.of<OfferProvider>(context, listen: false);
+      if (!_isSearching) offerProv.fetchOffers();
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isLoggedIn) {
+        final uid = auth.userModel?.uid ?? '';
+        if (uid.isNotEmpty) {
+          Provider.of<NotificationProvider>(context, listen: false)
+              .fetchNotifications(uid);
+        }
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
     _searchCtrl.dispose();
     _offerProvRef?.unsubscribeRealtime();
     super.dispose();

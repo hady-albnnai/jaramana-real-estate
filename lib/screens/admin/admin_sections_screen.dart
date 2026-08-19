@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -22,10 +24,24 @@ class _AdminSectionsScreenState extends State<AdminSectionsScreen> {
   Map<String, int> _counts = {};
   bool _loading = true;
 
+  /// استطلاع خفيف للعدّادات أثناء فتح الشاشة فقط (م5: الشارات كانت جامدة —
+  /// تُحمَّل مرة واحدة في initState فتبقى «مراجعة العروض = 1» حتى بعد القبول).
+  /// يُلغى عند المغادرة فلا حمل على السيرفر خارجها.
+  Timer? _countsTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _countsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _countsTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -58,8 +74,11 @@ class _AdminSectionsScreenState extends State<AdminSectionsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGold))
-          : ListView(
-              padding: AppTheme.paddingAllLarge,
+          : RefreshIndicator(
+              color: AppTheme.primaryGold,
+              onRefresh: _load,
+              child: ListView(
+                padding: AppTheme.paddingAllLarge,
               children: [
                 const Text(
                   'صفحات متابعة وإدارة وليست صفحات تنفيذ ميداني خاصة بالمنفذ أو المصور.',
@@ -118,6 +137,7 @@ class _AdminSectionsScreenState extends State<AdminSectionsScreen> {
                     _tile(Icons.tune_outlined, 'الإعدادات', '/admin/config'),
                 ]),
               ],
+              ),
             ),
     );
   }

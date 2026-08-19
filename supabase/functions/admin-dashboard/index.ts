@@ -128,6 +128,24 @@ serve(async (req) => {
       return json({ success: true, stats: data });
     }
 
+    // م4 (2026-08-19): جلب بيانات مالكي العروض لشاشة المراجعة. كان الـ Client
+    // يقرأ جدول users مباشرة لكن RLS «Users can read own row only» يحجب قراءة
+    // الغير، وجلسات موظفي الهاتف بلا JWT ⇒ قائمة فارغة ⇒ «مستخدم بدون اسم».
+    // هنا بمفتاح الخدمة (يتجاوز RLS) بعد التحقق من جلسة الإدارة (minRole=3).
+    if (action === "users_by_ids") {
+      const raw = body.ids;
+      const ids = Array.isArray(raw)
+        ? raw.map((x) => String(x)).filter((x) => x && x.length <= 64).slice(0, 200)
+        : [];
+      if (ids.length === 0) return json({ success: true, users: [] });
+      const { data, error } = await supabaseAdmin
+        .from("users")
+        .select("id, nm, usr, ph, pt, role, sts, i_del")
+        .in("id", ids);
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, users: data ?? [] });
+    }
+
     if (action === "revenue_report") {
       if (Number(actor.role) !== 6) {
         return json({ success: false, error: "ONLY_MANAGER_CAN_VIEW_REVENUE" }, 403);

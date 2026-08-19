@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -40,10 +41,20 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
   int _selectedItemType = 0;
   int _selectedSection = 0;
 
+  /// م12 (2026-08-19): استطلاع خفيف للاستشارات أثناء فتح اللوحة — كانت القائمة
+  /// والنقطة الحمراء (status=0) تُحمَّل مرة واحدة في initState فتبقى جامدة
+  /// رغم وصول إشعار «استشارة جديدة». يُلغى عند مغادرة الشاشة.
+  Timer? _consultTimer;
+
   @override
   void initState() {
     super.initState();
     _loadCustomDocumentTemplates();
+    _consultTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      final legal = context.read<LegalProvider>();
+      if (legal.profileSetupComplete) legal.fetchLawyerConsultations();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -71,6 +82,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
 
   @override
   void dispose() {
+    _consultTimer?.cancel();
     _whatsappCtrl.dispose(); _addressCtrl.dispose();
     _taskPropertyCtrl.dispose(); _taskZoneCtrl.dispose(); _taskNotesCtrl.dispose();
     _permanentDocTitleCtrl.dispose();

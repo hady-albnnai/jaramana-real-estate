@@ -12,6 +12,7 @@ import '../../core/constants/db_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/utils/error_utils.dart';
+import '../../services/auth_service.dart';
 
 /// شاشة مراجعة العروض الجديدة للإدارة
 /// تعرض الصور + معلومات المرسل + التفاصيل + كشف العروض المكررة
@@ -56,12 +57,20 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
 
     if (uids.isNotEmpty) {
       try {
-        final usersData = await SupabaseService()
-            .client
-            .from(DbTables.users)
-            .select()
-            .inFilter('id', uids);
-        for (final u in usersData as List) {
+        // م4 (2026-08-19): كانت القراءة المباشرة من جدول users تُرجع فارغة
+        // لأن RLS «Users can read own row only» تحجب قراءة الغير وجلسات موظفي
+        // الهاتف بلا JWT ⇒ «مستخدم بدون اسم» لكل عرض. الجلب الآن عبر الإيدج
+        // بمفتاح الخدمة (بعد تحقق جلسة الإدارة) فيصل الاسم والهاتف والنقاط.
+        final token = await AuthService().getStaffSessionToken();
+        final res = await SupabaseService().invokeFunction('admin-dashboard', body: {
+          'action': 'users_by_ids',
+          'admin_uid': adminUid,
+          'staff_session_token': token,
+          'ids': uids,
+        });
+        final data = res.data as Map<String, dynamic>?;
+        final usersData = (data?['users'] as List?) ?? const [];
+        for (final u in usersData) {
           final m = Map<String, dynamic>.from(u as Map);
           final user = UserModel.fromSupabase(m, m['id'] as String);
           _ownersCache[user.uid] = user;
@@ -764,9 +773,14 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => context.push('/offer/${o.id}'),
-                          icon: const Icon(Icons.preview, color: AppTheme.textWhite),
-                          label: const Text('معاينة',
-                              style: TextStyle(color: AppTheme.textWhite)),
+                          icon: const Icon(Icons.preview, color: AppTheme.textWhite, size: 18),
+                          // م3 (2026-08-19): تصغير الخط + FittedBox — كان 15 يلتف
+                          // لسطرين داخل خانة ضيقة على الشاشات الصغيرة
+                          label: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('معاينة',
+                                style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+                          ),
                         ),
                       ),
                       Container(width: 1, height: 36, color: AppTheme.deepBlack),
@@ -797,18 +811,25 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => _reject(o),
-                          icon: const Icon(Icons.close_rounded, color: AppTheme.errorRed, size: 22),
-                          label: const Text('رفض',
-                              style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.bold, fontSize: 15)),
+                          icon: const Icon(Icons.close_rounded, color: AppTheme.errorRed, size: 18),
+                          label: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('رفض',
+                                style: TextStyle(color: AppTheme.errorRed, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
                         ),
                       ),
                       Container(width: 1, height: 40, color: AppTheme.deepBlack),
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => context.push('/offer/${o.id}'),
-                          icon: const Icon(Icons.visibility_rounded, color: AppTheme.textWhite, size: 22),
-                          label: const Text('معاينة',
-                              style: TextStyle(color: AppTheme.textWhite, fontSize: 15)),
+                          icon: const Icon(Icons.visibility_rounded, color: AppTheme.textWhite, size: 18),
+                          // م3 (2026-08-19): تصغير الخط + FittedBox — كان 15 يلتف لسطرين
+                          label: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('معاينة',
+                                style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+                          ),
                         ),
                       ),
                       Container(width: 1, height: 40, color: AppTheme.deepBlack),
@@ -817,9 +838,12 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                       Expanded(
                         child: TextButton.icon(
                           onPressed: () => _approve(o),
-                          icon: const Icon(Icons.check_circle_rounded, color: AppTheme.successGreen, size: 22),
-                          label: const Text('قبول',
-                              style: TextStyle(color: AppTheme.successGreen, fontWeight: FontWeight.bold, fontSize: 15)),
+                          icon: const Icon(Icons.check_circle_rounded, color: AppTheme.successGreen, size: 18),
+                          label: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('قبول',
+                                style: TextStyle(color: AppTheme.successGreen, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
                         ),
                       ),
                     ],

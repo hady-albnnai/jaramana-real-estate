@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -91,10 +92,21 @@ class _State extends State<LegalConsultationBookingScreen>
   /// لا يوجد مؤقّت دوري: التحديث كل 10 ثوانٍ كان يعيد بناء الشاشة أمام
   /// المستخدم ويضاعف طلبات `user_payments` و`list_my_consultations` بلا داعٍ.
 
+  /// م9 (2026-08-19): استطلاع خفيف أثناء انتظار اعتماد الدفعة — كان المستخدم
+  /// يبقى على «دفعة قيد المراجعة» رغم الاعتماد حتى يعيد فتح الشاشة أو يعيد
+  /// التطبيق للواجهة. الاستطلاع يكمل منطق SYNC-002 (النقل التلقائي لكتابة
+  /// الموضوع فور الاعتماد) ويُلغى عند مغادرة الشاشة.
+  Timer? _pendingTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pendingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!mounted || _submitting) return;
+      // الشاشتان 0 (الرئيسية) و6 (انتظار الدفع) فقط — لا نستطلع غيرها.
+      if (_screen == 0 || _screen == 6) _loadAll();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
   }
 
@@ -140,6 +152,7 @@ class _State extends State<LegalConsultationBookingScreen>
 
   @override
   void dispose() {
+    _pendingTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _subjectCtrl.dispose(); _refCtrl.dispose(); _senderPhoneCtrl.dispose();
     super.dispose();

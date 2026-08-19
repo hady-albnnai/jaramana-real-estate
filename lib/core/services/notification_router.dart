@@ -52,6 +52,9 @@ class NotificationRouter {
     'lawyer_payout_paid': [UserRole.lawyer],
     'legal_consultation_admin': [UserRole.deputy, UserRole.manager],
     'legal_consultation_escalated': [UserRole.deputy, UserRole.manager],
+    // م8 (2026-08-19): دفعة جديدة بانتظار موافقة الإدارة — تخصّ نائب المدير
+    // والمدير (حاملو صلاحية إدارة المدفوعات)
+    'payment_review': [UserRole.deputy, UserRole.manager],
   };
 
   /// نتيجة الحل: المسار أو سبب عدم التنقّل
@@ -204,6 +207,10 @@ class NotificationRouter {
       case 'payment':
       case 'payment_approved':
         return const NotificationTarget('/user/my-payments');
+
+      // م8 (2026-08-19): دفعة جديدة للإدارة → شاشة المدفوعات مباشرة
+      case 'payment_review':
+        return const NotificationTarget('/admin/payments');
 
       // ─────────── ✅ التوثيق والحساب ───────────
       case 'verification':

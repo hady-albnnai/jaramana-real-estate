@@ -400,7 +400,11 @@ class OfferProvider with ChangeNotifier {
       final created = OfferModel.fromSupabase(row, row['id'] as String);
       // مسودة طلب التصوير تُتابع من شاشة الخدمة، ولا تصبح من «عروضي» إلا
       // بعد أن يسلّم المصور الصور وينقلها السيرفر إلى المراجعة.
-      if (!isPhotographyRequest) {
+      // م1 (2026-08-19): لا تُدرج في القائمة العامة إلا العروض **المنشورة**
+      // فعلاً (i_pub=1). كان يُدرج العرض الجديد (sts=1 مراجعة) فيظهر للمستخدم
+      // كأنه نُشر ثم يختفي عند أي تحديث لأن fetchOffers وsubscribeRealtime
+      // يفلتران i_pub=1 — تضليل صريح. «عروضي» هي مكان متابعة العرض قيد المراجعة.
+      if (!isPhotographyRequest && created.iPub == 1) {
         _offers.insert(0, created);
         _sortByPriority(); // ترتيب: المثبّت أولاً حتى لو أُضيف عرض جديد
         notifyListeners();
