@@ -7,7 +7,6 @@ import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import 'add_offer_screen.dart';
-import '../../core/utils/error_utils.dart';
 import '../../core/utils/app_utils.dart';
 
 /// ════════════════════════════════════════════════════════════════════
