@@ -48,6 +48,13 @@ d_notif AS (
      OR ref_id IN (SELECT id::text FROM cons)
      OR ref_id IN (SELECT id::text FROM pays) RETURNING 1
 ),
+d_earn AS (
+  -- 🔧 2026-08-19: أرباح المحامين ترتبط بـ payment_id/consultation_id —
+  -- كانت تُحذف الدفعات قبلها فيفشل بقيود FK (lawyer_earnings_payment_id_fkey)
+  DELETE FROM public.lawyer_earnings
+  WHERE payment_id IN (SELECT id FROM pays)
+     OR consultation_id IN (SELECT id FROM cons) RETURNING 1
+),
 d_pay AS (
   DELETE FROM public.payments
   WHERE uid IN (SELECT id FROM u)
@@ -82,6 +89,7 @@ SELECT
   (SELECT count(*) FROM d_sess)              AS sessions_deleted,
   (SELECT count(*) FROM d_out)               AS outbox_deleted,
   (SELECT count(*) FROM d_notif)             AS notifications_deleted,
+  (SELECT count(*) FROM d_earn)              AS earnings_deleted,
   (SELECT count(*) FROM d_pay)               AS payments_deleted,
   (SELECT count(*) FROM d_res)               AS reservations_deleted,
   (SELECT count(*) FROM d_appt)              AS appointments_deleted,
