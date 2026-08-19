@@ -70,6 +70,7 @@ function Deploy-Fn {
         $del = & curl.exe -sS -o NUL -w "%{http_code}" --max-time 60 -X DELETE "$API/functions/$Slug" -H "Authorization: Bearer $PAT" 2>$null
         Write-Host "  DELETE HTTP $del"
         if ($del -ne '200' -and $del -ne '204') { throw "FAILED delete $Slug (HTTP $del)" }
+        Start-Sleep -Seconds 2
     }
     # Without import_map_path - its null value was breaking the management API
     $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
@@ -80,7 +81,9 @@ function Deploy-Fn {
     $out = Join-Path $env:TEMP ("fn_" + [guid]::NewGuid().ToString('N') + ".json")
 
     Write-Host "  Create $Slug [POST]"
-    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions/$Slug" `
+    # IMPORTANT: create endpoint is /functions (no slug) - slug is only for
+    # GET/PATCH/DELETE. POST to /functions/<slug> returns 404.
+    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions" `
         -H "Authorization: Bearer $PAT" `
         -F "metadata=@$metaTmp;type=application/json" `
         -F "file=@$filePath;type=text/plain" 2>$null
