@@ -7,8 +7,10 @@
 #   1) analyze-debug: يطبع أخطاء flutter analyze/test كـ annotations
 #      (سجلات GitHub Actions محجوبة عن بيئة الوكيل).
 #   2) verify-live: فحص نسخة الدالتين الحيتين بلا أي سر (مفتاح anon عام).
-#   3) deploy: نشر كامل عند التشغيل اليدوي — يتطلب السر SUPABASE_PAT
-#      في Settings → Secrets and variables → Actions.
+#   3) deploy: نشر كامل (SQL idempotent + الدالتان) — يشتغل:
+#      • تلقائياً مع أي دفع على فرع الجلسة (arena/01a01bb6-…)
+#      • أو يدوياً من تبويب Actions (عند وجود الملف على main لاحقاً)
+#      يتطلب السر SUPABASE_PAT في Settings → Secrets and variables → Actions.
 # ═══════════════════════════════════════════════════════════════════
 name: CI and Deploy
 
@@ -109,11 +111,11 @@ jobs:
               echo "::notice title=admin-dashboard-version::UNCLASSIFIED - راجع الـ probe أعلاه";;
           esac
 
-  # ── 3) النشر الكامل (تشغيل يدوي فقط — يتطلب السر SUPABASE_PAT) ──
+  # ── 3) النشر (تلقائي عند الدفع على فرع الجلسة + يدوي عند الطلب) ──
   deploy:
     name: نشر Supabase (SQL + دوال)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/arena/01a01bb6-sweeda-real-estate-office-elc'
     steps:
       - uses: actions/checkout@v4
       - name: معلومات النسخ الحية قبل النشر
@@ -129,8 +131,9 @@ jobs:
         env:
           SUPABASE_PROJECT_REF: vsgkgnjtebjxyqwpuopz
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-          APPLY_MIGRATIONS: ${{ inputs.apply_migrations }}
-          CLEANUP: ${{ inputs.cleanup_test_user }}
+          # عند الدفع التلقائي: تعديلات SQL = نعم (idempotent) · حذف بيانات = لا أبداً
+          APPLY_MIGRATIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.apply_migrations || 'true' }}
+          CLEANUP: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup_test_user || 'false' }}
           TEST_USER_NAME: ${{ inputs.test_user_name }}
           DEPLOY_FUNCTIONS: 'true'
         run: bash scripts/deploy_supabase.sh
