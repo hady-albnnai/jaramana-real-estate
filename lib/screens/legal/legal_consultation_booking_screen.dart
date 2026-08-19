@@ -114,7 +114,9 @@ class _State extends State<LegalConsultationBookingScreen>
     await _loadAll();
     if (!mounted ||
         context.read<ConfigProvider>().config?.consultationFlowV2 != true ||
-        widget.initialFlow.isEmpty) return;
+        widget.initialFlow.isEmpty) {
+      return;
+    }
     _v2Flow = widget.initialFlow;
     _continueChatId = widget.parentConsultationId.isEmpty
         ? null
@@ -353,19 +355,21 @@ class _State extends State<LegalConsultationBookingScreen>
       final nowApproved = approved != null &&
           (_pendingByType[(approved['pkg'] ?? 0) as int] == null);
 
-      if (mounted) setState(() {
-        _credits = credits;
-        _pendingPayment = pending;
-        _pendingV2Intent = pendingV2Intent;
-        _pendingByType = pendingByType;
-        _rejectedPayment = rejected;
-        _approvedPayment = approved;
-        _activeConsultation = active;
-        _rejectedConsultation = rejectedConsult;
-        _needInfoConsultation = needInfo;
-        _previousChats = previous;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _credits = credits;
+          _pendingPayment = pending;
+          _pendingV2Intent = pendingV2Intent;
+          _pendingByType = pendingByType;
+          _rejectedPayment = rejected;
+          _approvedPayment = approved;
+          _activeConsultation = active;
+          _rejectedConsultation = rejectedConsult;
+          _needInfoConsultation = needInfo;
+          _previousChats = previous;
+          _loading = false;
+        });
+      }
 
       // 🔄 SYNC-002: اعتُمدت دفعته وهو ينتظر ⇒ ننقله للخطوة التالية مباشرةً
       // بدل أن يبقى على «قيد المراجعة» ويكتشف بنفسه أن عليه العودة والضغط.

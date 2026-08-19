@@ -175,7 +175,9 @@ class _VerificationsReviewScreenState extends State<VerificationsReviewScreen> {
         }
       }
     }
-    if (!mounted || displayUrl == null) return;
+    // كل المسارات أعلاه إما تُسند displayUrl قيمةً غير فارغة أو تعود مبكراً
+    // (أثبته محلل التدفق) — فحص null هنا ميت ولا حاجة له.
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => Dialog(

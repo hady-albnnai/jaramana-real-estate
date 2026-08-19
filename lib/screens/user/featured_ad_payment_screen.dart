@@ -70,21 +70,6 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
   /// هل القناة المختارة تحتاج رقم هاتف المُحوِّل؟
   bool get _needsSenderPhone => _channel == 'balance' || _channel == 'syriatel_cash';
 
-  String _normalizePhoneToLocalFormat(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return '';
-    if (digits.startsWith('963') && digits.length == 12) {
-      return '0${digits.substring(3)}';
-    }
-    if (digits.startsWith('09') && digits.length == 10) {
-      return digits;
-    }
-    if (digits.startsWith('9') && digits.length == 9) {
-      return '0$digits';
-    }
-    return digits;
-  }
-
   int _priceFor(int weeks, dynamic config) {
     if (config != null) {
       final p = config.featuredAdPrices['w$weeks'];

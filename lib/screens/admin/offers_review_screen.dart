@@ -8,7 +8,6 @@ import '../../models/offer_model.dart';
 import '../../models/user_model.dart';
 import '../../core/services/business_service.dart';
 import '../../core/network/supabase_service.dart';
-import '../../core/constants/db_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/utils/error_utils.dart';
@@ -157,7 +156,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
       await _load();
       // تحديث Provider لإشعار الشاشات الأخرى
       if (mounted) {
-        context.read<AdminProvider>().notifyListeners();
+        context.read<AdminProvider>().refresh();
       }
     } else {
       _snack(result['error']?.toString() ?? 'فشل النشر: ${admin.error ?? ''}');
@@ -208,7 +207,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
       await _load();
       // تحديث Provider لإشعار الشاشات الأخرى
       if (mounted) {
-        context.read<AdminProvider>().notifyListeners();
+        context.read<AdminProvider>().refresh();
       }
     } else {
       _snack(admin.error ?? 'تعذر النشر؛ يمكنك إعادة المحاولة بأمان');
@@ -267,7 +266,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     await _load();
     // تحديث Provider لإشعار الشاشات الأخرى
     if (mounted) {
-      context.read<AdminProvider>().notifyListeners();
+      context.read<AdminProvider>().refresh();
     }
   }
 
@@ -286,7 +285,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
       await _load();
       // تحديث Provider لإشعار الشاشات الأخرى
       if (mounted) {
-        context.read<AdminProvider>().notifyListeners();
+        context.read<AdminProvider>().refresh();
       }
     } else {
       _snack(result['error']?.toString() ?? 'فشل الرفض');

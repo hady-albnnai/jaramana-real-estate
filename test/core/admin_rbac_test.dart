@@ -61,8 +61,9 @@ void main() {
       expect(PermissionService.has(userWithRole(UserRole.deputy), PermissionKeys.managePermissions), isTrue);
     });
 
-    test('app config is manager (6) only', () {
-      expect(PermissionService.has(userWithRole(UserRole.deputy), PermissionKeys.manageConfig), isFalse);
+    test('app config requires deputy (5) or manager (6) — LOGIC_SPEC §7.2', () {
+      expect(PermissionService.has(userWithRole(UserRole.employee), PermissionKeys.manageConfig), isFalse);
+      expect(PermissionService.has(userWithRole(UserRole.deputy), PermissionKeys.manageConfig), isTrue);
       expect(PermissionService.has(userWithRole(UserRole.manager), PermissionKeys.manageConfig), isTrue);
     });
 

@@ -6,7 +6,6 @@ import '../../models/expediting_task_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/legal_provider.dart';
 import '../../widgets/e2e.dart';
-import 'expediter_task_detail_screen.dart';
 
 class ExpediterTasksScreen extends StatefulWidget {
   const ExpediterTasksScreen({super.key});

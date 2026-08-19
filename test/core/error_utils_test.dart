@@ -17,9 +17,14 @@ void main() {
       );
     });
 
-    test('truncates unknown long errors', () {
+    test('generalizes pure-latin unknown errors to UNKNOWN_ERROR (I18N-ERR-001)', () {
       final longError = 'x' * 300;
-      expect(ErrorUtils.normalize(longError).length, 220);
+      expect(ErrorUtils.normalize(longError), 'UNKNOWN_ERROR');
+    });
+
+    test('truncates long Arabic unknown errors to 220 chars', () {
+      final longArabic = 'ع' * 300;
+      expect(ErrorUtils.normalize(longArabic).length, 220);
     });
   });
 }

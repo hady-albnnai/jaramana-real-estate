@@ -1,4 +1,3 @@
-import 'dart:convert';
 
 class LawyerProfileModel {
   final String uid;

@@ -1,9 +1,6 @@
-import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 

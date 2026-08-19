@@ -900,7 +900,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
                     : null,
               ),
               if (enabled) ...slots.asMap().entries.map((entry) {
-                final i = entry.key; final slot = entry.value;
+                final i = entry.key;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: Row(children: [
@@ -968,7 +968,8 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     required String hint,
   }) {
     final controller = _getTimeController(dayKey, slotIndex, field);
-    final currentValue = _avlSlots[dayKey]?[slotIndex]?[field] ?? hint;
+    final slot = _avlSlots[dayKey]?[slotIndex];
+    final currentValue = slot?[field] ?? hint;
     if (controller.text != currentValue) {
       controller.text = currentValue;
       controller.selection = TextSelection.collapsed(offset: currentValue.length);

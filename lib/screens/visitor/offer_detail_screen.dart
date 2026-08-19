@@ -18,7 +18,6 @@ import '../../core/constants/db_constants.dart';
 import '../../widgets/book_appointment_sheet.dart';
 import '../../widgets/video_player_widget.dart';
 import '../../widgets/location_picker.dart';
-import '../../widgets/rating_dialog.dart';
 
 import '../../providers/admin_provider.dart';
 import '../../providers/notification_provider.dart';

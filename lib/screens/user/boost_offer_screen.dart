@@ -137,23 +137,6 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
     }
   }
 
-  String _errorText(String code) {
-    switch (code) {
-      case 'INSUFFICIENT_POINTS':
-        return 'نقاطك غير كافية';
-      case 'OFFER_NOT_FOUND':
-        return 'العرض غير موجود';
-      case 'NOT_OWNER':
-        return 'ليس لديك صلاحية';
-      case 'INVALID_BOOST_TYPE':
-        return 'نوع غير صالح';
-      case 'RENEW_TOO_EARLY':
-        return 'التجديد المجاني متاح فقط قبل يومين من الانتهاء';
-      default:
-        return code;
-    }
-  }
-
   void _snack(String m) {
     if (!mounted) return;
     AppTheme.showSnackBar(context, SnackBar(content: Text(m)));

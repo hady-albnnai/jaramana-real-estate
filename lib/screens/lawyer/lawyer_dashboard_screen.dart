@@ -397,10 +397,12 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final legal = context.watch<LegalProvider>();
-    if (_checking) return const Scaffold(
-      backgroundColor: AppTheme.scaffoldBackground,
-      body: Center(child: CircularProgressIndicator(color: AppTheme.primaryGold)),
-    );
+    if (_checking) {
+      return const Scaffold(
+        backgroundColor: AppTheme.scaffoldBackground,
+        body: Center(child: CircularProgressIndicator(color: AppTheme.primaryGold)),
+      );
+    }
     if (!legal.profileSetupComplete) return _buildSetupScreen();
     // 🗓️ بوابة إلزامية (قرار المالك 2026-08-14): لا يستطيع المحامي استخدام
     // شاشته قبل ضبط أوقاته — وإلا وصلته جلسات حضورية بلا مواعيد ممكنة.
@@ -2577,10 +2579,12 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
   // ──────── تبويب المهام المرسلة ────────
   Widget _buildSentTasksTab(LegalProvider legal) {
     final tasks = legal.lawyerTasks;
-    if (tasks.isEmpty) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.assignment_late, size: 60, color: AppTheme.textGrey.withOpacity(0.4)),
-      AppTheme.gapHeightMedium, const Text('لا توجد مهام', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSubtitle)),
-    ]));
+    if (tasks.isEmpty) {
+      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.assignment_late, size: 60, color: AppTheme.textGrey.withOpacity(0.4)),
+        AppTheme.gapHeightMedium, const Text('لا توجد مهام', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSubtitle)),
+      ]));
+    }
     return RefreshIndicator(onRefresh: () => legal.fetchLawyerTasks(),
       child: ListView.builder(padding: AppTheme.paddingAllLarge, itemCount: tasks.length, itemBuilder: (_, i) {
         final t = tasks[i]; final done = t.checklist.where((c) => c.status >= 2).length;

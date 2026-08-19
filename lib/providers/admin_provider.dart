@@ -36,6 +36,12 @@ class AdminProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
+  /// تحديث خارجي آمن — بديل عن استدعاء notifyListeners من خارج الكلاس
+  /// (محمي في إصدارات Flutter الحديثة). السلوك مطابق حرفياً.
+  void refresh() {
+    notifyListeners();
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();

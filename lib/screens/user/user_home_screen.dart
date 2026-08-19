@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/user_model.dart';
-import '../../models/offer_model.dart';
 import '../../providers/offer_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';

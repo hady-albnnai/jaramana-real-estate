@@ -54,24 +54,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   /// هل القناة المختارة تحتاج رقم هاتف المُحوِّل؟
   bool get _needsSenderPhone => _channel == 'balance' || _channel == 'syriatel_cash';
 
-  String _normalizePhoneToLocalFormat(String phone) {
-    final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.isEmpty) return '';
-    // 9639xxxxxxxx → 09xxxxxxxx
-    if (digits.startsWith('963') && digits.length == 12) {
-      return '0${digits.substring(3)}';
-    }
-    // 09xxxxxxxx (already local)
-    if (digits.startsWith('09') && digits.length == 10) {
-      return digits;
-    }
-    // 9xxxxxxxx (without leading 0)
-    if (digits.startsWith('9') && digits.length == 9) {
-      return '0$digits';
-    }
-    return digits;
-  }
-
   /// 💱 PRICE-UNIT-001 (2026-08-15): السعر النهائي **بالليرة** أو `null`.
   ///
   /// قرار المالك: `pkg.<id>.pr` بالدولار (10 و25)، والتحصيل بالليرة عبر

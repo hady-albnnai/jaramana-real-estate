@@ -29,7 +29,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   String _typeLabel(p) {
     if (p.tp == 1) {
       final w = p.meta['weeks']?.toString() ?? '?';
-      return '⭐ إعلان مميز — ' + w + ' أسبوع';
+      return '⭐ إعلان مميز — $w أسبوع';
     }
     // 2026-08-14: دفعات الاستشارة القانونية (tp=2) كانت تُعرض «باقة مجاني»
     // لأنها سقطت لفرع الباقات وpkg=0 يقابل «المجانية» — تشخيص مضلل للإدارة.
@@ -39,7 +39,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       if (isRenew) return '🔄 تجديد محادثة قانونية';
       return p.pkg == 1 ? '🏢 جلسة حضورية' : '⚖️ استشارة هاتفية';
     }
-    return 'باقة ' + (_pkgNames[p.pkg] ?? '—');
+    return 'باقة ${_pkgNames[p.pkg] ?? '—'}';
   }
   static const _stsNames = {0: 'معلّق', 1: 'مقبول', 2: 'مرفوض'};
 
@@ -346,7 +346,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
               child: Padding(
                 padding: AppTheme.paddingAllSmall,
                 child: Image.network(
-                  finalUrl!,
+                  finalUrl,
                   errorBuilder: (_, __, ___) => const Padding(
                     padding: EdgeInsets.all(24),
                     child: Text('تعذّر تحميل الصورة',

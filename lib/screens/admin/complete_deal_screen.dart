@@ -78,8 +78,8 @@ class _CompleteDealScreenState extends State<CompleteDealScreen> {
           }
         }
       }
-    } catch (e) {
-      print('Error loading deal data: $e');
+    } catch (_) {
+      // أخطاء التحميل لا تُعرض للمستخدم — تُعرض حالة فارغة (الدستور: بلا print).
     }
     
     if (mounted) setState(() => _loading = false);
