@@ -86,7 +86,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Probe admin-dashboard + legal-actions
         run: |
-          ANON=$(grep -oE "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9._-]+" lib/core/constants/supabase_constants.dart | head -1)
+          ANON=$(grep -oE "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9[^']+" lib/core/constants/supabase_constants.dart | head -1)
           BASE=https://vsgkgnjtebjxyqwpuopz.supabase.co
           BODY_AD='{"action":"users_by_ids","admin_uid":"00000000-0000-0000-0000-000000000000","staff_session_token":"bogus","ids":[]}'
           BODY_LA='{"action":"get_chat_session_v2","user_uid":"00000000-0000-0000-0000-000000000000","staff_session_token":"bogus","consultation_id":"00000000-0000-0000-0000-000000000000"}'
