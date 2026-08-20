@@ -207,7 +207,14 @@ class _MyAppState extends State<MyApp> {
               minScaleFactor: 1.0,
               maxScaleFactor: 1.15,
               child: Directionality(
-                  textDirection: TextDirection.rtl, child: child!),
+                textDirection: TextDirection.rtl,
+                // 🔒 2026-08-20: حماية سفلية عامة — أندرويد الحديث يرسم
+                // التطبيق خلف شريط التحكم (الرجوع/القائمة)، فكانت أسفل
+                // الشاشات تظهر تحت أزرار النظام. SafeArea سفلي يرفع محتوى
+                // التطبيق فوق الشريط في كل الشاشات (النوافذ السفلية
+                // المضمّنة SafeArea لا تتضاعف مسافتها).
+                child: SafeArea(top: false, child: child!),
+              ),
             );
           },
         );

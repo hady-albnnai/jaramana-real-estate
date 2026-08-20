@@ -82,6 +82,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   bool _timeUp = false; // الوقت خلص بس المحادثة لسه مفتوحة
   int _renewCount = 0;
 
+  // 🔄 2026-08-20: تنبيهات «بقي 3 دقائق»/«بقي دقيقة واحدة» تُطلق **مرة
+  // واحدة لكل جلسة** — كان الشرط == يكررها عند أي إعادة مزامنة تعيد العداد
+  // فوق العتبة، فيستمر «بقي دقيقة واحدة» بالظهور بعد انتهاء الدقيقة.
+  String? _alertSessionId;
+  bool _alerted3m = false;
+  bool _alerted1m = false;
+
   // 🔄 2026-08-19 (ربط الدفعة بالمحادثة): هل توجد دفعة تجديد قيد مراجعة
   // الإدارة لهذه المحادثة؟ عندها لا نعرض «انتهى — جدد» ولا حوار الخيارات،
   // بل شريط «بانتظار اعتماد الدفعة» (تأتي من get_chat_session_v2).
@@ -207,6 +214,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         }
       }
       final status = (session['status'] ?? '').toString();
+      // 🔄 2026-08-20: تصفير أعلام التنبيهات عند تبدّل الجلسة (تجديد جديد
+      // أو بدء فعلي) — كل جلسة لها تنبيه «3 دقائق» و«دقيقة» مرة واحدة.
+      final sid = (session['id'] ?? '').toString();
+      if (sid.isNotEmpty && sid != _alertSessionId) {
+        _alertSessionId = sid;
+        _alerted3m = false;
+        _alerted1m = false;
+      }
       // 🔄 2026-08-19: دفعة تجديد قيد مراجعة الإدارة لهذه المحادثة؟
       final pendingRenewal = data?['pending_renewal'] == true;
       setState(() {
@@ -281,10 +296,15 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     final v2 = context.read<ConfigProvider>().config?.consultationFlowV2 == true;
     if (v2) {
       // 🔄 2026-08-19: مع V2، _timeUp مصدره حالة الجلسة حصراً (في _loadV2Session).
-      // كان _startTimer يضبط _timeUp=true تلقائياً عند remaining<=0، فتُظهر
-      // جلسة 'ready' (تجديد معتمد — بانتظار استئناف المحامي) واجهة «انتهى —
-      // جدد» وتنبيه «بقي 3 دقائق» الخاطئ. هنا لا نلمس _timeUp إطلاقاً.
-      if (_remainingSeconds <= 0 || _v2Session == null) { _timer?.cancel(); return; }
+      // 🔄 2026-08-20: العدّاد وتنبيهاته **للجلسة الفعلية (active) فقط** —
+      // كانت تُحسب على أي حالة، فجلسة 'ready' (تجديد معتمد بانتظار استئناف
+      // المحامي) تعدّ من المدة كاملة وتُنبه «بقي 3 دقائق» قبل بدء الجلسة
+      // أصلاً، وتتكرر التنبيهات بعد بدء الجلسة المجددة.
+      final st = (_v2Session?['status'] ?? '').toString();
+      if (st != 'active' || _remainingSeconds <= 0 || _v2Session == null) {
+        _timer?.cancel();
+        return;
+      }
     } else if (_timeUp || _remainingSeconds <= 0) {
       setState(() => _timeUp = true);
       return;
@@ -299,8 +319,16 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         }
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
-          if (_remainingSeconds == 180) _showAlert('⏱️ بقي 3 دقائق على انتهاء الوقت الحالي');
-          if (_remainingSeconds == 60) _showAlert('⏱️ بقي دقيقة واحدة!');
+          // 🔄 2026-08-20: عتبات بشرط <= مع أعلام مرة-واحدة لكل جلسة —
+          // «بقي دقيقة واحدة» لم تعد تتكرر بعد انتهاء الدقيقة.
+          if (_remainingSeconds <= 180 && !_alerted3m) {
+            _alerted3m = true;
+            _showAlert('⏱️ بقي 3 دقائق على انتهاء الوقت الحالي');
+          }
+          if (_remainingSeconds <= 60 && !_alerted1m) {
+            _alerted1m = true;
+            _showAlert('⏱️ بقي دقيقة واحدة!');
+          }
         } else {
           _timeUp = true;
           _timer?.cancel();

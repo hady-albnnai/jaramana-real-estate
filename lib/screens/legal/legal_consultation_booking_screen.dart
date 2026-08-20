@@ -322,11 +322,17 @@ class _State extends State<LegalConsultationBookingScreen>
           active = c;
         }
 
-        // 🔄 2026-08-19: استشارة «منتهية» (status=2) لكن عليها جلسة V2 حية
-        // (تجديد معتمد بانتظار المحامي أو جلسة جارية) ⇒ تُعرض للمتابعة —
+        // 🔄 2026-08-19/20: استشارة «منتهية» (status=2) لكن عليها جلسة V2 حية
+        // (تجديد معتمد بانتظار المحامي أو جلسة جارية) ⇒ تعرض كبطاقة **نشطة
+        // وحيدة** — كانت تُضاف لقائمة المحادثات السابقة بينما بطاقة «تم تأكيد
+        // دفعتك — المحادثة جاهزة» تعرض بجانبها ⇒ بطاقتان لنفس المحادثة.
         // الاعتماد على الحقول القديمة كان يعرضها «منتهية» فيُطلب دفع مكرر.
         if (status == 2 && c['has_live_session'] == true) {
-          previous.add(c);
+          if (active == null) {
+            active = c;
+          } else {
+            previous.add(c);
+          }
           continue;
         }
       }
@@ -901,8 +907,15 @@ class _State extends State<LegalConsultationBookingScreen>
       cards.add(_pendingBannerFor(e.key, e.value));
     }
 
-    // ⑤ دفعة مقبولة بانتظار إرسال الطلب
-    if (_approvedPayment != null) cards.add(_approvedCard(_approvedPayment!));
+    // ⑤ دفعة مقبولة بانتظار إرسال الطلب — 🔄 2026-08-20: دفعة التجديد
+    // (meta.continue_chat) لا تعرض بطاقة مستقلة؛ بطاقة المحادثة نفسها
+    // (النشطة) هي المدخل الوحيد — كانت تعرض بطاقتان لنفس المحادثة بعد
+    // التجديد («تم تأكيد دفعتك — المحادثة جاهزة» + بطاقة المحادثة).
+    final apCont =
+        ((_approvedPayment?['meta'] as Map?)?['continue_chat'] ?? '').toString();
+    if (_approvedPayment != null && apCont.isEmpty) {
+      cards.add(_approvedCard(_approvedPayment!));
+    }
 
     // ⑥ استشارة نشطة
     if (_activeConsultation != null) cards.add(_activeCard(_activeConsultation!));
