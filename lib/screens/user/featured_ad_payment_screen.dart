@@ -3,14 +3,12 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/payment_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/payment_model.dart';
 import '../../services/storage_service.dart';
-import '../../core/network/supabase_service.dart';
 import '../../core/validation/input_validators.dart';
 
 /// شاشة شراء «إعلان مميز» مدفوع لعرض محدد (قرار المالك 2026-07-26)
