@@ -140,6 +140,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 🩹 م8 (2026-08-20): إزالة أي بانر تنبيه (بقي 3 دقائق) معلق فور مغادرة
+    // الشاشة — كان يبقى ظاهراً فوق كل الشاشات بعد الخروج من الاستشارات.
+    AppTheme.hideSnackBar(context);
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     _timer?.cancel();
@@ -353,7 +356,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   }
 
   void _showAlert(String msg) {
-    if (!mounted) return;
+    // 🩹 م8 (2026-08-20): لا تنبيه بعد انتهاء المحادثة أو انتهاء الوقت —
+    // كان التنبيه يظهر أحياناً متأخراً بعد نهاية الجلسة.
+    if (!mounted || _timeUp) return;
     AppTheme.showSnackBar(context, SnackBar(content: Text(msg), backgroundColor: AppTheme.warningOrange));
   }
 

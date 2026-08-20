@@ -205,52 +205,59 @@ class AppTheme {
           right: isWide ? (width - 560) / 2 : 16,
           child: SafeArea(
             bottom: false,
-            child: Material(
-              color: Colors.transparent,
-              child: Directionality(
-                textDirection: TextDirection.rtl,
-                child: AnimatedOpacity(
-                  opacity: 1,
-                  duration: const Duration(milliseconds: 180),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: primaryGold.withOpacity(0.35)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 22,
-                          offset: Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          bg == errorRed ? Icons.error_outline : Icons.info_outline,
-                          color: fg,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: DefaultTextStyle(
-                            style: TextStyle(
-                              color: fg,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              height: 1.35,
-                            ),
-                            child: snackBar.content,
+            child: IgnorePointer(
+              // 🩹 م1+م8 (2026-08-20): البانر المعلوماتي (بلا زر إجراء) كان
+              // يغطي شريط الهيدر فيمنع الضغط على الجرس والأزرار، وكان يبقى
+              // عالقاً فوق كل الشاشات. الآن اللمس يعبره كلياً — يظهر ولا يعيق،
+              // ويختفي بمؤقته الذاتي أو عند إظهار بانر أحدث.
+              ignoring: snackBar.action == null,
+              child: Material(
+                color: Colors.transparent,
+                child: Directionality(
+                  textDirection: TextDirection.rtl,
+                  child: AnimatedOpacity(
+                    opacity: 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: primaryGold.withOpacity(0.35)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black45,
+                            blurRadius: 22,
+                            offset: Offset(0, 8),
                           ),
-                        ),
-                        if (snackBar.action != null) ...[
-                          const SizedBox(width: 8),
-                          snackBar.action!,
                         ],
-                      ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            bg == errorRed ? Icons.error_outline : Icons.info_outline,
+                            color: fg,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DefaultTextStyle(
+                              style: TextStyle(
+                                color: fg,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                              child: snackBar.content,
+                            ),
+                          ),
+                          if (snackBar.action != null) ...[
+                            const SizedBox(width: 8),
+                            snackBar.action!,
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

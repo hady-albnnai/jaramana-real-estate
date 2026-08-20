@@ -517,14 +517,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 // ── التطوير ──
                 _aboutHeading('التطوير'),
                 AppTheme.gapHeightLarge,
+                // 🩹 م3 (2026-08-20): شعار المطور كان يُعرض مباشرة على خلفية
+                // الحوار الداكنة فيظهر أسود بلا تفاصيل — الآن على بطاقة فاتحة
+                // بإطار ذهبي فيظهر بكل وضوح مهما كان لون الشعار.
                 Center(
-                  child: ClipRRect(
-                    borderRadius: AppTheme.radiusMedium,
-                    child: Image.asset(
-                      'assets/images/loraneem_tech_logo.png',
-                      // الصورة أصلها عريضة (1200×520) — contain بلا قص
-                      width: 150,
-                      fit: BoxFit.contain,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: AppTheme.radiusMedium,
+                      border: Border.all(color: AppTheme.primaryGold.withOpacity(0.5)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: AppTheme.radiusSmall,
+                      child: Image.asset(
+                        'assets/images/loraneem_tech_logo.png',
+                        // الصورة أصلها عريضة (1200×520) — contain بلا قص
+                        width: 150,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
                 ),

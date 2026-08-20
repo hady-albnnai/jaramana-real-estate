@@ -202,36 +202,47 @@ class _UserHomeScreenState extends State<UserHomeScreen>
             }),
           ),
           // أيقونة الإشعارات مع badge لعدد غير المقروء
+          // 🩹 م1 (2026-08-20): كانت الضغطة على الجرس تتعثر — الشارة كانت
+          // تعترض اللمسات بزاويتها، والهدف صغير. الآن: الشارة شفافة للمس
+          // (IgnorePointer) والضغط يمر لمساحة 48×48 كاملة بحد لمس موسّع.
           Consumer<NotificationProvider>(
             builder: (context, notif, _) {
               final count = notif.unreadCount;
               return Stack(
                 alignment: Alignment.center,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_none,
-                        color: AppTheme.primaryGold),
-                    onPressed: () => context.push('/user/notifications'),
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: IconButton(
+                      tooltip: 'الإشعارات',
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.notifications_none,
+                          color: AppTheme.primaryGold),
+                      onPressed: () => context.push('/user/notifications'),
+                    ),
                   ),
                   if (count > 0)
                     Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: AppTheme.paddingAllSmall,
-                        constraints:
-                            const BoxConstraints(minWidth: 18, minHeight: 18),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.errorRed,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          count > 9 ? '9+' : '$count',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: AppTheme.fontSizeXS,
-                              fontWeight: FontWeight.bold),
+                      top: 6,
+                      right: 6,
+                      child: IgnorePointer(
+                        child: Container(
+                          padding: AppTheme.paddingAllSmall,
+                          constraints:
+                              const BoxConstraints(minWidth: 18, minHeight: 18),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.errorRed,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            count > 9 ? '9+' : '$count',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: AppTheme.fontSizeXS,
+                                fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                     ),

@@ -1211,10 +1211,153 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                   itemCount: shown.length,
-                  itemBuilder: (_, i) => _consultationCard(shown[i], legal),
+                  // 🩹 م9 (2026-08-20): قائمة مضغوطة — سطر لكل استشارة،
+                  // والتفاصيل الكاملة تفتح بالضغط (كانت بطاقات ممتدة فوضوية)
+                  itemBuilder: (_, i) => _consultationListTile(shown[i], legal),
                 ),
         ),
       ]),
+    );
+  }
+
+  /// 🩹 م9 (2026-08-20): صف مضغوط — النوع + الموضوع + العميل + الحالة + الوقت
+  Widget _consultationListTile(Map<String, dynamic> c, LegalProvider legal) {
+    final sts = c['status'] ?? 0;
+    final (label, color) = _consultStatusInfo(sts);
+    final sIdx = (c['service_type'] ?? 0) as int;
+    final isOnsite = sIdx == 1;
+    final subject = (c['subject'] ?? '').toString();
+    final clientName = c['client_nm']?.toString() ?? 'عميل';
+    final tsRaw = c['ts_crt']?.toString() ?? '';
+    final ts = tsRaw.length >= 16 ? tsRaw.substring(5, 16) : tsRaw;
+    final renewCount = (c['renew_count'] as num?)?.toInt() ?? 0;
+    final attachments = (c['attachments'] as List?) ?? const [];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: AppTheme.surfaceBlack,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: color.withOpacity(0.35))),
+      child: ListTile(
+        onTap: () => _openConsultationDetail(c, legal),
+        leading: CircleAvatar(
+          radius: 18,
+          backgroundColor: color.withOpacity(0.15),
+          child: Icon(isOnsite ? Icons.business : Icons.phone_in_talk,
+              color: color, size: 19),
+        ),
+        title: Row(children: [
+          Expanded(
+            child: Text(subject.isEmpty ? 'بدون موضوع' : subject,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: AppTheme.textWhite,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
+          ),
+          if (renewCount > 0)
+            Container(
+              margin: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                  color: AppTheme.primaryGold.withOpacity(0.15),
+                  borderRadius: AppTheme.radiusSmall),
+              child: Text('تجديد ×$renewCount',
+                  style: const TextStyle(
+                      color: AppTheme.primaryGold, fontSize: 10)),
+            ),
+          if (attachments.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: Icon(Icons.attach_file,
+                  color: AppTheme.infoBlue, size: 14),
+            ),
+        ]),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '${isOnsite ? '🏢 جلسة حضورية' : '📞 استشارة هاتفية'} • $clientName • $ts',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppTheme.textGrey, fontSize: 11),
+          ),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: AppTheme.radiusSmall),
+              child: Text(label,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold)),
+            ),
+            const Icon(Icons.chevron_left,
+                color: AppTheme.textGrey, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 🩹 م9 (2026-08-20): تفاصيل الاستشارة كاملة في نافذة سفلية عند الضغط —
+  /// تعيد استخدام بطاقة التفاصيل نفسها بكل أزرار الإجراء (قبول/اعتذار/بدء…)
+  Future<void> _openConsultationDetail(
+      Map<String, dynamic> c, LegalProvider legal) async {
+    final sIdx = (c['service_type'] ?? 0) as int;
+    final isOnsite = sIdx == 1;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: AppTheme.scaffoldBackground,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            controller: scrollCtrl,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                        color: AppTheme.textGrey.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                Text(
+                  isOnsite ? '🏢 تفاصيل الجلسة الحضورية' : '📞 تفاصيل الاستشارة الهاتفية',
+                  style: const TextStyle(
+                      color: AppTheme.primaryGold,
+                      fontSize: AppTheme.fontSizeSubtitle,
+                      fontWeight: FontWeight.bold),
+                ),
+                AppTheme.gapHeightMedium,
+                _consultationCard(c, legal),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

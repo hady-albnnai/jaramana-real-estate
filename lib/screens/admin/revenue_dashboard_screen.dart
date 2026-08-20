@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_utils.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 
@@ -93,23 +94,37 @@ class _RevenueDashboardScreenState extends State<RevenueDashboardScreen> {
         'action': 'mark_lawyer_paid',
         'admin_uid': uid,
         'staff_session_token': token,
-        'lawyer_uid': lawyer['lawyer_uid'],
+        'lawyer_uid': (lawyer['lawyer_uid'] ?? '').toString(),
         'note': note,
       });
-      final data = res.data as Map<String, dynamic>?;
+      // 🩹 م6: قراءة محصَّنة للرد — أي خطأ يُعرض نصاً واضحاً بدل شاشة حمراء
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : <String, dynamic>{};
       if (!mounted) return;
+      final ok = data['success'] == true;
+      final amount = (data['amount'] as num?) ?? payable;
       AppTheme.showSnackBar(context, SnackBar(
-        content: Text(data?['success'] == true
-            ? 'تم تسجيل دفع ${_money((data?['amount'] as num?) ?? payable)} ل.س'
-            : 'تعذّر تسجيل الدفع'),
+        content: Text(ok
+            ? '✅ تم تسجيل دفع ${_money(amount)} ل.س'
+            : 'تعذّر تسجيل الدفع: ${(data['error'] ?? 'خطأ غير معروف')}'),
       ));
-      if (data?['success'] == true) await _load();
-    } catch (_) {
+      if (ok) {
+        try { await _load(); } catch (_) {}
+      }
+    } catch (e) {
       if (mounted) {
         AppTheme.showSnackBar(context,
-            const SnackBar(content: Text('تعذّر تسجيل الدفع')));
+            SnackBar(content: Text('تعذّر تسجيل الدفع: ${ErrorUtils.arabicMessage(e)}')));
       }
     }
+  }
+
+  /// تنسيق النطاق الزمني (from/to) من السيرفر
+  String _fmtRange(dynamic ts) {
+    final dt = DateTime.tryParse(ts?.toString() ?? '')?.toLocal();
+    if (dt == null) return (ts ?? '—').toString();
+    return '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -147,6 +162,17 @@ class _RevenueDashboardScreenState extends State<RevenueDashboardScreen> {
                     _periodChip('هذا الشهر', 'month'),
                     _periodChip('كل الفترة', 'all'),
                   ]),
+                  AppTheme.gapHeightSmall,
+                  // 🩹 م6 (2026-08-20): عرض النطاق الفعلي الذي أعاده السيرفر —
+                  // كان اختيار الفلتر بلا أي دليل مرئي فيبدو «لا يعمل».
+                  if (_report['from'] != null && _report['to'] != null)
+                    Text(
+                      'الفترة: ${_fmtRange(_report['from'])} ← ${_fmtRange(_report['to'])}',
+                      style: const TextStyle(
+                          color: AppTheme.infoBlue,
+                          fontSize: AppTheme.fontSizeCaption,
+                          fontWeight: FontWeight.w600),
+                    ),
                   AppTheme.gapHeightLarge,
                   const Text('المبالغ المقبوضة عبر التطبيق — ليرة سورية',
                       style: TextStyle(color: AppTheme.textGrey,
@@ -186,7 +212,7 @@ class _RevenueDashboardScreenState extends State<RevenueDashboardScreen> {
                   else
                     ...daily.map((raw) {
                       final d = Map<String, dynamic>.from(raw as Map);
-                      return _line(d['day'].toString(),
+                      return _line((d['day'] ?? '—').toString(),
                           (d['office_net'] as num?) ?? 0,
                           suffix: 'صافي المكتب');
                     }),
@@ -202,7 +228,7 @@ class _RevenueDashboardScreenState extends State<RevenueDashboardScreen> {
                       return Card(
                         color: AppTheme.surfaceBlack,
                         child: ListTile(
-                          title: Text(l['lawyer_name'].toString(),
+                          title: Text((l['lawyer_name'] ?? 'محامٍ').toString(),
                               style: const TextStyle(color: AppTheme.textWhite,
                                   fontWeight: FontWeight.bold)),
                           subtitle: Text(

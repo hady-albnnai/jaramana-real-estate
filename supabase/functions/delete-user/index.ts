@@ -92,7 +92,14 @@ serve(async (req) => {
     });
 
     if (error) return json({ success: false, error: error.message }, 400);
-    return json({ success: data === true });
+    // 🩹 م2 (2026-08-20): الدالة ترجع jsonb_build_object('success', true) — جسم
+    // JSON وليس true حرفياً، فكان `data === true` يرجع success:false دائماً
+    // فيُظهر التطبيق «فشل حذف المستخدم» رغم نجاح الحذف فعلياً.
+    const ok =
+      data === true ||
+      (data !== null && typeof data === "object" &&
+        (data as Record<string, unknown>).success === true);
+    return json({ success: ok });
   } catch (error) {
     return json({ success: false, error: error instanceof Error ? error.message : String(error) }, 500);
   }
