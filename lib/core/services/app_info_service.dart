@@ -49,12 +49,13 @@ class AppInfoService {
   /// اسم التطبيق كما سجّله نظام التشغيل.
   static String get appName => _cached?.appName ?? '';
 
-  /// النص المعروض: `1.0.0 (10)`. فارغ إن لم يُهيَّأ ⇒ الواجهة تُخفي البند.
+  /// النص المعروض للمستخدم: `1.0.0` فقط.
+  /// 🩹 (2026-08-20): رقم البناء الداخلي `versionCode` (مثل 10) لم يعد يُعرض —
+  /// قرار المالك. يبقى متاحاً للدعم الفني عبر `buildNumber`.
   static String get displayVersion {
     if (_cached == null) return '';
     final v = version.trim();
-    final b = buildNumber.trim();
     if (v.isEmpty) return '';
-    return b.isEmpty ? v : '$v ($b)';
+    return v;
   }
 }

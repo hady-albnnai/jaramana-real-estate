@@ -51,7 +51,27 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
 
   bool _hasImagesOnly = false;
 
+  /// 🔒 (2026-08-20): معرّفات عروض المستخدم نفسه — تُستبعد كلياً من نتائج
+  /// مطابقة طلبه (كانت تظهر ويظهر معها زر الحجز لأن أعمدة القائمة العامة
+  /// بلا `usr_id` فلا يعمل حارس المقارنة).
+  Set<String> _ownOfferIds = {};
+  bool _ownIdsLoaded = false;
+
   Timer? _refreshTimer;
+
+  /// يجلب معرّفات عروض المستخدم مرة واحدة (من إيدج user-offers الذي يرجع
+  /// الصف الكامل). عند الفشل يستمر التطبيق بلا استبعاد — أفضل من التعطل.
+  Future<void> _ensureOwnIds() async {
+    if (_ownIdsLoaded) return;
+    _ownIdsLoaded = true;
+    if (!mounted) return;
+    final myUid = context.read<AuthProvider>().userModel?.uid ?? '';
+    if (myUid.isEmpty) return;
+    final mine = await context.read<OfferProvider>().fetchUserOffers(myUid);
+    if (!mounted) return;
+    _ownOfferIds =
+        mine.map((o) => o.id).where((s) => s.isNotEmpty).toSet();
+  }
 
   @override
   void initState() {
@@ -75,12 +95,16 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
   Future<void> _checkForNewOffers() async {
     final offerProvider = context.read<OfferProvider>();
     await offerProvider.fetchOffers();
+    await _ensureOwnIds();
 
     final List<OfferModel> newMatches = [];
 
     for (final offer in offerProvider.offers) {
       // فلتر العروض المحذوفة/الملغاة
       if (offer.iDel == 1) continue;
+
+      // 🔒 (2026-08-20): عروض المستخدم نفسه مستبعدة كلياً من المطابقة
+      if (_ownOfferIds.contains(offer.id)) continue;
 
       final scoreData = BusinessService().calculateMatchScore(
         request: widget.requestData,
@@ -121,6 +145,7 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
 
     final offerProvider = context.read<OfferProvider>();
     await offerProvider.fetchOffers();
+    await _ensureOwnIds();
 
     final List<OfferModel> matches = [];
 
@@ -129,6 +154,9 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
     for (final offer in offerProvider.offers) {
       // فلتر العروض المحذوفة/الملغاة
       if (offer.iDel == 1) continue;
+
+      // 🔒 (2026-08-20): عروض المستخدم نفسه مستبعدة كلياً من المطابقة
+      if (_ownOfferIds.contains(offer.id)) continue;
 
       // فلتر نوع المعاملة (شراء / إيجار)
       if (reqTrx != null && offer.trx != reqTrx) continue;
@@ -576,8 +604,9 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
               ],
             ),
             AppTheme.gapHeightMedium,
-            // 🔒 2026-08-20: صاحب العرض لا يرى زر الحجز على عرضه — تظهر بطاقة
-            // العرض ضمن نتائج مطابقة طلب قد يطابق عرضه هو نفسه.
+            // 🔒 (2026-08-20): شبكة أمان إضافية — عروض المالك مستبعدة أصلاً من
+            // قائمة المطابقة (`_ownOfferIds`)، ولو ظهرت (فشل جلب القائمة) لا
+            // يظهر زر الحجز على عرضه إطلاقاً.
             if (context.read<AuthProvider>().userModel?.uid == offer.usrId)
               Row(
                 children: [
