@@ -7,6 +7,7 @@ import '../../core/services/business_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/offer_provider.dart';
 import '../../providers/config_provider.dart';
+import '../../providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/book_appointment_sheet.dart';
 
@@ -575,6 +576,22 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
               ],
             ),
             AppTheme.gapHeightMedium,
+            // 🔒 2026-08-20: صاحب العرض لا يرى زر الحجز على عرضه — تظهر بطاقة
+            // العرض ضمن نتائج مطابقة طلب قد يطابق عرضه هو نفسه.
+            if (context.read<AuthProvider>().userModel?.uid == offer.usrId)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        context.push('/offer/${offer.id}');
+                      },
+                      child: const Text('عرض التفاصيل'),
+                    ),
+                  ),
+                ],
+              )
+            else
             Row(
               children: [
                 Expanded(

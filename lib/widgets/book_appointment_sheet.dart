@@ -510,6 +510,53 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
     final auth = context.watch<AuthProvider>();
     final isLoggedIn = auth.isLoggedIn;
 
+    // 🔒 2026-08-20: حارس دفاعي بالمنبع — صاحب العرض لا يستطيع حجز موعد
+    // على عرضه مهما كان مسار فتح الورقة (السيرفر يرفض بـ CANNOT_BOOK_OWN_OFFER
+    // وهنا لا نظهر نموذج الحجز إطلاقاً).
+    final myUid = auth.userModel?.uid ?? '';
+    final isMyOwnOffer = myUid.isNotEmpty && myUid == widget.offer.usrId;
+    if (isMyOwnOffer) {
+      return SafeArea(
+        child: Container(
+          padding: const EdgeInsets.all(30),
+          decoration: const BoxDecoration(
+            color: AppTheme.deepBlack,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.block, color: AppTheme.warningOrange, size: 60),
+            AppTheme.gapHeightLarge,
+            const Text('لا يمكنك حجز موعد على عرضك',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: AppTheme.textWhite,
+                    fontSize: AppTheme.fontSizeHeadline,
+                    fontWeight: FontWeight.bold)),
+            AppTheme.gapHeightSmall,
+            const Text(
+              'مواعيد المعاينة مخصصة للعملاء الراغبين بمعاينة العرض — أنت صاحب العرض.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeMedium, height: 1.5),
+            ),
+            AppTheme.gapHeightXL,
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGold,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('إغلاق',
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
+
     // الزائر غير المسجّل — نعرض رسالة تسجيل الدخول بدل الـ sheet
     if (!isLoggedIn) {
       return SafeArea(

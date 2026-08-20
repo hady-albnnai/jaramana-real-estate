@@ -726,6 +726,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 children: [
                   const Icon(Icons.arrow_forward_ios, color: AppTheme.primaryGold, size: 14),
                   AppTheme.gapHeightSmall,
+                  // 🔒 2026-08-20: صاحب العرض لا يرى شارة الحجز على عرضه (طلب
+                  // مطابق لعرض يملكه هو نفسه — السيرفر يرفض CANNOT_BOOK_OWN_OFFER).
+                  if (context.read<AuthProvider>().userModel?.uid != o.usrId)
                   GestureDetector(
                     onTap: () => _bookOnOffer(o),
                     child: Container(
@@ -748,6 +751,15 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   void _bookOnOffer(OfferModel offer) {
+    // 🔒 2026-08-20: حارس إضافي — لا نفتح ورقة الحجز على عرض المستخدم نفسه
+    // (السيرفر يرفض أصلاً بـ CANNOT_BOOK_OWN_OFFER).
+    final myUid = context.read<AuthProvider>().userModel?.uid ?? '';
+    if (myUid.isNotEmpty && myUid == offer.usrId) {
+      AppTheme.showSnackBar(context,
+          const SnackBar(content: Text('لا يمكنك حجز موعد على عرضك الخاص')));
+      return;
+    }
+
     if (offer.avl.isEmpty) {
       AppTheme.showSnackBar(context,
           const SnackBar(content: Text('هذا العرض لا يحتوي مواعيد متاحة حالياً')));
