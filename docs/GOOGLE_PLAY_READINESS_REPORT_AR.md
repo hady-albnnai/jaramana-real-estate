@@ -377,7 +377,7 @@ git commit -m "Add legal pages"
 git push origin gh-pages
 ```
 
-**الرابط:** `https://hady-albnnai.github.io/sweeda-real-estate-office-elc/privacy_policy.html`
+**الرابط:** `https://hady-albnnai.github.io/sweeda-real-estate-office-elc/legal/privacy-policy.html`
 
 #### الخيار 2: Netlify/Vercel (مجاني)
 - ارفع الملفات
