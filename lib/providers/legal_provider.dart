@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models/lawyer_profile_model.dart';
 import '../models/expediting_task_model.dart';
@@ -478,6 +479,48 @@ class LegalProvider with ChangeNotifier {
   }
 
   /// 📅 تصرف المحامي بموعد: confirm | complete | cancel
+  /// مولّد UUID محلي (نفس صيغة معرفات الرسائل)
+  String _newUuid() {
+    final rnd = List<int>.generate(16, (_) => Random().nextInt(256));
+    rnd[6] = (rnd[6] & 0x0F) | 0x40;
+    rnd[8] = (rnd[8] & 0x3F) | 0x80;
+    final hex = rnd.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  /// 🏢 2026-08-20: رد المحامي على طلب العميل تغيير موعد الجلسة (تراشق):
+  /// قبول / رفض / اقتراح بديل — بعد النجاح يعاد جلب المواعيد.
+  Future<bool> respondLegalAppointmentChange({
+    required String appointmentId,
+    required bool accept,
+    String reason = '',
+    String? proposedSlot,
+  }) async {
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'respond_legal_appointment_change_v2',
+        'user_uid': _actorUid,
+        'appointment_id': appointmentId,
+        'accept': accept,
+        'reason': reason,
+        'proposed_slot': proposedSlot,
+        'idempotency_key': _newUuid(),
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (_ok(data, 'فشل تنفيذ الرد')) {
+        await fetchLawyerAppointments();
+        return true;
+      }
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> lawyerAppointmentAction({
     required String appointmentId,
     required String apptAction,

@@ -17,6 +17,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../services/storage_service.dart';
 
 class ConsultationChatScreen extends StatefulWidget {
@@ -115,20 +116,25 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       await _loadV2Session();
       await _loadMessages();
     });
-    // 🔄 2026-08-19: استطلاع خفيف (20 ث) — يلتقط اعتماد دفعة التجديد أثناء
-    // انتظار المستخدم (الجلسة الجديدة ready تُنشأ سيرفرياً عند الاعتماد)،
-    // ويلتقط استئناف المحامي/بدء الجلسة. يُلغى عند مغادرة الشاشة.
-    _renewalPollTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+    // 🔄 2026-08-19/20: استطلاع خفيف (5 ث) — يلتقط اعتماد دفعة التجديد
+    // و«المحامي جاهز»/بدء الجلسة فوراً. كان 20 ث فيتأخر تحديث شاشة
+    // المستخدم قرابة دقيقة عند فشل بث Realtime. يُلغى عند مغادرة الشاشة.
+    _renewalPollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       final isLawyer = context.read<AuthProvider>().isLawyer;
       final st = (_v2Session?['status'] ?? '').toString();
-      // 🔄 2026-08-19: يشمل 'ready' — لو فشل بث Realtime (السبب الأصلي لكل
-      // الاستطلاعات هنا) يبقى المستخدم يلتقط استئناف المحامي (join_window)
-      // واعتماد دفعة التجديد بالاستطلاع.
       if (!isLawyer && (_pendingRenewal || _timeUp || st == 'ready')) {
         _loadV2Session();
       }
     });
+    // 🚀 2026-08-20: لحظة وصول أي إشعار (بما فيه «المحامي جاهز» واعتماد
+    // التجديد) يحدّث الجلسة فوراً — مصدر التحديث الأسرع فوق الاستطلاع.
+    NotificationProvider.refreshSignal.addListener(_onPushRefresh);
+  }
+
+  void _onPushRefresh() {
+    if (!mounted) return;
+    _loadV2Session();
   }
 
   @override
@@ -139,6 +145,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     _timer?.cancel();
     _renewalPollTimer?.cancel();
     _recordingTimer?.cancel();
+    NotificationProvider.refreshSignal.removeListener(_onPushRefresh);
     unawaited(_recorder.dispose());
     _audioController?.dispose();
     final channel = _realtimeChannel;
@@ -203,6 +210,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           : null;
       if (session == null || !mounted) return;
       final isLawyer = context.read<AuthProvider>().isLawyer;
+      final isReadOnlyManager = context.read<AuthProvider>().isManager;
       if (session['status'] == 'join_window' && !isLawyer) {
         final joined = await SupabaseService().invokeFunction('legal-actions', body: {
           'action': 'join_chat_session_v2',
@@ -237,7 +245,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       });
       // 🔄 2026-08-19: لا حوار خيارات (تجديد/تحويل/تقييم) بينما دفعة التجديد
       // قيد المراجعة — سيصله إشعار الاعتماد ويُفتح الشريط الجديد تلقائياً.
-      if (_timeUp && !isLawyer && !_endDialogShown && !pendingRenewal) {
+      // 🛡️ 2026-08-20: المدير (وضع المشاهدة) لا يرى حوار التجديد إطلاقاً —
+      // كان يظهر له «جدد/حوّل/قيّم» وكأنه المستخدم رغم أنه مراقب.
+      if (_timeUp && !isLawyer && !isReadOnlyManager && !_endDialogShown && !pendingRenewal) {
         _endDialogShown = true;
         WidgetsBinding.instance.addPostFrameCallback((_) => _showEndOptions());
       }
@@ -1073,11 +1083,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
               const Icon(Icons.timer_off, size: 12, color: AppTheme.warningOrange),
               const SizedBox(width: 4),
               Text(
-                (_v2Session?['status'] ?? '') == 'reversed'
-                    ? 'أُلغي التجديد — جدد للمتابعة'
-                    : (_v2Session?['status'] ?? '') == 'cancelled'
-                        ? 'أُلغيت الجلسة — جدد للمتابعة'
-                        : 'انتهى الوقت — جدد للمتابعة',
+                isReadOnlyManager
+                    ? 'انتهت المحادثة — وضع المشاهدة'
+                    : (_v2Session?['status'] ?? '') == 'reversed'
+                        ? 'أُلغي التجديد — جدد للمتابعة'
+                        : (_v2Session?['status'] ?? '') == 'cancelled'
+                            ? 'أُلغيت الجلسة — جدد للمتابعة'
+                            : 'انتهى الوقت — جدد للمتابعة',
                 style: const TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
             ],
             if (_daysRemaining > 0 && _daysRemaining <= 3) ...[

@@ -467,6 +467,32 @@ serve(async (req) => {
       return json(data as Record<string, unknown>);
     }
 
+    // 🏢 2026-08-20: تراشق تغيير الموعد — طلب العميل لا يُطبَّق إلا بموافقة
+    // المحامي (قرار المالك: نفس مبدأ تراشق مواعيد المعاينة).
+    if (action === "propose_legal_appointment_change_v2") {
+      const { data, error } = await supabaseAdmin.rpc("propose_legal_appointment_change_v2", {
+        p_user_uid: uid,
+        p_appointment_id: body.appointment_id,
+        p_slot: body.slot,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
+    if (action === "respond_legal_appointment_change_v2") {
+      const { data, error } = await supabaseAdmin.rpc("respond_legal_appointment_change_v2", {
+        p_actor_uid: uid,
+        p_appointment_id: body.appointment_id,
+        p_accept: body.accept === true,
+        p_reason: (body.reason ?? "").toString(),
+        p_proposed_dt: body.proposed_slot ?? null,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
     // 🏢 2026-08-20: إعادة اختيار موعد بعد اعتذار المحامي (موعد ملغي sts=3)
     // — نفس الدفعة، مع محامي الاستشارة الحالي (نفسه أو الجديد بحسب سبب
     // الاعتذار). يثبّت الموعد مؤكداً فوراً بلا دفع جديد.

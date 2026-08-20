@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -1981,6 +1982,25 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     final canceledByMe = cnlBy.isNotEmpty && cnlBy == myUid;
     final officeAddress =
         context.read<ConfigProvider>().config?.legalOfficeAddress ?? '';
+    // 🏢 2026-08-20: تراشق تغيير الموعد — آخر جولة من neog تحدد الطرف المنتظر
+    final neogRaw = a['neog'];
+    Map<String, dynamic>? lastNeog;
+    if (neogRaw is List && neogRaw.isNotEmpty) {
+      final last = neogRaw.last;
+      if (last is Map) {
+        lastNeog = Map<String, dynamic>.from(last);
+      }
+    }
+    final neogAction = (lastNeog?['action'] ?? '').toString();
+    final neogBy = (lastNeog?['by'] ?? '').toString();
+    final neogProposed = lastNeog?['proposed'];
+    final neogDt = neogProposed == null
+        ? null
+        : DateTime.tryParse(neogProposed.toString())?.toLocal();
+    final neogText = neogDt == null
+        ? ''
+        : '${neogDt.year}/${neogDt.month.toString().padLeft(2, '0')}/${neogDt.day.toString().padLeft(2, '0')} — '
+            '${neogDt.hour.toString().padLeft(2, '0')}:${neogDt.minute.toString().padLeft(2, '0')}';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -2068,6 +2088,86 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
           ]),
         ],
         if (sts == '1') ...[
+          // 🏢 2026-08-20: تراشق تغيير الموعد (موافقة المحامي)
+          if (neogAction == 'counter' && neogBy == 'user') ...[
+            AppTheme.gapHeightMedium,
+            Container(
+              width: double.infinity,
+              padding: AppTheme.paddingAllMedium,
+              decoration: BoxDecoration(
+                color: AppTheme.warningOrange.withOpacity(0.10),
+                borderRadius: AppTheme.radiusSmall,
+                border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4)),
+              ),
+              child: Text(
+                '🔄 العميل يطلب تغيير الموعد إلى $neogText',
+                style: const TextStyle(
+                    color: AppTheme.warningOrange,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12),
+              ),
+            ),
+            Row(children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _lawyerRespondChange(apptId, accept: true),
+                  icon: const Icon(Icons.check_circle,
+                      color: AppTheme.deepBlack, size: 15),
+                  label: const Text('قبول',
+                      style: TextStyle(
+                          color: AppTheme.deepBlack,
+                          fontWeight: FontWeight.bold,
+                          fontSize: AppTheme.fontSizeSmall)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.successGreen),
+                ),
+              ),
+              AppTheme.gapWidthSmall,
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _lawyerRespondChange(apptId, accept: false),
+                  style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.errorRed)),
+                  child: const Text('رفض',
+                      style: TextStyle(
+                          color: AppTheme.errorRed,
+                          fontSize: AppTheme.fontSizeSmall)),
+                ),
+              ),
+            ]),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _lawyerCounterChange(apptId),
+                icon: const Icon(Icons.event_repeat,
+                    color: AppTheme.primaryGold, size: 15),
+                label: const Text('اقتراح وقت آخر',
+                    style: TextStyle(
+                        color: AppTheme.primaryGold,
+                        fontSize: AppTheme.fontSizeSmall)),
+                style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.primaryGold)),
+              ),
+            ),
+          ] else if (neogAction == 'counter' && neogBy == 'lawyer') ...[
+            AppTheme.gapHeightMedium,
+            Container(
+              width: double.infinity,
+              padding: AppTheme.paddingAllMedium,
+              decoration: BoxDecoration(
+                color: AppTheme.infoBlue.withOpacity(0.10),
+                borderRadius: AppTheme.radiusSmall,
+                border: Border.all(color: AppTheme.infoBlue.withOpacity(0.4)),
+              ),
+              child: Text(
+                '⏳ بانتظار رد العميل على وقتك المقترح: $neogText',
+                style: const TextStyle(
+                    color: AppTheme.infoBlue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12),
+              ),
+            ),
+          ],
           AppTheme.gapHeightMedium,
           Row(children: [
             Expanded(child: OutlinedButton.icon(
@@ -2087,6 +2187,96 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         ],
       ]),
     );
+  }
+
+  /// مولّد UUID محلي (لتراشق تغيير الموعد)
+  String _legalChangeUuid() {
+    final rnd = List<int>.generate(16, (_) => Random().nextInt(256));
+    rnd[6] = (rnd[6] & 0x0F) | 0x40;
+    rnd[8] = (rnd[8] & 0x3F) | 0x80;
+    final hex = rnd.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  /// 🏢 2026-08-20: قبول/رفض طلب العميل تغيير الموعد (تراشق)
+  Future<void> _lawyerRespondChange(String apptId, {required bool accept}) async {
+    if (apptId.isEmpty) return;
+    String reason = '';
+    if (!accept) {
+      final ctrl = TextEditingController();
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.surfaceBlack,
+          title: const Text('رفض طلب تغيير الموعد',
+              style: TextStyle(color: AppTheme.errorRed, fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('سيبقى موعد العميل الحالي كما هو — أضف سبباً اختيارياً.',
+                style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl, maxLines: 2, maxLength: 200,
+              style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'سبب الرفض (اختياري)',
+                filled: true, fillColor: AppTheme.scaffoldBackground,
+              ),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+              child: const Text('تأكيد الرفض', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      reason = ctrl.text.trim();
+      ctrl.dispose();
+      if (ok != true) return;
+    }
+    final legal = context.read<LegalProvider>();
+    final done = await legal.respondLegalAppointmentChange(
+        appointmentId: apptId, accept: accept, reason: reason);
+    if (!mounted) return;
+    _snack(done
+        ? (accept
+            ? '✅ تم تطبيق الموعد الجديد وإشعار العميل'
+            : 'رُفض الطلب — موعد العميل الحالي باقٍ')
+        : (legal.error ?? 'فشل تنفيذ الرد'), bg: done ? null : AppTheme.errorRed);
+  }
+
+  /// 🏢 2026-08-20: اقتراح المحامي وقتاً بديلاً (تراشق)
+  Future<void> _lawyerCounterChange(String apptId) async {
+    if (apptId.isEmpty) return;
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(date),
+    );
+    if (time == null) return;
+    final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final legal = context.read<LegalProvider>();
+    final done = await legal.respondLegalAppointmentChange(
+      appointmentId: apptId,
+      accept: false,
+      proposedSlot: dt.toUtc().toIso8601String(),
+    );
+    if (!mounted) return;
+    _snack(done
+        ? '🔄 أُرسل اقتراحك للعميل — بانتظار رده'
+        : (legal.error ?? 'فشل إرسال الاقتراح'), bg: done ? null : AppTheme.errorRed);
   }
 
   /// تنفيذ إجراء على موعد: confirm | complete | cancel.
@@ -2228,6 +2418,11 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
             Expanded(child: _earningSummary('تم دفعها', _money(paid),
                 AppTheme.infoBlue)),
           ]),
+          const SizedBox(height: 8),
+          const Text(
+            '💡 تُسجَّل دفعاتك من قبل الإدارة من «لوحة الإيرادات» — عندما تُدفع حصتك تنتقل من «لي عند المكتب» إلى «تم دفعها» مع تاريخ الدفع.',
+            style: TextStyle(color: AppTheme.textGrey, fontSize: 11, height: 1.4),
+          ),
           AppTheme.gapHeightLarge,
           if (rows.isEmpty)
             const Padding(
@@ -2257,16 +2452,32 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
                 'phone_renewal' => 'تجديد محادثة',
                 _ => 'جلسة حضورية',
               };
+              final paidAt = (row['paid_at'] ?? '').toString();
+              final paidDate = paidAt.length >= 10
+                  ? paidAt.substring(0, 10).split('-').reversed.join('/')
+                  : '';
               return Card(
                 color: AppTheme.surfaceBlack,
                 child: ListTile(
-                  leading: const Icon(Icons.payments_outlined,
-                      color: AppTheme.primaryGold),
+                  leading: Icon(
+                    status == 'paid'
+                        ? Icons.check_circle
+                        : status == 'earned'
+                            ? Icons.schedule
+                            : Icons.payments_outlined,
+                    color: status == 'paid'
+                        ? AppTheme.infoBlue
+                        : status == 'earned'
+                            ? AppTheme.successGreen
+                            : AppTheme.primaryGold),
                   title: Text('$kind — ${_money((row['lawyer_amount'] as num?) ?? 0)} ل.س',
                       style: const TextStyle(color: AppTheme.textWhite,
                           fontWeight: FontWeight.bold)),
-                  subtitle: Text(statusText,
-                      style: TextStyle(color: color, fontSize: 11)),
+                  subtitle: Text(
+                    status == 'paid' && paidDate.isNotEmpty
+                        ? '$statusText — بتاريخ $paidDate'
+                        : statusText,
+                    style: TextStyle(color: color, fontSize: 11)),
                 ),
               );
             }),

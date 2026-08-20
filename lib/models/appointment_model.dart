@@ -159,4 +159,7 @@ class AppointmentModel {
     if (raw == null) return null;
     try { return DateTime.parse(raw.toString()); } catch (_) { return null; }
   }
+
+  /// آخر إجراء بالتراشق ('counter' | 'accept' | 'reject')
+  String? get lastNeogAction => lastNeogRound?['action'] as String?;
 }

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,7 @@ import '../../core/network/supabase_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import '../../widgets/rating_dialog.dart';
 import '../../core/utils/app_utils.dart';
+import '../../core/utils/error_utils.dart';
 import '../../models/appointment_model.dart';
 
 class MyAppointmentsScreen extends StatefulWidget {
@@ -496,19 +498,95 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
 
             if (sts == 1 && isLegal && appt.consultationId.isNotEmpty) ...[
               AppTheme.gapHeightMedium,
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push(
-                    '/legal/consultations?flow=onsite_reschedule'
-                    '&parent=${appt.consultationId}&appointment=${appt.id}',
+              // 🏢 2026-08-20: تراشق تغيير الموعد (موافقة المحامي)
+              if (appt.lastNeogAction == 'counter' && appt.lastProposedBy == 'user') ...[
+                Container(
+                  width: double.infinity,
+                  padding: AppTheme.paddingAllMedium,
+                  decoration: BoxDecoration(
+                    color: AppTheme.warningOrange.withOpacity(0.10),
+                    borderRadius: AppTheme.radiusSmall,
+                    border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4)),
                   ),
-                  icon: const Icon(Icons.event_repeat,
-                      color: AppTheme.primaryGold),
-                  label: const Text('تغيير الموعد بنفس الدفعة',
-                      style: TextStyle(color: AppTheme.primaryGold)),
+                  child: Text(
+                    '⏳ أُرسل طلب تغيير الموعد إلى ${AppUtils.formatTimestamp(appt.lastProposedDt, pattern: 'yyyy/MM/dd HH:mm')} — بانتظار موافقة المحامي',
+                    style: const TextStyle(
+                        color: AppTheme.warningOrange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12),
+                  ),
                 ),
-              ),
+              ] else if (appt.lastNeogAction == 'counter' &&
+                  appt.lastProposedBy == 'lawyer') ...[
+                Container(
+                  width: double.infinity,
+                  padding: AppTheme.paddingAllMedium,
+                  decoration: BoxDecoration(
+                    color: AppTheme.infoBlue.withOpacity(0.10),
+                    borderRadius: AppTheme.radiusSmall,
+                    border: Border.all(color: AppTheme.infoBlue.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    '🔄 اقترح المحامي وقتاً بديلاً: ${AppUtils.formatTimestamp(appt.lastProposedDt, pattern: 'yyyy/MM/dd HH:mm')}',
+                    style: const TextStyle(
+                        color: AppTheme.infoBlue,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12),
+                  ),
+                ),
+                Row(children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _respondLegalChange(appt, accept: true),
+                      icon: const Icon(Icons.check_circle,
+                          color: AppTheme.deepBlack, size: 16),
+                      label: const Text('قبول الاقتراح',
+                          style: TextStyle(
+                              color: AppTheme.deepBlack,
+                              fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.successGreen),
+                    ),
+                  ),
+                  AppTheme.gapWidthSmall,
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _respondLegalChange(appt, accept: false),
+                      style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppTheme.errorRed)),
+                      child: const Text('رفض',
+                          style: TextStyle(color: AppTheme.errorRed)),
+                    ),
+                  ),
+                ]),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      '/legal/consultations?flow=onsite_reschedule'
+                      '&parent=${appt.consultationId}&appointment=${appt.id}',
+                    ),
+                    icon: const Icon(Icons.event_repeat,
+                        color: AppTheme.primaryGold, size: 16),
+                    label: const Text('اقتراح وقت آخر',
+                        style: TextStyle(color: AppTheme.primaryGold)),
+                  ),
+                ),
+              ] else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      '/legal/consultations?flow=onsite_reschedule'
+                      '&parent=${appt.consultationId}&appointment=${appt.id}',
+                    ),
+                    icon: const Icon(Icons.event_repeat,
+                        color: AppTheme.primaryGold),
+                    label: const Text('تغيير الموعد بنفس الدفعة (بموافقة المحامي)',
+                        style: TextStyle(color: AppTheme.primaryGold)),
+                  ),
+                ),
+              ],
               AppTheme.gapHeightSmall,
               SizedBox(
                 width: double.infinity,
@@ -984,6 +1062,90 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     if (time == null) return null;
 
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
+  /// مولّد UUID محلي (نفس صيغة client message ids)
+  String _legalChangeUuid() {
+    final rnd = List<int>.generate(16, (_) => math.Random().nextInt(256));
+    rnd[6] = (rnd[6] & 0x0F) | 0x40;
+    rnd[8] = (rnd[8] & 0x3F) | 0x80;
+    final hex = rnd.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  /// 🏢 2026-08-20: رد المستخدم على اقتراح المحامي البديل (تراشق تغيير
+  /// الموعد) — قبول يُطبَّق فوراً، ورفض يُبقي الموعد الحالي.
+  Future<void> _respondLegalChange(AppointmentModel appt,
+      {required bool accept}) async {
+    final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+    if (uid.isEmpty) return;
+    String reason = '';
+    if (!accept) {
+      final ctrl = TextEditingController();
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.surfaceBlack,
+          title: const Text('رفض اقتراح المحامي',
+              style: TextStyle(color: AppTheme.errorRed, fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('سيبقى موعدك الحالي كما هو — أضف سبباً اختيارياً.',
+                style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl, maxLines: 2, maxLength: 200,
+              style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'سبب الرفض (اختياري)',
+                filled: true, fillColor: AppTheme.scaffoldBackground,
+              ),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+              child: const Text('تأكيد الرفض', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      reason = ctrl.text.trim();
+      ctrl.dispose();
+      if (ok != true) return;
+    }
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'respond_legal_appointment_change_v2',
+        'user_uid': uid,
+        'appointment_id': appt.id,
+        'accept': accept,
+        'reason': reason,
+        'idempotency_key': _legalChangeUuid(),
+      });
+      final data = res.data is Map
+          ? Map<String, dynamic>.from(res.data as Map)
+          : null;
+      if (data?['success'] != true) {
+        throw Exception(data?['error'] ?? 'CHANGE_RESPONSE_FAILED');
+      }
+      if (mounted) {
+        AppTheme.showSnackBar(context, SnackBar(
+          content: Text(accept
+              ? '✅ تم تطبيق الموعد الجديد'
+              : 'رفضت اقتراح المحامي — موعدك الحالي باقٍ'),
+        ));
+        _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        AppTheme.showSnackBar(context,
+            SnackBar(content: Text(ErrorUtils.arabicMessage(e))));
+      }
+    }
   }
 
   Future<void> _cancelLegalAppointment(AppointmentModel appt) async {
