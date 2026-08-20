@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
@@ -513,7 +514,7 @@ class _LegalConsultationsAdminScreenState
     final ok = await legal.adminAssignConsultation(
         consultationId: c['id'].toString(), lawyerUid: picked);
     if (!mounted) return;
-    _snack(ok ? '✅ أُسند الطلب وأُشعر الطرفان' : (legal.error ?? 'فشل الإسناد'),
+    _snack(ok ? '✅ أُسند الطلب وأُشعر الطرفان' : ErrorUtils.arabicMessage(legal.error ?? 'ASSIGN_FAILED'),
         bg: ok ? null : AppTheme.errorRed);
   }
 
@@ -578,7 +579,7 @@ class _LegalConsultationsAdminScreenState
       sourceConsultationId: c['id'].toString(),
     );
     if (!mounted) return;
-    _snack(done ? '🎁 مُنح الرصيد وأُشعر العميل' : (legal.error ?? 'فشل المنح'),
+    _snack(done ? '🎁 مُنح الرصيد وأُشعر العميل' : ErrorUtils.arabicMessage(legal.error ?? 'CREDIT_GRANT_FAILED'),
         bg: done ? null : AppTheme.errorRed);
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_theme.dart';
@@ -132,7 +133,7 @@ class _ExpediterTaskDetailScreenState extends State<ExpediterTaskDetailScreen> {
       await Future.delayed(const Duration(milliseconds: 900));
       if (mounted) Navigator.of(context).pop();
     } else {
-      _snack(context.read<LegalProvider>().error ?? 'فشل إتمام المهمة');
+      _snack(ErrorUtils.arabicMessage(context.read<LegalProvider>().error ?? 'TASK_FAILED'));
     }
   }
 

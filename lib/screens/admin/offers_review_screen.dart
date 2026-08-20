@@ -159,7 +159,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         context.read<AdminProvider>().refresh();
       }
     } else {
-      _snack(result['error']?.toString() ?? 'فشل النشر: ${admin.error ?? ''}');
+      _snack(ErrorUtils.arabicMessage(result['error'] ?? admin.error ?? 'PUBLISH_FAILED'));
     }
   }
 
@@ -210,7 +210,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         context.read<AdminProvider>().refresh();
       }
     } else {
-      _snack(admin.error ?? 'تعذر النشر؛ يمكنك إعادة المحاولة بأمان');
+      _snack(ErrorUtils.arabicMessage(admin.error ?? 'PUBLISH_FAILED'));
     }
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
@@ -114,7 +115,8 @@ class _MyAppState extends State<MyApp> {
       await NotificationService.initialize();
       if (mounted) setState(() => _initialized = true);
     } catch (e) {
-      if (mounted) setState(() => _initError = e.toString());
+      // لا يُعرض خطأ الدالة الخام — رسالة عربية موحدة (2026-08-20)
+      if (mounted) setState(() => _initError = ErrorUtils.arabicMessage(e));
     }
   }
 

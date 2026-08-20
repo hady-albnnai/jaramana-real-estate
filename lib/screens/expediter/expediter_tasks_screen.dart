@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -162,7 +163,7 @@ class _ExpediterTasksScreenState extends State<ExpediterTasksScreen> {
                   const Text('تعذّر جلب المهام',
                       style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold)),
                   AppTheme.gapHeightSmall,
-                  Text(context.read<LegalProvider>().error ?? '',
+                  Text(ErrorUtils.arabicMessage(context.read<LegalProvider>().error ?? 'TASKS_FETCH_FAILED'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
                   AppTheme.gapHeightLarge,

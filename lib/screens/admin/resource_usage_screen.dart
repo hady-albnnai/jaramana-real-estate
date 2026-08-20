@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/admin_provider.dart';
@@ -33,7 +34,7 @@ class _ResourceUsageScreenState extends State<ResourceUsageScreen> {
     if (!mounted) return;
     setState(() {
       _usage = data;
-      _error = data.isEmpty ? (context.read<AdminProvider>().error ?? 'فشل جلب بيانات الاستهلاك') : null;
+      _error = data.isEmpty ? ErrorUtils.arabicMessage(context.read<AdminProvider>().error ?? 'USAGE_FETCH_FAILED') : null;
       _loading = false;
     });
   }

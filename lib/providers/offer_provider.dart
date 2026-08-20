@@ -315,9 +315,44 @@ class OfferProvider with ChangeNotifier {
 
         Future<OfferModel?> fetchOfferById(String offerId, {String? userId}) async {
         try {
-          /// 🛡️ المحاولة الأولى: مباشرة من الجدول (لأي مستخدم مسجل)
-          /// RLS يسمح للمنشور و لأصحاب العرض و للإدارة (role >= 2)
+          // 🩹 2026-08-20 (ملاحظتا الحجز/الحظر): للمستخدم المسجَّل نجلب عبر
+          // الإيدج **أولاً** — يرجع الصف الكامل بمعرّف المالك (usr_id)، بينما
+          // القراءة المباشرة تعتمد أعمدة عامة بلا usr_id (SEC-004) ⇒ كان
+          // المالك يشاهد عرضه وكأنه عرض غريب: زر الحجز والتبليغ والحظر ظاهرة.
           if (userId != null && userId.isNotEmpty) {
+            final response = await SupabaseService().invokeFunction(
+              'user-offers',
+              body: {
+                'action': 'get_by_id',
+                'offer_id': offerId,
+                'user_uid': userId,
+              },
+            );
+            final data = response.data;
+            if (data != null && data['success'] == true) {
+              final offerRaw = data['offer'];
+              OfferModel? fromRaw(dynamic raw) {
+                if (raw is Map) {
+                  final row = Map<String, dynamic>.from(raw);
+                  return OfferModel.fromSupabase(row, row['id'] as String);
+                }
+                if (raw is List && raw.isNotEmpty && raw.first is Map) {
+                  final row = Map<String, dynamic>.from(raw.first as Map);
+                  return OfferModel.fromSupabase(row, row['id'] as String);
+                }
+                return null;
+              }
+
+              final offer = fromRaw(offerRaw);
+              if (offer != null) {
+                await _enrichOwnerLabels([offer]);
+                return offer;
+              }
+            }
+          }
+
+          /// 🛡️ المحاولة الثانية: مباشرة من الجدول (زائر أو فشل الإيدج)
+          {
             final directRow = await SupabaseService().client
                 .from(DbTables.offers)
                 .select(kOfferPublicColumns)
@@ -325,36 +360,6 @@ class OfferProvider with ChangeNotifier {
                 .maybeSingle();
             if (directRow != null) {
               final offer = OfferModel.fromSupabase(Map<String, dynamic>.from(directRow), directRow['id'] as String);
-              await _enrichOwnerLabels([offer]);
-              return offer;
-            }
-          }
-
-          /// 🛡️ المحاولة الثانية: عبر Edge Function (للمستخدمين العاديين)
-          /// الدالة get_offer_by_id_internal ترجع SETOF offers (مصفوفة)
-          final response = await SupabaseService().invokeFunction(
-            'user-offers',
-            body: {
-              'action': 'get_by_id',
-              'offer_id': offerId,
-              'user_uid': userId,
-            },
-          );
-          final data = response.data;
-          if (data != null && data['success'] == true) {
-            final offerRaw = data['offer'];
-            // الدالة ترجع مصفوفة (SETOF) — نأخذ أول عنصر
-            if (offerRaw is List) {
-              if (offerRaw.isNotEmpty) {
-                final row = Map<String, dynamic>.from(offerRaw.first as Map);
-                final offer = OfferModel.fromSupabase(row, row['id'] as String);
-                await _enrichOwnerLabels([offer]);
-                return offer;
-              }
-            } else if (offerRaw is Map) {
-              // في حال غيّرنا Edge Function لترجع كائن مباشرة
-              final row = Map<String, dynamic>.from(offerRaw);
-              final offer = OfferModel.fromSupabase(row, row['id'] as String);
               await _enrichOwnerLabels([offer]);
               return offer;
             }

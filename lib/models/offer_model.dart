@@ -50,6 +50,8 @@ class OfferModel {
   final String socTxt;
   final int iDup;
   final String dupOf;
+  // 📸 2026-08-20: وسم عرض طلب التصوير (photo_req) — لعرض عداد الحصة بدقة
+  final int photoReq;
   // avl: أيام وفترات المواعيد المتاحة للمعاينة
   // البنية: {"wed": ["10:00-13:00", "15:00-17:00"], "fri": ["09:00-11:00"]}
   final Map<String, List<String>> avl;
@@ -126,6 +128,7 @@ class OfferModel {
     this.socTxt = '',
     this.iDup = 0,
     this.dupOf = '',
+    this.photoReq = 0,
     Map<String, List<String>>? avl,
     this.addedBy,
     this.iPin = 0,
@@ -186,6 +189,7 @@ class OfferModel {
       socTxt: data['soc_txt'] ?? '',
       iDup: data['i_dup'] ?? 0,
       dupOf: data['dup_of'] ?? '',
+      photoReq: data['photo_req'] ?? 0,
       avl: _parseAvl(data['avl']),
       addedBy: data['added_by'],
       iPin: data['i_pin'] ?? 0,
@@ -218,6 +222,7 @@ class OfferModel {
       'vws': vws, 'fvs': fvs, 'i_pub': iPub, 'i_soc': iSoc,
       'soc_pub': socPub, 'soc_txt': socTxt, 'i_dup': iDup,
       'dup_of': dupOf.isEmpty ? null : dupOf,
+      'photo_req': photoReq,
       'avl': avl,
       'added_by': addedBy,
       'i_pin': iPin, 'i_bst': iBst, 'i_fms': iFms,

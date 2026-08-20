@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 import '../../models/user_model.dart';
 import '../../providers/admin_provider.dart';
@@ -63,9 +64,9 @@ class _VerificationsReviewScreenState extends State<VerificationsReviewScreen> {
       );
       _load();
     } else {
-      final error = context.read<AdminProvider>().error ?? 'خطأ غير معروف';
+      final error = ErrorUtils.arabicMessage(context.read<AdminProvider>().error ?? 'VERIFICATION_FAILED');
       AppTheme.showSnackBar(context,
-        SnackBar(content: Text('❌ فشل الاعتماد: $error'), backgroundColor: AppTheme.errorRed, duration: const Duration(seconds: 5)),
+        SnackBar(content: Text('❌ $error'), backgroundColor: AppTheme.errorRed, duration: const Duration(seconds: 5)),
       );
     }
   }

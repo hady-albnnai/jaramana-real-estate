@@ -809,7 +809,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
       legal.fetchLawyerConsultations();
       legal.fetchLawyerAppointments();
     } else {
-      _snack(legal.error ?? 'فشل الحفظ', bg: AppTheme.errorRed);
+      _snack(ErrorUtils.arabicMessage(legal.error ?? 'SAVE_FAILED'), bg: AppTheme.errorRed);
     }
   }
 
@@ -1151,7 +1151,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
             const Text('تعذّر جلب الاستشارات',
                 style: TextStyle(color: AppTheme.errorRed, fontSize: AppTheme.fontSizeSubtitle, fontWeight: FontWeight.bold)),
             AppTheme.gapHeightSmall,
-            Text(legal.error!, textAlign: TextAlign.center,
+            Text(ErrorUtils.arabicMessage(legal.error ?? 'CONSULTATIONS_FETCH_FAILED'), textAlign: TextAlign.center,
                 style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
             AppTheme.gapHeightLarge,
             ElevatedButton.icon(
@@ -2005,7 +2005,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         actorUid: context.read<AuthProvider>().userModel?.uid ?? '');
     if (!mounted) return;
     if (res == null) {
-      _snack(legal.error ?? 'فشل تنفيذ الاعتذار', bg: AppTheme.errorRed);
+      _snack(ErrorUtils.arabicMessage(legal.error ?? 'REJECT_FAILED'), bg: AppTheme.errorRed);
       return;
     }
     switch (res['outcome']?.toString()) {
@@ -2030,7 +2030,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     final res = await legal.setAvailability(lawyerUid: uid, available: value);
     if (!mounted) return;
     if (res == null) {
-      _snack(legal.error ?? 'فشل تحديث حالة التوفر', bg: AppTheme.errorRed);
+      _snack(ErrorUtils.arabicMessage(legal.error ?? 'AVAILABILITY_FAILED'), bg: AppTheme.errorRed);
       return;
     }
     setState(() => _isAvailable = value);
@@ -2379,7 +2379,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         ? (accept
             ? '✅ تم تطبيق الموعد الجديد وإشعار العميل'
             : 'رُفض الطلب — موعد العميل الحالي باقٍ')
-        : (legal.error ?? 'فشل تنفيذ الرد'), bg: done ? null : AppTheme.errorRed);
+        : ErrorUtils.arabicMessage(legal.error ?? 'CHANGE_RESPONSE_FAILED'), bg: done ? null : AppTheme.errorRed);
   }
 
   /// 🏢 2026-08-20: اقتراح المحامي وقتاً بديلاً (تراشق)
@@ -2408,7 +2408,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     if (!mounted) return;
     _snack(done
         ? '🔄 أُرسل اقتراحك للعميل — بانتظار رده'
-        : (legal.error ?? 'فشل إرسال الاقتراح'), bg: done ? null : AppTheme.errorRed);
+        : ErrorUtils.arabicMessage(legal.error ?? 'COUNTER_FAILED'), bg: done ? null : AppTheme.errorRed);
   }
 
   /// تنفيذ إجراء على موعد: confirm | complete | cancel.
@@ -2514,7 +2514,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
                       ? '🔄 تحول الطلب للمحامي التالي'
                       : '⚠️ سُجّل الاعتذار — بانتظار اختيار العميل موعداً جديداً');
     } else {
-      _snack(legal.error ?? 'فشل تنفيذ الإجراء', bg: AppTheme.errorRed);
+      _snack(ErrorUtils.arabicMessage(legal.error ?? 'APPT_ACTION_FAILED'), bg: AppTheme.errorRed);
     }
   }
 
@@ -2896,7 +2896,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
       _snack('تمت إعادة الوثيقة للمعقب مع التعليمات');
       if (Navigator.canPop(context)) Navigator.pop(context);
     } else {
-      _snack(context.read<LegalProvider>().error ?? 'فشل طلب إعادة الوثيقة', bg: AppTheme.errorRed);
+      _snack(ErrorUtils.arabicMessage(context.read<LegalProvider>().error ?? 'REVISION_FAILED'), bg: AppTheme.errorRed);
     }
   }
 
@@ -3008,7 +3008,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     if (ok) {
       _snack('✅ تم اعتماد المهمة وإشعار المعقب');
     } else {
-      _snack(context.read<LegalProvider>().error ?? 'فشل اعتماد المهمة', bg: AppTheme.errorRed);
+      _snack(ErrorUtils.arabicMessage(context.read<LegalProvider>().error ?? 'TASK_APPROVE_FAILED'), bg: AppTheme.errorRed);
     }
   }
 

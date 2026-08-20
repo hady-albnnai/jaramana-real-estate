@@ -95,8 +95,14 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final pkgEntry = pkgMap is Map ? pkgMap['$effectivePkg'] : null;
     final base = (pkgEntry is Map ? (pkgEntry['o'] as num?)?.toInt() : null) ??
         (user.role == 1 ? 5 : 1);
+    // 📸 2026-08-20 (ملاحظة المالك): عرض طلب التصوير يُحتسب ضمن «المستخدمة»
+    // (صف عرض مراجعة) لكنه ليس عرضاً بالمعنى الاعتيادي — نضيفه للسقف فيظهر
+    // 2/2 بدل 2/1 عندما يكون لدى المستخدم عرض منشور + طلب تصوير.
+    final photoReqs = _myOffers
+        .where((o) => o.iDel == 0 && o.photoReq != 0)
+        .length;
     // pkg_xoff: السقف المتراكم من الترقيات (نموذج التجميع)
-    return (used: used, limit: base + (user.pkgXoff), exempt: false);
+    return (used: used, limit: base + (user.pkgXoff) + photoReqs, exempt: false);
   }
 
   /// شريط العدّاد أعلى القائمة.
