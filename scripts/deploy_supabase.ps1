@@ -131,6 +131,8 @@ if (-not $SkipFunctions) {
     Write-Host "===== Deploy Edge functions ====="
     Deploy-Fn 'admin-dashboard'
     Deploy-Fn 'legal-actions'
+    # 🩹 2026-08-20: شارة المدفوعات تحتاج أكشن mark_read_by_act في user-notifications
+    Deploy-Fn 'user-notifications'
 }
 
 Write-Host '[DONE] All steps completed successfully.'

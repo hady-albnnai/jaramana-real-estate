@@ -7,6 +7,7 @@ import '../../core/services/permission_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../widgets/e2e.dart';
 
 /// شاشة أقسام الإدارة.
@@ -36,10 +37,19 @@ class _AdminSectionsScreenState extends State<AdminSectionsScreen> {
     _countsTimer = Timer.periodic(const Duration(seconds: 45), (_) {
       if (mounted) _load();
     });
+    // 🩹 2026-08-20: تحديث فوري للشارات عند وصول push (دفعة جديدة) وعند
+    // تعليم قراءة من الشاشات الفرعية (مثلاً خروج من المدفوعات) — بدل
+    // انتظار الاستطلاع الدوري (45 ث).
+    NotificationProvider.refreshSignal.addListener(_onExternalRefresh);
+  }
+
+  void _onExternalRefresh() {
+    if (mounted) _load();
   }
 
   @override
   void dispose() {
+    NotificationProvider.refreshSignal.removeListener(_onExternalRefresh);
     _countsTimer?.cancel();
     super.dispose();
   }

@@ -4,6 +4,7 @@ import '../../core/network/supabase_service.dart';
 import '../../core/constants/db_constants.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../models/payment_model.dart';
 import '../../models/user_model.dart';
 import '../../core/theme/app_theme.dart';
@@ -47,6 +48,40 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    // 🩹 2026-08-20: عند دخول الشاشة تُعلَّم إشعارات «دفعة جديدة» مقروءة
+    // فتزول شارة «المدفوعات» فور العودة للأقسام — لا تلمس بقية الشارات.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _markPaymentNotifsRead());
+    // وصول push جديد (دفعة جديدة) يحدّث القائمة فوراً أثناء فتح الشاشة.
+    NotificationProvider.refreshSignal.addListener(_onExternalRefresh);
+  }
+
+  void _onExternalRefresh() {
+    if (mounted) _load();
+  }
+
+  @override
+  void dispose() {
+    NotificationProvider.refreshSignal.removeListener(_onExternalRefresh);
+    super.dispose();
+  }
+
+  /// تعليم إشعارات payment_review مقروءة ثم طلب تحديث شارات الشاشات الأخرى.
+  Future<void> _markPaymentNotifsRead() async {
+    try {
+      final adminUid = context.read<AuthProvider>().userModel?.uid ?? '';
+      if (adminUid.isEmpty) return;
+      final res = await SupabaseService().invokeFunction('user-notifications', body: {
+        'action': 'mark_read_by_act',
+        'user_uid': adminUid,
+        'acts': ['payment_review'],
+      });
+      if (res.data is Map && (res.data as Map)['success'] == true) {
+        // يجعل شاشة الأقسام تعيد جلب العدّادات فوراً ⇒ الشارة تختفي.
+        NotificationProvider.requestRefresh();
+      }
+    } catch (_) {
+      // تعليم القراءة ثانوي — لا نعطّل الشاشة بسببه.
+    }
   }
 
   Future<void> _load() async {

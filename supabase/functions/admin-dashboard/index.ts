@@ -125,7 +125,19 @@ serve(async (req) => {
     if (action === "dashboard_stats") {
       const { data, error } = await supabaseAdmin.rpc("get_admin_dashboard_stats", { p_admin_uid: adminUid });
       if (error) return json({ success: false, error: error.message }, 400);
-      return json({ success: true, stats: data });
+      const stats = (data && typeof data === "object" ? data : {}) as Record<string, unknown>;
+      // 🩹 2026-08-20: شارة «المدفوعات» = إشعارات payment_review **غير
+      // المقروءة** لهذا المدير (كانت عدّ الدفعات المعلّقة في الجداول، فتبقى
+      // شارة لا تزول بالدخول للشاشة). دخول شاشة المدفوعات يعلّمها مقروءة
+      // (mark_read_by_act) ⇒ الشارة تصفر فور العودة.
+      const { count } = await supabaseAdmin
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("uid", adminUid)
+        .eq("i_rd", 0)
+        .eq("act", "payment_review");
+      stats.pendingPayments = count ?? 0;
+      return json({ success: true, stats });
     }
 
     // م4 (2026-08-19): جلب بيانات مالكي العروض لشاشة المراجعة. كان الـ Client

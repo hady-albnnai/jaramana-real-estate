@@ -110,6 +110,25 @@ serve(async (req) => {
       return json({ success: data === true });
     }
 
+    // 🩹 2026-08-20: تعليم الإشعارات مقروءة **حسب نوعها** — دخول شاشة
+    // المدفوعات يمحو شارة «المدفوعات» وحدها دون لمس شارات العروض/التوثيق.
+    if (action === "mark_read_by_act") {
+      const raw = body.acts;
+      const acts = Array.isArray(raw)
+        ? raw.map((x) => String(x)).filter((x) => x && x.length <= 64).slice(0, 20)
+        : [];
+      if (acts.length === 0) return json({ success: false, error: "ACTS_REQUIRED" }, 400);
+      const { data, error } = await supabaseAdmin
+        .from("notifications")
+        .update({ i_rd: 1 })
+        .eq("uid", uid)
+        .eq("i_rd", 0)
+        .in("act", acts)
+        .select("id");
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json({ success: true, marked: (data ?? []).length });
+    }
+
     if (action === "update_settings") {
       const ntfSettings = body.ntf as Record<string, unknown>;
       if (!ntfSettings) return json({ success: false, error: "NTF_SETTINGS_REQUIRED" }, 400);
