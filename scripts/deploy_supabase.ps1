@@ -59,6 +59,15 @@ function Invoke-Sql {
     if ($Fatal -and $code -ne '200' -and $code -ne '201') { throw "FAILED: $Label (HTTP $code)" }
 }
 
+function Invoke-DeployOnce {
+    param([string]$Slug, [string]$MetaFile, [string]$FilePath, [string]$OutFile)
+    $code = & curl.exe -sS --max-time 300 -o $OutFile -w "%{http_code}" -X POST "$API/functions/deploy?slug=$Slug" `
+        -H "Authorization: Bearer $PAT" `
+        -F "metadata=@$MetaFile;type=application/json" `
+        -F "file=@$FilePath;type=text/plain" 2>$null
+    return $code
+}
+
 function Deploy-Fn {
     param([string]$Slug)
     # CORRECT endpoint (from Supabase official docs/discussions):
@@ -79,10 +88,13 @@ function Deploy-Fn {
     [System.IO.File]::WriteAllText($metaFile, $meta, (New-Object System.Text.UTF8Encoding($false)))
 
     Write-Host "  Deploy $Slug [POST /functions/deploy?slug=]"
-    $code = & curl.exe -sS --max-time 300 -o $out -w "%{http_code}" -X POST "$API/functions/deploy?slug=$Slug" `
-        -H "Authorization: Bearer $PAT" `
-        -F "metadata=@$metaFile;type=application/json" `
-        -F "file=@$filePath;type=text/plain" 2>$null
+    # 2026-08-20: retry loop for transient network drops (schannel 56 etc.)
+    $code = ''
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        if ($attempt -gt 1) { Write-Host "  retry $attempt/$3 ..."; Start-Sleep -Seconds 4 }
+        $code = Invoke-DeployOnce -Slug $Slug -MetaFile $metaFile -FilePath $filePath -OutFile $out
+        if ($code -eq '200' -or $code -eq '201') { break }
+    }
     Write-Host "  HTTP $code"
     if (Test-Path $out) { Get-Content $out -Raw -Encoding UTF8; Write-Host '' }
 

@@ -16,9 +16,14 @@
 -- حدود الباكيت (10MB + أنواع محددة) كانت موجودة أصلاً وتبقى.
 -- ══════════════════════════════════════════════════════════════════
 
--- إزالة بوالصي الرفع المباشر (اسم 2026-08-05 + الاسم القديم 2026-06-06)
+-- إزالة **كل** بوالصي الكتابة المباشرة للمستخدم (رفع/تعديل/حذف) عبر
+-- كل الأجيال: 2026-06-06 و2026-06-28 و2026-08-05. القراءة تبقى لصاحب
+-- الإثبات والموظفين، والكتابة صارت حصراً عبر توقيع الخادم (أو دور الخدمة).
 DROP POLICY IF EXISTS "Users can upload their own payment proofs" ON storage.objects;
 DROP POLICY IF EXISTS "payment_proofs_user_insert" ON storage.objects;
+DROP POLICY IF EXISTS "payment_proofs_insert_own" ON storage.objects;
+DROP POLICY IF EXISTS "payment_proofs_update_own_or_admin" ON storage.objects;
+DROP POLICY IF EXISTS "payment_proofs_delete_own_or_admin" ON storage.objects;
 
 -- ──────────────────────────────────────────────────────────────────────
 -- تحقق نهائي مدمج:
@@ -29,6 +34,7 @@ SELECT
   (SELECT COUNT(*) FROM pg_policies
     WHERE schemaname='storage' AND tablename='objects' AND policyname ILIKE '%proof%'
       AND cmd='INSERT') AS direct_insert_policies,
-  (SELECT COUNT(*) FROM pg_policies
+  (SELECT COALESCE(string_agg(policyname||':'||cmd, ', ' ORDER BY policyname), 'none')
+    FROM pg_policies
     WHERE schemaname='storage' AND tablename='objects' AND policyname ILIKE '%proof%'
-      AND cmd='SELECT') AS read_policies;
+      AND cmd IN ('INSERT','UPDATE','DELETE')) AS remaining_write_policies;
