@@ -25,6 +25,7 @@ DECLARE
   v_res public.lawyer_time_reservations%ROWTYPE; v_parent public.legal_consultations%ROWTYPE;
   v_consult public.legal_consultations%ROWTYPE; v_lawyer uuid; v_alias text; v_appt uuid;
   v_duration integer; v_ordinal integer; v_cfg jsonb; v_addr text;
+  staff RECORD; -- حلقة إشعار الإدارة (لا يُنشأ ضمنياً بأمان — نمط التريغر الحي)
 BEGIN
   IF auth.uid() IS NOT NULL AND auth.uid()<>p_admin_id THEN RAISE EXCEPTION 'AUTH_UID_MISMATCH'; END IF;
   SELECT role INTO v_role FROM public.users WHERE id=p_admin_id AND sts=0 AND i_del=0;
