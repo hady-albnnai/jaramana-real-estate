@@ -689,7 +689,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) =>
                               const OfficeLogoPlaceholder(logoSize: 26))
-                      : const OfficeLogoPlaceholder(logoSize: 26)),
+                      : const OfficeLogoPlaceholder(logoSize: 26),
                 ),
               ),
               AppTheme.gapWidthSmall,

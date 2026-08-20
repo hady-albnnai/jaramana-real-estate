@@ -322,7 +322,7 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const Icon(
                           Icons.image, color: AppTheme.textGrey))
-                  : const OfficeLogoPlaceholder(logoSize: 26)),
+                  : const OfficeLogoPlaceholder(logoSize: 26),
             ),
           ),
           AppTheme.gapWidthSmall,
