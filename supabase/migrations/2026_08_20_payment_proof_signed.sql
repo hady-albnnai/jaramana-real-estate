@@ -24,6 +24,10 @@ DROP POLICY IF EXISTS "payment_proofs_user_insert" ON storage.objects;
 DROP POLICY IF EXISTS "payment_proofs_insert_own" ON storage.objects;
 DROP POLICY IF EXISTS "payment_proofs_update_own_or_admin" ON storage.objects;
 DROP POLICY IF EXISTS "payment_proofs_delete_own_or_admin" ON storage.objects;
+-- أسماء حيّة مكتشفة باللقطة (انحراف سيرفر — غير موجودة بأي ملف ريبو)
+DROP POLICY IF EXISTS "payment_proofs_insert" ON storage.objects;
+DROP POLICY IF EXISTS "payment_proofs_update" ON storage.objects;
+DROP POLICY IF EXISTS "payment_proofs_admin_delete" ON storage.objects;
 
 -- ──────────────────────────────────────────────────────────────────────
 -- تحقق نهائي مدمج:
