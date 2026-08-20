@@ -27,8 +27,8 @@ DROP POLICY IF EXISTS "payment_proofs_user_insert" ON storage.objects;
 -- ──────────────────────────────────────────────────────────────────────
 SELECT
   (SELECT COUNT(*) FROM pg_policies
-    WHERE schemaname='storage' AND tablename='objects' AND polname ILIKE '%proof%'
+    WHERE schemaname='storage' AND tablename='objects' AND policyname ILIKE '%proof%'
       AND cmd='INSERT') AS direct_insert_policies,
   (SELECT COUNT(*) FROM pg_policies
-    WHERE schemaname='storage' AND tablename='objects' AND polname ILIKE '%proof%'
+    WHERE schemaname='storage' AND tablename='objects' AND policyname ILIKE '%proof%'
       AND cmd='SELECT') AS read_policies;
