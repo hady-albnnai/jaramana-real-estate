@@ -35,7 +35,8 @@ BEGIN
 
   UPDATE appointments SET sts = p_status, admin_nt = COALESCE(p_admin_note, '') WHERE id = p_appointment_id;
   RETURN FOUND;
-END; $function$
+END;
+$function$;
 
 REVOKE ALL ON FUNCTION admin_update_appointment_status_internal(p_admin_uid uuid, p_appointment_id uuid, p_status integer, p_admin_note text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION admin_update_appointment_status_internal(p_admin_uid uuid, p_appointment_id uuid, p_status integer, p_admin_note text) TO service_role;
@@ -51,7 +52,8 @@ BEGIN
   -- 🔒 م5 (2026-08-20): فرض الموعد من الإدارة أُلغي بقرار المالك —
   -- الحجز والتراشق من اختصاص الطرفين فقط.
   RAISE EXCEPTION 'ADMIN_FORCE_DISABLED';
-END; $function$
+END;
+$function$;
 
 REVOKE ALL ON FUNCTION admin_force_appointment_internal(p_admin_uid uuid, p_appointment_id uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION admin_force_appointment_internal(p_admin_uid uuid, p_appointment_id uuid) TO service_role;
