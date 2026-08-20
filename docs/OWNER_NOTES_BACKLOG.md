@@ -125,3 +125,19 @@ from/to الصحيح) + سبب الشاشة الحمراء بعد `mark_lawyer_p
   وتُستعاد عند عكس التحويل + تصحيح البيانات القائمة.
 - م4: ✅ الروابط الحية بالاعدادات هي الصحيحة (legal/privacy-policy.html).
 - م6: ✅ approved_at فارغ = 0 · التجميع اليومي يعمل · عرض النطاق بالشاشة.
+
+## إقفال الدورة كاملة — التحقق الحي النهائي (2026-08-20)
+آخر تشغيل لـ drift_markers.ps1 من جهاز المالك (main @ 5331764):
+
+| الفحص | النتيجة |
+|---|---|
+| M-convert_share | ✅ v3_reverses_phone=ok · reverse_restores_phone=ok · staff_points_guard=ok · force_disabled=ok |
+| M-markers | ✅ v3_inactive · v3_7days · prepare_guard · enqueue_immediate · rebook · waveform_col · lawyer_appts_sig · onsite_rich · shield_uses_admin_col |
+| M-share_samples | ✅ حصة الهاتفية المحوّلة = reversed · غير المحوّلة = paid (تصحيح البيانات نافذ) |
+| M-share_config | ✅ 50.00% |
+| M-policy_urls | ✅ الروابط والأرقام الصحيحة |
+| M-rev_null_approved / rev_recent | ✅ 0 / تجميع 2026/08/20 (n=7, syp=10000) |
+| M-offer_documents | ✅ الأعمدة صحيحة · count=0 · يتيم واحد معروف · photo_req_docs=3 |
+
+المتبقي على المالك فقط: جولة `flutter run` تجريبية على الجهاز + القائمة المؤجلة (OTP واتساب،
+يتيم deed واحد، Data Safety عند الإطلاق، دومين مخصص، حماية main، تجربة الفلو الكاملة).
