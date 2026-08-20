@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/error_utils.dart';
 import 'package:provider/provider.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -222,14 +223,10 @@ class _AppointmentsManagementScreenState
             runSpacing: 8,
             alignment: WrapAlignment.end,
             children: [
-              if (a.sts == 0 || a.sts == 1)
-                TextButton.icon(
-                  onPressed: () => _force(a),
-                  icon: const Icon(Icons.gavel, size: 16),
-                  label: const Text('فرض'),
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.primaryGold),
-                ),
-              if (a.sts != 2)
+              // 🩹 م5 (2026-08-20): أُزيل «فرض» و«عدم حضور» — لا يجوز للإدارة
+              // القيام بكل شيء (قرار المالك). «إكمال» فقط للمواعيد الماضية،
+              // و«إلغاء» بسبب إلزامي. الحارس السيرفري يحسم أيضاً.
+              if (a.sts != 2 && a.dt.isBefore(DateTime.now()))
                 TextButton.icon(
                   onPressed: () => _setStatus(a, 2),
                   icon: const Icon(Icons.check, size: 16),
@@ -238,17 +235,10 @@ class _AppointmentsManagementScreenState
                 ),
               if (a.sts != 3)
                 TextButton.icon(
-                  onPressed: () => _setStatus(a, 3),
+                  onPressed: () => _setStatus(a, 3, withReason: true),
                   icon: const Icon(Icons.close, size: 16),
                   label: const Text('إلغاء'),
                   style: TextButton.styleFrom(foregroundColor: AppTheme.textGrey),
-                ),
-              if (a.sts != 5)
-                TextButton.icon(
-                  onPressed: () => _setStatus(a, 5),
-                  icon: const Icon(Icons.person_off, size: 16),
-                  label: const Text('عدم حضور'),
-                  style: TextButton.styleFrom(foregroundColor: Colors.deepOrange),
                 ),
             ],
           ),
@@ -257,23 +247,56 @@ class _AppointmentsManagementScreenState
     );
   }
 
-  Future<void> _setStatus(AppointmentModel a, int status) async {
+  Future<void> _setStatus(AppointmentModel a, int status,
+      {bool withReason = false}) async {
+    String note = '';
+    if (withReason) {
+      final ctrl = TextEditingController();
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.surfaceBlack,
+          title: const Text('سبب إلغاء الموعد',
+              style: TextStyle(color: AppTheme.errorRed, fontSize: 16, fontWeight: FontWeight.bold)),
+          content: TextField(
+            controller: ctrl, maxLines: 2, maxLength: 200,
+            style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+            decoration: const InputDecoration(
+              hintText: 'السبب إلزامي (يصل للأطراف)',
+              filled: true, fillColor: AppTheme.scaffoldBackground,
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+              child: const Text('إلغاء الموعد', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      );
+      note = ctrl.text.trim();
+      ctrl.dispose();
+      if (ok != true || !mounted) return;
+      if (note.isEmpty) {
+        _snack('سبب الإلغاء مطلوب');
+        return;
+      }
+    }
     final adminUid = context.read<AuthProvider>().userModel?.uid ?? '';
     if (await context
         .read<AdminProvider>()
-        .updateAppointmentStatus(adminUid, a.id, status)) {
+        .updateAppointmentStatus(adminUid, a.id, status, adminNote: note)) {
       _snack('تم تحديث حالة الموعد');
       _load();
+    } else {
+      _snack(ErrorUtils.arabicMessage(
+          context.read<AdminProvider>().error ?? 'APPT_UPDATE_FAILED'));
     }
   }
 
-  Future<void> _force(AppointmentModel a) async {
-    final adminId = context.read<AuthProvider>().userModel?.uid ?? '';
-    if (await context.read<AdminProvider>().forceAppointment(a.id, adminId)) {
-      _snack('تم فرض الموعد');
-      _load();
-    }
-  }
 
   String _short(String s) => s.length >= 8 ? s.substring(0, 8) : s;
   String _fmtDate(DateTime d) =>
