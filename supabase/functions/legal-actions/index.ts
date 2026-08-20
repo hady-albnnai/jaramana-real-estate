@@ -2574,6 +2574,15 @@ serve(async (req) => {
         return json({ success: false, error: "CHAT_RATE_LIMIT" }, 429);
       }
 
+      // 🚀 م14 (المرحلة ج): موجة صوتية بصرية — مصفوفة سعات 0..1 (حتى 120)
+      let waveform: number[] | null = null;
+      if (messageType === "voice" && Array.isArray(body.waveform)) {
+        const w = (body.waveform as unknown[]).slice(0, 120);
+        if (w.length > 0 && w.every((x) => typeof x === "number" && Number.isFinite(Number(x)))) {
+          waveform = w.map((x) => Math.min(1, Math.max(0, Math.round(Number(x) * 100) / 100)));
+        }
+      }
+
       // حفظ الرسالة
       const { data: msg, error: insertErr } = await supabaseAdmin
         .from("consultation_chats").insert({
@@ -2581,6 +2590,7 @@ serve(async (req) => {
           message_type: messageType, content,
           file_url: fileUrl || null, file_name: fileName || null,
           duration_seconds: durationSeconds, client_message_id: clientMessageId,
+          waveform,
         }).select().single();
       if (insertErr?.code === "23505") {
         const { data: duplicate } = await supabaseAdmin.from("consultation_chats")

@@ -48,6 +48,9 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   int _joinWindowSeconds = 0;
   bool _endDialogShown = false;
   int _recordingSeconds = 0;
+  /// 🚀 م14 (المرحلة ج): عينات سعة الصوت أثناء التسجيل (للموجة البصرية)
+  final List<double> _amplitudeSamples = [];
+  StreamSubscription<Amplitude>? _amplitudeSub;
   Timer? _recordingTimer;
   String? _playingMessageId;
   RealtimeChannel? _realtimeChannel;
@@ -398,6 +401,15 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       _recordingSeconds = 0;
       _cancelRecording = false;
       _currentRecordingPath = path;
+      _amplitudeSamples.clear();
+    });
+    // 🚀 م14 (المرحلة ج): عينة سعة كل 100ms لرسم الموجة لاحقاً
+    _amplitudeSub = _recorder
+        .onAmplitudeChanged(const Duration(milliseconds: 100))
+        .listen((amp) {
+      if (!_recording) return;
+      final v = ((amp.current + 60) / 60).clamp(0.0, 1.0);
+      _amplitudeSamples.add(v);
     });
     _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (!mounted || !_recording) return;
@@ -410,10 +422,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   Future<void> _stopAndSend() async {
     if (!_recording) return;
     _recordingTimer?.cancel();
+    await _amplitudeSub?.cancel();
+    _amplitudeSub = null;
     final path = _currentRecordingPath;
     final duration = _recordingSeconds;
+    // 🚀 م14 (المرحلة ج): تحويل العينات لموجة بصرية (حتى 40 عموداً)
+    final waveform = _downsampleWaveform(List<double>.from(_amplitudeSamples));
     if (mounted) {
-      setState(() { _recording = false; _recordingSeconds = 0; _currentRecordingPath = null; });
+      setState(() { _recording = false; _recordingSeconds = 0; _currentRecordingPath = null; _amplitudeSamples.clear(); });
     }
     if (_cancelRecording) {
       // سحب لأعلى = إلغاء (واتساب): احذف الملف ولا ترسل شيئاً
@@ -423,16 +439,32 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       }
       return;
     }
-    if (path != null && duration > 0) await _sendVoice(path, duration);
+    if (path != null && duration > 0) await _sendVoice(path, duration, waveform: waveform);
+  }
+
+  /// 🚀 م14 (المرحلة ج): ضغط عينات السعة إلى أعمدة موجة موحّدة (متوسط
+  /// كل شريحة) مع حد أدنى بصري كي لا تبدو الموجة مسطّحة عند الهمس.
+  List<double> _downsampleWaveform(List<double> samples, {int bars = 40}) {
+    if (samples.isEmpty) return const [];
+    final out = <double>[];
+    final size = (samples.length / bars).ceil();
+    for (var i = 0; i < samples.length; i += size) {
+      final chunk = samples.sublist(i, (i + size > samples.length) ? samples.length : i + size);
+      final avg = chunk.reduce((a, b) => a + b) / chunk.length;
+      out.add(((avg * 0.85) + 0.15).clamp(0.1, 1.0));
+    }
+    return out;
   }
 
   /// م14: إلغاء التسجيل عند انقطاع اللمس (onLongPressCancel)
   Future<void> _cancelRecordingNow() async {
     if (!_recording) return;
     _recordingTimer?.cancel();
+    await _amplitudeSub?.cancel();
+    _amplitudeSub = null;
     final path = _currentRecordingPath;
     if (mounted) {
-      setState(() { _recording = false; _recordingSeconds = 0; _cancelRecording = false; _currentRecordingPath = null; });
+      setState(() { _recording = false; _recordingSeconds = 0; _cancelRecording = false; _currentRecordingPath = null; _amplitudeSamples.clear(); });
     }
     if (path != null) {
       try { await File(path).delete(); } catch (_) {}
@@ -544,10 +576,14 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     return fileUrl;
   }
 
-  Future<void> _sendVoice(String path, int duration) async {
+  Future<void> _sendVoice(String path, int duration, {List<double> waveform = const []}) async {
     // م14: رسالة متفائلة «جارٍ الإرسال» تظهر فوراً (واتساب)
     final pendingId = _addPending(
         type: 'voice', fileName: 'رسالة صوتية.m4a', duration: duration);
+    if (waveform.isNotEmpty) {
+      final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
+      if (pi != -1) _pendingMessages[pi]['waveform'] = waveform;
+    }
     setState(() => _sending = true);
     var remotePath = '';
     try {
@@ -570,7 +606,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
       if (pi != -1) _pendingMessages[pi]['file_url'] = remotePath;
       final sent = await _sendMessage('voice', '', fileUrl: remotePath,
-          fileName: 'رسالة صوتية.m4a', duration: duration, pendingId: pendingId);
+          fileName: 'رسالة صوتية.m4a', duration: duration,
+          waveform: waveform, pendingId: pendingId);
       if (!sent) await _discardUploadedFile(remotePath);
     } catch (_) {
       _markPendingFailed(pendingId);
@@ -644,10 +681,21 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     return 'image/jpeg';
   }
 
-  Future<void> _sendImage() async {
+  /// 🚀 م14 (المرحلة ب): اختيار متعدد حتى 5 صور — كل صورة رسالة مستقلة
+  /// بفقاعتها وشريط تقدمها (نفس نمط الرسائل الحالي، بلا تغيير بنموذج
+  /// الرسالة أو السيرفر).
+  Future<void> _sendImagesMulti() async {
+    if (_sending) return;
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1280);
-    if (file == null) return;
+    final files = await picker.pickMultiImage(imageQuality: 60, maxWidth: 1280, limit: 5);
+    if (files.isEmpty) return;
+    for (final f in files) {
+      if (!mounted) return;
+      await _uploadSingleImage(f);
+    }
+  }
+
+  Future<void> _uploadSingleImage(XFile file) async {
     // م14: رسالة متفائلة «جارٍ الإرسال» تظهر فوراً (واتساب)
     final pendingId = _addPending(type: 'image', fileName: file.name);
     setState(() => _sending = true);
@@ -695,6 +743,97 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   }
 
   /// م14: إعادة محاولة رسالة فاشلة (اضغط على «إعادة المحاولة»)
+  /// 🚀 م14 (المرحلة ج): أعمدة الموجة — المشغول يُظلَّل ذهبياً حسب موضع
+  /// التشغيل، والسحب أو الضغط على موضع يقفز التشغيل إليه.
+  Widget _buildWaveformBars(Map<String, dynamic> msg) {
+    final bars = (msg['waveform'] as List).map((e) => (e as num).toDouble()).toList();
+    final id = msg['id']?.toString() ?? '';
+    final isThisPlaying = _playingMessageId == id && _audioController != null;
+    var playedFraction = 0.0;
+    if (isThisPlaying && _audioController!.value.isInitialized) {
+      final pos = _audioController!.value.position.inMilliseconds;
+      final dur = _audioController!.value.duration.inMilliseconds;
+      if (dur > 0) playedFraction = (pos / dur).clamp(0.0, 1.0);
+    }
+    void seekAt(double dx, double width) {
+      if (width <= 0) return;
+      final fraction = (dx / width).clamp(0.0, 1.0);
+      final ctrl = _audioController;
+      if (ctrl == null || !ctrl.value.isInitialized) return;
+      final target = Duration(
+          milliseconds: (ctrl.value.duration.inMilliseconds * fraction).round());
+      ctrl.seekTo(target);
+      if (!ctrl.value.isPlaying) ctrl.play();
+      if (mounted) setState(() => _playingMessageId = id);
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (d) => seekAt(
+          d.localPosition.dx,
+          (bars.length * 4.5).clamp(40.0, 190.0)),
+      onHorizontalDragUpdate: (d) => seekAt(
+          d.localPosition.dx,
+          (bars.length * 4.5).clamp(40.0, 190.0)),
+      child: SizedBox(
+        width: (bars.length * 4.5).clamp(40.0, 190.0),
+        height: 30,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (var i = 0; i < bars.length; i++)
+              Container(
+                width: 3,
+                height: 3 + bars[i] * 24,
+                margin: const EdgeInsets.symmetric(horizontal: 0.75),
+                decoration: BoxDecoration(
+                  color: (i / bars.length) <= playedFraction
+                      ? AppTheme.primaryGold
+                      : AppTheme.textGrey.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(1.5),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 🚀 م14 (المرحلة ب): عارض صور ملء الشاشة مع تكبير (InteractiveViewer)
+  /// — يفتح من أي صورة مرسلة داخل المحادثة.
+  void _openImageViewer(String url) {
+    if (url.isEmpty) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.pop(ctx),
+        child: Stack(children: [
+          Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image,
+                    color: AppTheme.textGrey, size: 64),
+              ),
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.of(ctx).padding.top + 12,
+            right: 12,
+            child: IconButton(
+              onPressed: () => Navigator.pop(ctx),
+              icon: const Icon(Icons.close, color: Colors.white, size: 28),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _retryPending(Map<String, dynamic> msg) async {
     final id = msg['id'].toString();
     final type = (msg['message_type'] ?? 'text').toString();
@@ -715,7 +854,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
   }
 
   Future<bool> _sendMessage(String type, String content,
-      {String? fileUrl, String? fileName, int? duration, String? pendingId}) async {
+      {String? fileUrl, String? fileName, int? duration, String? pendingId,
+      List<double> waveform = const []}) async {
     setState(() => _sending = true);
     var sent = false;
     final clientMessageId = _newClientMessageId();
@@ -727,6 +867,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         'message_type': type, 'content': content,
         'file_url': fileUrl ?? '', 'file_name': fileName ?? '',
         'duration_seconds': duration, 'client_message_id': clientMessageId,
+        if (waveform.isNotEmpty) 'waveform': waveform,
       });
       final data = res.data as Map<String, dynamic>?;
       if (data != null && data['success'] == true) {
@@ -1161,7 +1302,10 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
             ),
           ),
         ],
-        IconButton(icon: const Icon(Icons.image, color: AppTheme.primaryGold), onPressed: _sending ? null : _sendImage),
+        IconButton(
+            icon: const Icon(Icons.image, color: AppTheme.primaryGold),
+            tooltip: 'إرسال صور (حتى 5)',
+            onPressed: _sending ? null : _sendImagesMulti),
         Expanded(child: TextField(controller: _msgCtrl, style: const TextStyle(color: AppTheme.textWhite),
           decoration: const InputDecoration(hintText: 'اكتب رسالتك...', hintStyle: TextStyle(color: AppTheme.textGrey, fontSize: 13),
             filled: true, fillColor: AppTheme.scaffoldBackground,
@@ -1211,10 +1355,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (type == 'text') Text(content, style: const TextStyle(color: AppTheme.textWhite, fontSize: 13, height: 1.4)),
             if (type == 'image' && (msg['file_signed_url'] != null || msg['file_url'] != null))
-              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(
-                msg['file_signed_url']?.toString() ?? msg['file_url'].toString(),
-                width: 200, height: 150, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 40))),
+              GestureDetector(
+                onTap: () => _openImageViewer(
+                    msg['file_signed_url']?.toString() ?? msg['file_url'].toString()),
+                child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(
+                  msg['file_signed_url']?.toString() ?? msg['file_url'].toString(),
+                  width: 200, height: 150, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 40)))),
             // م14: صورة قيد الرفع بلا رابط بعد — مربع مع مؤشر/أيقونة + شريط تقدم
             if (type == 'image' && pending && (msg['file_url'] == null || (msg['file_url'] as String).isEmpty))
               Container(
@@ -1264,6 +1411,11 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                   Text('رسالة صوتية (${msg['duration_seconds'] ?? 0}ث)',
                       style: const TextStyle(color: AppTheme.textWhite, fontSize: 12)),
                 ]),
+                // 🚀 م14 (المرحلة ج): موجة بصرية — تُرسم من سعات التسجيل
+                if (msg['waveform'] is List && (msg['waveform'] as List).isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _buildWaveformBars(msg),
+                ],
                 // 🚀 م14: شريط تقدم الرفع المباشر للصوت
                 if (pending && (msg['progress'] ?? -1.0) >= 0) ...[
                   const SizedBox(height: 6),
