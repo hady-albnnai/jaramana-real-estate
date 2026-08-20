@@ -39,9 +39,8 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.get_lawyer_free_slots(c.lawyer_uid,30) s
    WHERE abs(extract(epoch FROM(s.slot_dt-p_slot)))<1) THEN RAISE EXCEPTION 'SLOT_NO_LONGER_AVAILABLE'; END IF;
  SELECT * INTO old_r FROM public.lawyer_time_reservations WHERE appointment_id=a.id ORDER BY ts_crt DESC LIMIT 1 FOR UPDATE;
- IF old_r.id IS NOT NULL THEN
-  UPDATE public.lawyer_time_reservations SET status='released',ts_upd=now() WHERE id=old_r.id;
- END IF;
+ IF old_r.id IS NULL THEN RAISE EXCEPTION 'RESERVATION_NOT_FOUND'; END IF;
+ UPDATE public.lawyer_time_reservations SET status='released',ts_upd=now() WHERE id=old_r.id;
  v_gap:=GREATEST(15,COALESCE((public.appt_booking_config()->>'gap_mins')::integer,60));
  BEGIN
   INSERT INTO public.lawyer_time_reservations(lawyer_uid,user_uid,consultation_intent_id,
@@ -276,15 +275,23 @@ GRANT EXECUTE ON FUNCTION public.trg_consultation_payment_v2() TO service_role;
 
 -- التريغرات تبقى كما هي (نفس الأسماء تشير للدالة المُعاد تعريفها)
 
-CREATE OR REPLACE FUNCTION public.get_lawyer_appointments(p_lawyer_uid uuid)
+-- ──────────────────────────────────────────────────────────────────────
+-- ⑤ get_lawyer_appointments — أعمدة بطاقات «تم الاعتذار»
+-- ⚠️ درس drift (2026-08-20): النسخة الحية ع توقيع قديم (sts وبدون client_phone)
+-- يختلف عن 2026_08_05_fix_lawyer_appointments.sql بالريبو ⇒ CREATE OR REPLACE
+-- فشل حياً بـ 42P13 (تغيير نوع الإرجاع). الحل الدستوري: DROP أولاً ثم إنشاء
+-- بتوقيع يطابق **ما تقرأه الواجهة فعلياً** (sts — لا appt_sts، وبلا
+-- client_phone إطلاقاً: حُذف عمداً لحماية خصوصية العميل 2026-08-14).
+-- ──────────────────────────────────────────────────────────────────────
+DROP FUNCTION IF EXISTS public.get_lawyer_appointments(uuid);
+
+CREATE FUNCTION public.get_lawyer_appointments(p_lawyer_uid uuid)
 RETURNS TABLE(
   appt_id uuid,
   client_name text,
-  client_phone text,
   dt timestamp with time zone,
-  appt_sts integer,
+  sts integer,
   notes text,
-  -- 🏢 2026-08-20: لتمييز «تم الاعتذار — بانتظار الإجراء التالي» عن الإلغاءات
   cnl_by uuid,
   cnl_rsn text,
   consultation_id uuid
@@ -308,9 +315,8 @@ BEGIN
   SELECT
     a.id AS appt_id,
     COALESCE(u.nm, '') AS client_name,
-    COALESCE(u.ph, '') AS client_phone,
     a.dt,
-    a.sts AS appt_sts,
+    a.sts AS sts,
     COALESCE(a.executor_notes, '') AS notes,
     a.cnl_by,
     a.cnl_rsn,
@@ -325,3 +331,12 @@ $function$;
 REVOKE ALL ON FUNCTION public.get_lawyer_appointments(uuid) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.get_lawyer_appointments(uuid) FROM anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.get_lawyer_appointments(uuid) TO service_role;
+
+-- ──────────────────────────────────────────────────────────────────────
+-- تحقق نهائي مدمج (تظهر نتائجه في مخرجات النشر):
+--   ① rebook_defined = true · ② نص التثبيت الغني مفعّل · ③ أعمدة الاعتذار مفعّلة
+-- ──────────────────────────────────────────────────────────────────────
+SELECT
+  EXISTS(SELECT 1 FROM pg_proc WHERE proname='rebook_legal_appointment_v2') AS rebook_defined,
+  pg_get_functiondef('public.trg_consultation_payment_v2()'::regprocedure) LIKE '%الاتصال بالمكتب%' AS rich_body_patched,
+  pg_get_functiondef('public.get_lawyer_appointments(uuid)'::regprocedure) LIKE '%cnl_rsn%' AS appt_columns_patched;
