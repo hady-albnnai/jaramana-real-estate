@@ -89,6 +89,8 @@ if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
   # 🩹 2026-08-20: شارة المدفوعات (mark_read_by_act) + عنوان المكتب (update_sections)
   deploy_fn user-notifications
   deploy_fn admin-config
+  # 🛡️ دين 1 (2026-08-20): توقيع رفع إثبات الدفع (إقفال فتحة الإغراق)
+  deploy_fn user-account
 fi
 
 echo "✅ تمت العملية بنجاح"

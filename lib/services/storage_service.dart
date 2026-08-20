@@ -37,6 +37,69 @@ class StorageService {
     _lastError = ErrorUtils.arabicMessage(error);
   }
 
+  /// كشف نوع صورة من البايتات الأولى (jpeg/png/webp) — jpeg كسقوط آمن.
+  static String detectImageContentType(Uint8List b) {
+    if (b.length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) {
+      return 'image/jpeg';
+    }
+    if (b.length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) {
+      return 'image/png';
+    }
+    if (b.length >= 12 &&
+        b[0] == 0x52 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x46 &&
+        b[8] == 0x57 && b[9] == 0x45 && b[10] == 0x42 && b[11] == 0x50) {
+      return 'image/webp';
+    }
+    return 'image/jpeg';
+  }
+
+  /// 🛡️ دين 1 (2026-08-20): رفع إثبات الدفع عبر توقيع الخادم + PUT مباشر
+  /// بالتقدم — بدل الرفع المباشر القديم (بابه المفتوح يُقفل بالميغريشن).
+  /// يعيد المسار البعيد (`{uid}/{اليوم}/{uuid}.jpg`) أو null عند أي فشل —
+  /// بما فيه تجاوز الحصة اليومية (10/يوم).
+  static Future<String?> uploadPaymentProofSigned({
+    required String uid,
+    required Uint8List bytes,
+    void Function(double progress)? onProgress,
+  }) async {
+    try {
+      final contentType = detectImageContentType(bytes);
+      final res = await SupabaseService().invokeFunction('user-account', body: {
+        'action': 'sign_payment_proof_upload',
+        'user_uid': uid,
+        'content_type': contentType,
+        'size_bytes': bytes.length,
+      });
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+      final uploadUrl = data?['upload_url']?.toString() ?? '';
+      final fileUrl = data?['file_url']?.toString() ?? '';
+      if (data?['success'] != true || uploadUrl.isEmpty || fileUrl.isEmpty) {
+        return null;
+      }
+      final client = HttpClient();
+      try {
+        final req = await client.putUrl(Uri.parse(uploadUrl));
+        req.headers.contentType = ContentType.parse(contentType);
+        req.contentLength = bytes.length;
+        const chunk = 64 * 1024;
+        for (var i = 0; i < bytes.length; i += chunk) {
+          final end = (i + chunk > bytes.length) ? bytes.length : i + chunk;
+          req.add(bytes.sublist(i, end));
+          onProgress?.call(end / bytes.length);
+          await Future<void>.delayed(Duration.zero);
+        }
+        final resp = await req.close();
+        await resp.drain<void>();
+        if (resp.statusCode < 200 || resp.statusCode >= 300) return null;
+      } finally {
+        client.close();
+      }
+      return fileUrl;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ═══════════════════════════════════════
   // اختيار الصور
   // ═══════════════════════════════════════

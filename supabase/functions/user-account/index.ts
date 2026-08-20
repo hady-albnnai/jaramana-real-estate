@@ -820,6 +820,39 @@ serve(async (req) => {
       return json({ success: true, payments: data ?? [] });
     }
 
+    // 🛡️ دين 1 (2026-08-20): توقيع رفع إثبات الدفع — إقفال فتحة الإغراق.
+    // كان الرفع مباشراً من العميل بسياسة INSERT مفتوحة لأي مستخدم مسجّل
+    // (بلا حصة يومية، ولمستخدمي الجلسة المخصّصة بدون JWT قد يفشل أصلاً).
+    // الآن: المسار والحصة والنوع والحجم كلها بقرار السيرفر، والعميل يرفع
+    // إلى رابط توقيع مؤقت ثم يُلغى الباب المفتوح نهائياً بالميغريشن.
+    if (action === "sign_payment_proof_upload") {
+      const contentType = (body.content_type ?? "").toString();
+      const sizeBytes = Number(body.size_bytes ?? 0);
+      const ALLOWED_TYPES: Record<string, string> = {
+        "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+      };
+      const ext = ALLOWED_TYPES[contentType];
+      if (!ext) return json({ success: false, error: "INVALID_FILE_TYPE" }, 400);
+      if (!Number.isFinite(sizeBytes) || sizeBytes < 1 || sizeBytes > 5 * 1024 * 1024) {
+        return json({ success: false, error: "INVALID_FILE_SIZE" }, 400);
+      }
+      // حصة يومية: 10 إثباتات لكل مستخدم باليوم (مجلد اليوم هو العدّاد)
+      const today = new Date().toISOString().slice(0, 10);
+      const folder = `${uid}/${today}`;
+      const { data: todayFiles } = await supabaseAdmin.storage
+        .from("payment_proofs").list(folder, { limit: 100 });
+      if ((todayFiles?.length ?? 0) >= 10) {
+        return json({ success: false, error: "PROOF_DAILY_QUOTA_EXCEEDED" }, 429);
+      }
+      const path = `${folder}/${crypto.randomUUID()}.${ext}`;
+      const { data: signed, error: signErr } = await supabaseAdmin.storage
+        .from("payment_proofs").createSignedUploadUrl(path);
+      if (signErr || !signed?.signedUrl) {
+        return json({ success: false, error: "PROOF_SIGN_UPLOAD_FAILED" }, 400);
+      }
+      return json({ success: true, upload_url: signed.signedUrl, file_url: path, content_type: contentType });
+    }
+
     if (action === "handle_email_auth") {
       const { data, error } = await supabaseAdmin.rpc("handle_email_auth_internal");
       if (error) return json({ success: false, error: error.message }, 400);

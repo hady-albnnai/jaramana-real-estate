@@ -136,6 +136,8 @@ if (-not $SkipFunctions) {
     Deploy-Fn 'user-notifications'
     # 🏢 2026-08-20: عنوان المكتب (update_sections) + فلو الاعتذار الموحد
     Deploy-Fn 'admin-config'
+    # 🛡️ دين 1 (2026-08-20): توقيع رفع إثبات الدفع (إقفال فتحة الإغراق)
+    Deploy-Fn 'user-account'
 }
 
 Write-Host '[DONE] All steps completed successfully.'

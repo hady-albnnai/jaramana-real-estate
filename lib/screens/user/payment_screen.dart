@@ -90,27 +90,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<String?> _uploadProof(String userId) async {
     if (_proofImage == null) return null;
     try {
-      final storage = SupabaseService().storage;
-      final fileName = 'proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      // المسار المعتمد في RLS: {uid}/{filename}
-      final path = '$userId/$fileName';
-
+      // 🛡️ دين 1 (2026-08-20): رفع عبر توقيع الخادم (نوع/حجم/حصة يومية
+      // يقررها الخادم) — بلا رفع مباشر مفتوح.
       final bytes = kIsWeb
           ? await _proofImage!.readAsBytes()
           : await (await _storage.compressImage(File(_proofImage!.path)) ??
                   File(_proofImage!.path))
               .readAsBytes();
-
-      await storage.from(StorageService.paymentProofsBucket).uploadBinary(
-            path,
-            bytes,
-            fileOptions:
-                // upsert:false — إلزامي: وضع upsert بالسيرفر يتطلب سياسة SELECT
-                // التي تفتح خصوصية الوثائق؛ أسماء الملفات فريدة فلا حاجة له.
-                const FileOptions(cacheControl: '3600', upsert: false),
-          );
-      // bucket خاص → نُرجع المسار فقط (admin يستخدم signed URL أو direct access)
-      return path;
+      return await StorageService.uploadPaymentProofSigned(
+          uid: userId, bytes: bytes);
     } catch (e) {return null;
     }
   }

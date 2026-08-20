@@ -102,24 +102,14 @@ class _FeaturedAdPaymentScreenState extends State<FeaturedAdPaymentScreen> {
   Future<String?> _uploadProof(String userId) async {
     if (_proofImage == null) return null;
     try {
-      final storage = SupabaseService().storage;
-      final fileName = 'proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final path = '$userId/$fileName';
-
+      // 🛡️ دين 1 (2026-08-20): رفع عبر توقيع الخادم — بلا رفع مباشر مفتوح.
       final bytes = kIsWeb
           ? await _proofImage!.readAsBytes()
           : await (await _storage.compressImage(File(_proofImage!.path)) ??
                   File(_proofImage!.path))
               .readAsBytes();
-
-      await storage.from(StorageService.paymentProofsBucket).uploadBinary(
-            path,
-            bytes,
-            fileOptions:
-                // upsert:false — انظر payment_screen.dart (سياسة SELECT مرفوضة أمنياً)
-                const FileOptions(cacheControl: '3600', upsert: false),
-          );
-      return path;
+      return await StorageService.uploadPaymentProofSigned(
+          uid: userId, bytes: bytes);
     } catch (e) {
       return null;
     }

@@ -653,11 +653,10 @@ class _State extends State<LegalConsultationBookingScreen>
   Future<String?> _uploadProof(String uid) async {
     if (_proofImage == null) return null;
     try {
-      final path = '$uid/proof_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      // 🛡️ دين 1 (2026-08-20): رفع عبر توقيع الخادم — بلا رفع مباشر مفتوح.
       final bytes = kIsWeb ? await _proofImage!.readAsBytes()
           : await (await _storage.compressImage(File(_proofImage!.path)) ?? File(_proofImage!.path)).readAsBytes();
-      await SupabaseService().storage.from(StorageService.paymentProofsBucket).uploadBinary(path, bytes, fileOptions: FileOptions(cacheControl: '3600', upsert: false));
-      return path;
+      return await StorageService.uploadPaymentProofSigned(uid: uid, bytes: bytes);
     } catch (_) { return null; }
   }
 
