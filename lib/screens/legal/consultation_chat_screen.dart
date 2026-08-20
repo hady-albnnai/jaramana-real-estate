@@ -228,7 +228,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
         _v2Session = session;
         _joinWindowSeconds = (data?['seconds_until_auto_start'] ?? 0) as int;
         _remainingSeconds = (data?['remaining_seconds'] ?? 0) as int;
-        _timeUp = status == 'ended';
+        _timeUp = status == 'ended' || status == 'reversed' || status == 'cancelled';
         _pendingRenewal = pendingRenewal;
       });
       // 🔄 2026-08-19: لا حوار خيارات (تجديد/تحويل/تقييم) بينما دفعة التجديد
@@ -841,7 +841,13 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
             if (_timeUp) ...[
               const Icon(Icons.timer_off, size: 12, color: AppTheme.warningOrange),
               const SizedBox(width: 4),
-              const Text('انتهى الوقت — جدد للمتابعة', style: TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
+              Text(
+                (_v2Session?['status'] ?? '') == 'reversed'
+                    ? 'أُلغي التجديد — جدد للمتابعة'
+                    : (_v2Session?['status'] ?? '') == 'cancelled'
+                        ? 'أُلغيت الجلسة — جدد للمتابعة'
+                        : 'انتهى الوقت — جدد للمتابعة',
+                style: const TextStyle(color: AppTheme.warningOrange, fontSize: 11)),
             ],
             if (_daysRemaining > 0 && _daysRemaining <= 3) ...[
               const SizedBox(width: 8),
