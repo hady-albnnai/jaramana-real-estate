@@ -471,11 +471,12 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             children: [
               Container(
                 padding: AppTheme.paddingAllMedium,
-                decoration: BoxDecoration(
-                  color: AppTheme.deepBlack,
-                  borderRadius: AppTheme.radiusSmall,
-                  border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4)),
-                ),
+                  decoration: BoxDecoration(
+                    // 🩹 (2026-08-20): فاتح بدل deepBlack — النص كان أسود على أسود
+                    color: AppTheme.scaffoldBackground,
+                    borderRadius: AppTheme.radiusSmall,
+                    border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4)),
+                  ),
                 child: const Text(
                   '⚠️ سيُلغى أثر الدفعة: الباقة تعود للمجانية أو يُسحب الإعلان '
                   'المميّز، ويصل المستخدم إشعار بالسبب. لا يمكن التراجع عن هذه '
@@ -506,9 +507,10 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
                 style: const TextStyle(color: AppTheme.textWhite),
                 decoration: const InputDecoration(
                   labelText: 'سبب آخر',
-                  filled: true,
-                  fillColor: AppTheme.deepBlack,
-                ),
+                    filled: true,
+                    // 🩹 (2026-08-20): فاتح بدل deepBlack حتى يُقرأ المكتوب
+                    fillColor: AppTheme.inputBackground,
+                  ),
               ),
             ],
           ),

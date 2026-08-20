@@ -734,12 +734,13 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
             Container(
               width: double.infinity,
               padding: AppTheme.paddingAllMedium,
-              decoration: BoxDecoration(
-                color: AppTheme.deepBlack,
-                borderRadius: AppTheme.radiusMedium,
-                border: Border.all(
-                    color: AppTheme.primaryGold.withOpacity(0.2)),
-              ),
+                decoration: BoxDecoration(
+                  // 🩹 (2026-08-20): فاتح بدل deepBlack — النص كان أسود على أسود
+                  color: AppTheme.inputBackground,
+                  borderRadius: AppTheme.radiusMedium,
+                  border: Border.all(
+                      color: AppTheme.primaryGold.withOpacity(0.2)),
+                ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

@@ -386,7 +386,8 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
       child: Container(
         padding: const EdgeInsets.all(AppTheme.paddingXXL),
         decoration: const BoxDecoration(
-          color: AppTheme.deepBlack,
+          // 🩹 (2026-08-20): فاتح بدل deepBlack — كان النص الداخلي أسود على أسود
+          color: AppTheme.cardBackground,
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: SingleChildScrollView(
@@ -520,7 +521,8 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
         child: Container(
           padding: const EdgeInsets.all(30),
           decoration: const BoxDecoration(
-            color: AppTheme.deepBlack,
+            // 🩹 (2026-08-20): فاتح بدل deepBlack — كان النص الداخلي أسود على أسود
+            color: AppTheme.cardBackground,
             borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -563,7 +565,8 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
         child: Container(
           padding: const EdgeInsets.all(30),
           decoration: const BoxDecoration(
-            color: AppTheme.deepBlack,
+            // 🩹 (2026-08-20): فاتح بدل deepBlack — كان النص الداخلي أسود على أسود
+            color: AppTheme.cardBackground,
             borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
           ),
           child: SingleChildScrollView(
@@ -621,7 +624,8 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
       child: Container(
         constraints: BoxConstraints(maxHeight: media.size.height * 0.88),
         decoration: const BoxDecoration(
-          color: AppTheme.deepBlack,
+          // 🩹 (2026-08-20): فاتح بدل deepBlack — كان النص الداخلي أسود على أسود
+          color: AppTheme.cardBackground,
           borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
         child: SingleChildScrollView(

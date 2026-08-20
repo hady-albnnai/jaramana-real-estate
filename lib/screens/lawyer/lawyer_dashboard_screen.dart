@@ -1842,8 +1842,9 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     }
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: AppTheme.deepBlack,
+        builder: (ctx) => Dialog(
+          // 🩹 (2026-08-20): فاتح بدل deepBlack — العنوان كان أسود على أسود
+          backgroundColor: AppTheme.surfaceBlack,
         insetPadding: const EdgeInsets.all(10),
         child: SafeArea(
           child: Column(children: [
@@ -1862,13 +1863,14 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
+                  // 🩹 (2026-08-20): بعد تفتيح الحوار صار الأبيض غير مرئي
+                  icon: const Icon(Icons.close, color: AppTheme.textGrey),
                   tooltip: 'إغلاق',
                   onPressed: () => Navigator.pop(ctx),
                 ),
               ]),
             ),
-            const Divider(color: Colors.white12, height: 1),
+            const Divider(color: AppTheme.borderGrey, height: 1),
             Expanded(
               child: InteractiveViewer(
                 minScale: 0.8,
