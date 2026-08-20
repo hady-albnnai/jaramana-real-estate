@@ -205,7 +205,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Container(
                   padding: AppTheme.paddingAllMedium,
                   decoration: BoxDecoration(
-                    color: AppTheme.deepBlack,
+                    // 🩹 (2026-08-20): خلفية فاتحة بدل deepBlack (نص أسود على أسود)
+                    color: AppTheme.scaffoldBackground,
                     borderRadius: AppTheme.radiusSmall,
                     border: Border.all(color: AppTheme.errorRed.withOpacity(0.4)),
                   ),
@@ -239,7 +240,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: const InputDecoration(
                     labelText: 'سبب المغادرة (اختياري)',
                     filled: true,
-                    fillColor: AppTheme.deepBlack,
+                    // 🩹 (2026-08-20): فاتح بدل deepBlack حتى يُقرأ المكتوب
+                    fillColor: AppTheme.inputBackground,
                   ),
                 ),
                 AppTheme.gapHeightSmall,
@@ -256,7 +258,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   decoration: const InputDecoration(
                     hintText: 'حذف',
                     filled: true,
-                    fillColor: AppTheme.deepBlack,
+                    // 🩹 (2026-08-20): فاتح بدل deepBlack حتى يُقرأ المكتوب
+                    fillColor: AppTheme.inputBackground,
                   ),
                 ),
               ],
@@ -477,6 +480,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         SocialLinks.labelFor(k),
                         SocialLinks.iconFor(k),
                         () => _launchUrl(socials[k]!),
+                        linkText: socials[k],
                       )),
                   AppTheme.gapHeightLarge,
                 ],
@@ -507,10 +511,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   AppTheme.gapHeightSmall,
                   if (SocialLinks.isValidUrl(privacyUrl))
                     _socialLinkTile('سياسة الخصوصية',
-                        Icons.privacy_tip_outlined, () => _launchUrl(privacyUrl)),
+                        Icons.privacy_tip_outlined, () => _launchUrl(privacyUrl),
+                        linkText: privacyUrl),
                   if (SocialLinks.isValidUrl(termsUrl))
                     _socialLinkTile('شروط الاستخدام',
-                        Icons.description_outlined, () => _launchUrl(termsUrl)),
+                        Icons.description_outlined, () => _launchUrl(termsUrl),
+                        linkText: termsUrl),
                   AppTheme.gapHeightLarge,
                 ],
 
@@ -631,9 +637,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Container(
           padding: AppTheme.paddingAllMedium,
           decoration: BoxDecoration(
-            color: AppTheme.deepBlack,
+            // 🩹 (2026-08-20): خلفية فاتحة بدل deepBlack حتى يظهر الرقم
+            color: AppTheme.inputBackground,
             borderRadius: AppTheme.radiusSmall,
-            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.25)),
+            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.4)),
           ),
           child: Row(
             children: [
@@ -680,22 +687,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Container(
           padding: AppTheme.paddingAllMedium,
           decoration: BoxDecoration(
-            color: AppTheme.deepBlack,
+            // 🩹 (2026-08-20): خلفية فاتحة بدل deepBlack حتى يظهر النص والرقم
+            color: AppTheme.inputBackground,
             borderRadius: AppTheme.radiusSmall,
-            border: Border.all(color: AppTheme.successGreen.withOpacity(0.35)),
+            border: Border.all(color: AppTheme.successGreen.withOpacity(0.5)),
           ),
           child: Row(
             children: [
               const Icon(Icons.chat_bubble_outline,
                   color: AppTheme.successGreen, size: 18),
               AppTheme.gapWidthSmall,
-              const Expanded(
-                child: Text(
-                  'راسلنا على واتساب',
-                  style: TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: AppTheme.fontSizeBody,
-                      fontWeight: FontWeight.w600),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'راسلنا على واتساب',
+                      style: TextStyle(
+                          color: AppTheme.textWhite,
+                          fontSize: AppTheme.fontSizeBody,
+                          fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      waNumber,
+                      textDirection: TextDirection.ltr,
+                      textAlign: TextAlign.start,
+                      style: const TextStyle(
+                          color: AppTheme.textGrey,
+                          fontSize: AppTheme.fontSizeCaption),
+                    ),
+                  ],
                 ),
               ),
               const Icon(Icons.open_in_new, color: AppTheme.textGrey, size: 16),
@@ -717,8 +739,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// بند رابط داخل «عن التطبيق» — الاسم والأيقونة يُشتقّان من SocialLinks.
-  /// الرابط نفسه لا يُعرض نصاً (يزحم الواجهة وقد يكون طويلاً جداً).
-  Widget _socialLinkTile(String label, IconData icon, VoidCallback onTap) {
+  /// 🩹 (2026-08-20): الخلفية كانت `deepBlack` من التصميم الغامق القديم
+  /// فيصير نص أسود على أسود بعد اعتماد التصميم الفاتح — الآن خلفية فاتحة
+  /// بإطار ذهبي، والرابط يُعرض نصاً صغيراً تحت العنوان (قرار المالك).
+  Widget _socialLinkTile(String label, IconData icon, VoidCallback onTap,
+      {String? linkText}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -727,21 +752,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: AppTheme.deepBlack,
+            color: AppTheme.inputBackground,
             borderRadius: AppTheme.radiusSmall,
-            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.25)),
+            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.4)),
           ),
           child: Row(
             children: [
               Icon(icon, color: AppTheme.primaryGold, size: 20),
               AppTheme.gapWidthSmall,
               Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                      color: AppTheme.textWhite,
-                      fontSize: AppTheme.fontSizeMedium,
-                      fontWeight: FontWeight.w500),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                          color: AppTheme.textWhite,
+                          fontSize: AppTheme.fontSizeMedium,
+                          fontWeight: FontWeight.w500),
+                    ),
+                    if (linkText != null && linkText.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        linkText,
+                        textDirection: TextDirection.ltr,
+                        textAlign: TextAlign.start,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: AppTheme.textGrey,
+                            fontSize: AppTheme.fontSizeCaption),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const Icon(Icons.open_in_new, color: AppTheme.textGrey, size: 16),
