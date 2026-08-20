@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -2187,16 +2186,6 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         ],
       ]),
     );
-  }
-
-  /// مولّد UUID محلي (لتراشق تغيير الموعد)
-  String _legalChangeUuid() {
-    final rnd = List<int>.generate(16, (_) => Random().nextInt(256));
-    rnd[6] = (rnd[6] & 0x0F) | 0x40;
-    rnd[8] = (rnd[8] & 0x3F) | 0x80;
-    final hex = rnd.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
-        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
   /// 🏢 2026-08-20: قبول/رفض طلب العميل تغيير الموعد (تراشق)

@@ -1083,7 +1083,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
               const Icon(Icons.timer_off, size: 12, color: AppTheme.warningOrange),
               const SizedBox(width: 4),
               Text(
-                isReadOnlyManager
+                isReadOnlyAdmin
                     ? 'انتهت المحادثة — وضع المشاهدة'
                     : (_v2Session?['status'] ?? '') == 'reversed'
                         ? 'أُلغي التجديد — جدد للمتابعة'

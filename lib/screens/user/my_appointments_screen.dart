@@ -1066,7 +1066,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
 
   /// مولّد UUID محلي (نفس صيغة client message ids)
   String _legalChangeUuid() {
-    final rnd = List<int>.generate(16, (_) => math.Random().nextInt(256));
+    final rnd = List<int>.generate(16, (_) => Random().nextInt(256));
     rnd[6] = (rnd[6] & 0x0F) | 0x40;
     rnd[8] = (rnd[8] & 0x3F) | 0x80;
     final hex = rnd.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
