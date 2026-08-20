@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
@@ -451,6 +452,8 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
       'ts_crt': DateTime.now(),
       'status': 'sending',
       'is_mine': true,
+      // 🚀 م14: نسبة رفع الملف (0..1) — قيمة -1 = بلا شريط (نص/ويب)
+      'progress': -1.0,
     });
     if (mounted) setState(() {});
     _scrollToBottom();
@@ -484,6 +487,63 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     }
   }
 
+  /// 🚀 م14: رفع مباشر إلى رابط التوقيع مع شريط تقدم حقيقي (بدل base64).
+  /// يرفع على دفعات 64KB ويحدّث النسبة عبر onProgress — يُفشل بأي رمز غير 2xx.
+  Future<void> _uploadWithProgress(
+    String url,
+    Uint8List bytes,
+    String contentType,
+    void Function(double progress) onProgress,
+  ) async {
+    final client = HttpClient();
+    try {
+      final req = await client.putUrl(Uri.parse(url));
+      req.headers.contentType = ContentType.parse(contentType);
+      req.contentLength = bytes.length;
+      const chunk = 64 * 1024;
+      for (var i = 0; i < bytes.length; i += chunk) {
+        final end = (i + chunk > bytes.length) ? bytes.length : i + chunk;
+        req.add(bytes.sublist(i, end));
+        onProgress(end / bytes.length);
+        await Future<void>.delayed(Duration.zero); // نفس للتدفق
+      }
+      final resp = await req.close();
+      await resp.drain<void>();
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw Exception('UPLOAD_HTTP_${resp.statusCode}');
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  /// 🚀 م14: توقيع رفع ثم رفع مباشر مع تقدم — يعيد المسار البعيد أو يرمي.
+  Future<String> _signAndUpload(String kind, Uint8List bytes, String contentType,
+      {required String pendingId}) async {
+    final uid = context.read<AuthProvider>().userModel?.uid ?? '';
+    final sign = await SupabaseService().invokeFunction('legal-actions', body: {
+      'action': 'sign_chat_upload',
+      'user_uid': uid,
+      'consultation_id': widget.consultationId,
+      'kind': kind,
+      'content_type': contentType,
+      'size_bytes': bytes.length,
+    });
+    final data = sign.data is Map ? Map<String, dynamic>.from(sign.data as Map) : null;
+    final uploadUrl = data?['upload_url']?.toString() ?? '';
+    final fileUrl = data?['file_url']?.toString() ?? '';
+    if (data?['success'] != true || uploadUrl.isEmpty || fileUrl.isEmpty) {
+      throw Exception(data?['error'] ?? 'CHAT_SIGN_UPLOAD_FAILED');
+    }
+    await _uploadWithProgress(uploadUrl, bytes, contentType, (p) {
+      final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
+      if (pi != -1 && mounted) {
+        setState(() => _pendingMessages[pi]['progress'] = p);
+      }
+    });
+    return fileUrl;
+  }
+
   Future<void> _sendVoice(String path, int duration) async {
     // م14: رسالة متفائلة «جارٍ الإرسال» تظهر فوراً (واتساب)
     final pendingId = _addPending(
@@ -493,14 +553,19 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     try {
       final bytes = await File(path).readAsBytes();
       final uid = context.read<AuthProvider>().userModel?.uid ?? '';
-      final response = await SupabaseService().invokeFunction('legal-actions', body: {
-        'action': 'upload_chat_voice', 'user_uid': uid,
-        'consultation_id': widget.consultationId,
-        'file_base64': base64Encode(bytes), 'duration_seconds': duration,
-      });
-      final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
-      remotePath = data?['path']?.toString() ?? '';
-      if (data?['success'] != true || remotePath.isEmpty) throw Exception();
+      // 🚀 م14: رفع مباشر بتقدم — نسخة الويب تبقى على المسار القديم (base64)
+      if (kIsWeb) {
+        final response = await SupabaseService().invokeFunction('legal-actions', body: {
+          'action': 'upload_chat_voice', 'user_uid': uid,
+          'consultation_id': widget.consultationId,
+          'file_base64': base64Encode(bytes), 'duration_seconds': duration,
+        });
+        final data = response.data is Map ? Map<String, dynamic>.from(response.data as Map) : null;
+        remotePath = data?['path']?.toString() ?? '';
+        if (data?['success'] != true || remotePath.isEmpty) throw Exception();
+      } else {
+        remotePath = await _signAndUpload('voice', bytes, 'audio/mp4', pendingId: pendingId);
+      }
       // احفظ مسار الملف في الرسالة المتفائلة ليتاح لإعادة المحاولة عند الفشل
       final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
       if (pi != -1) _pendingMessages[pi]['file_url'] = remotePath;
@@ -561,6 +626,24 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
     if (!sent && mounted) _markPendingFailed(pendingId);
   }
 
+  /// 🚀 م14: كشف نوع الصورة من البايتات الأولى (JPEG/PNG/WEBP) — تطابق
+  /// القائمة البيضاء السيرفرية، مع JPEG كسقوط آمن لملفات الملتقط المضغوطة.
+  String _imageContentType(Uint8List b) {
+    if (b.length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) {
+      return 'image/jpeg';
+    }
+    if (b.length >= 8 &&
+        b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) {
+      return 'image/png';
+    }
+    if (b.length >= 12 &&
+        b[0] == 0x52 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x46 &&
+        b[8] == 0x57 && b[9] == 0x45 && b[10] == 0x42 && b[11] == 0x50) {
+      return 'image/webp';
+    }
+    return 'image/jpeg';
+  }
+
   Future<void> _sendImage() async {
     final picker = ImagePicker();
     final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1280);
@@ -575,21 +658,28 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
           ? await file.readAsBytes()
           : await (await _storage.compressImage(File(file.path)) ?? File(file.path))
               .readAsBytes();
-      final response = await SupabaseService().invokeFunction(
-        'legal-actions',
-        body: {
-          'action': 'upload_chat_image',
-          'user_uid': uid,
-          'consultation_id': widget.consultationId,
-          'file_base64': base64Encode(bytes),
-        },
-      );
-      final data = response.data is Map
-          ? Map<String, dynamic>.from(response.data as Map)
-          : null;
-      remotePath = data?['path']?.toString() ?? '';
-      if (data?['success'] != true || remotePath.isEmpty) {
-        throw Exception('CHAT_IMAGE_UPLOAD_FAILED');
+      // 🚀 م14: رفع مباشر بشريط تقدم — نسخة الويب تبقى على المسار القديم (base64)
+      if (kIsWeb) {
+        final response = await SupabaseService().invokeFunction(
+          'legal-actions',
+          body: {
+            'action': 'upload_chat_image',
+            'user_uid': uid,
+            'consultation_id': widget.consultationId,
+            'file_base64': base64Encode(bytes),
+          },
+        );
+        final data = response.data is Map
+            ? Map<String, dynamic>.from(response.data as Map)
+            : null;
+        remotePath = data?['path']?.toString() ?? '';
+        if (data?['success'] != true || remotePath.isEmpty) {
+          throw Exception('CHAT_IMAGE_UPLOAD_FAILED');
+        }
+      } else {
+        final ct = _imageContentType(bytes);
+        remotePath = await _signAndUpload(
+            'image', bytes, ct, pendingId: pendingId);
       }
       // احفظ مسار الملف في الرسالة المتفائلة ليتاح لإعادة المحاولة عند الفشل
       final pi = _pendingMessages.indexWhere((m) => m['id'] == pendingId);
@@ -1125,7 +1215,7 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                 msg['file_signed_url']?.toString() ?? msg['file_url'].toString(),
                 width: 200, height: 150, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 40))),
-            // م14: صورة قيد الرفع بلا رابط بعد — مربع مع مؤشر/أيقونة
+            // م14: صورة قيد الرفع بلا رابط بعد — مربع مع مؤشر/أيقونة + شريط تقدم
             if (type == 'image' && pending && (msg['file_url'] == null || (msg['file_url'] as String).isEmpty))
               Container(
                 width: 200, height: 120,
@@ -1135,22 +1225,58 @@ class _ConsultationChatScreenState extends State<ConsultationChatScreen>
                 ),
                 child: Center(
                   child: (msg['status'] ?? 'sending') == 'sending'
-                      ? const SizedBox(width: 22, height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGold))
+                      ? Column(mainAxisSize: MainAxisSize.min, children: [
+                          const SizedBox(width: 22, height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGold)),
+                          // 🚀 م14: شريط تقدم الرفع المباشر
+                          if ((msg['progress'] ?? -1.0) >= 0) ...[
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: SizedBox(
+                                width: 160,
+                                child: LinearProgressIndicator(
+                                  value: (msg['progress'] as num).toDouble(),
+                                  minHeight: 4,
+                                  backgroundColor: AppTheme.textGrey.withOpacity(0.2),
+                                  color: AppTheme.primaryGold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text('${(((msg['progress'] ?? 0) as num) * 100).round()}%',
+                                style: const TextStyle(color: AppTheme.textGrey, fontSize: 10)),
+                          ],
+                        ])
                       : const Icon(Icons.broken_image, color: AppTheme.textGrey, size: 36),
                 ),
               ),
             if (type == 'voice') InkWell(
               onTap: () => _playVoice(msg),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_playingMessageId == msg['id']?.toString() &&
-                        (_audioController?.value.isPlaying ?? false)
-                    ? Icons.pause_circle
-                    : Icons.play_circle,
-                    color: AppTheme.primaryGold, size: 28),
-                AppTheme.gapWidthSmall,
-                Text('رسالة صوتية (${msg['duration_seconds'] ?? 0}ث)',
-                    style: const TextStyle(color: AppTheme.textWhite, fontSize: 12)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_playingMessageId == msg['id']?.toString() &&
+                          (_audioController?.value.isPlaying ?? false)
+                      ? Icons.pause_circle
+                      : Icons.play_circle,
+                      color: AppTheme.primaryGold, size: 28),
+                  AppTheme.gapWidthSmall,
+                  Text('رسالة صوتية (${msg['duration_seconds'] ?? 0}ث)',
+                      style: const TextStyle(color: AppTheme.textWhite, fontSize: 12)),
+                ]),
+                // 🚀 م14: شريط تقدم الرفع المباشر للصوت
+                if (pending && (msg['progress'] ?? -1.0) >= 0) ...[
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    width: 140,
+                    child: LinearProgressIndicator(
+                      value: (msg['progress'] as num).toDouble(),
+                      minHeight: 4,
+                      backgroundColor: AppTheme.textGrey.withOpacity(0.2),
+                      color: AppTheme.primaryGold,
+                    ),
+                  ),
+                ],
               ]),
             ),
             const SizedBox(height: 3),

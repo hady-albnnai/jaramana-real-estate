@@ -2440,6 +2440,57 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // ─── 🚀 م14 (2026-08-20): توقيع رابط رفع مباشر للمحادثة ───
+    // كان الرفع base64 داخل JSON (أثقل 33%+، بلا شريط تقدم). الآن العميل
+    // يأخذ رابط توقيع ثم يرفع الملف مباشرة إلى الـ bucket مع تقدم حقيقي،
+    // ثم يرسل الرسالة بالمسار — وsend_chat_message يتحقق من ملكية المسار
+    // (`${uid}/chat/${consultId}/…`) كما كان.
+    if (action === "sign_chat_upload") {
+      const consultId = (body.consultation_id ?? "").toString();
+      const kind = (body.kind ?? "image").toString();
+      const contentType = (body.content_type ?? "").toString();
+      const sizeBytes = Number(body.size_bytes ?? 0);
+      if (!consultId) return json({ success: false, error: "CONSULTATION_ID_REQUIRED" }, 400);
+      if (!["image", "voice"].includes(kind)) return json({ success: false, error: "INVALID_UPLOAD_KIND" }, 400);
+      if (await consultationFlowV2Enabled(supabaseAdmin)) {
+        await syncConsultationSession(supabaseAdmin, consultId);
+      }
+      const { data: row } = await supabaseAdmin
+        .from("legal_consultations")
+        .select("user_uid, lawyer_uid, chat_started_at, chat_duration_minutes, status")
+        .eq("id", consultId).eq("i_del", 0).maybeSingle();
+      if (!row) return json({ success: false, error: "CONSULTATION_NOT_FOUND" }, 404);
+      const participant = row.user_uid === uid || (isLawyer(role) && row.lawyer_uid === uid);
+      if (!participant) return json({ success: false, error: "NOT_PARTICIPANT" }, 403);
+      if (!row.chat_started_at || Number(row.status) !== 1) {
+        return json({ success: false, error: "CHAT_NOT_OPEN" }, 409);
+      }
+      const endAt = new Date(row.chat_started_at).getTime() +
+        (Number(row.chat_duration_minutes) || 15) * 60 * 1000;
+      if (Date.now() >= endAt) return json({ success: false, error: "CHAT_TIME_EXPIRED" }, 409);
+      // قائمة بيضاء للنوع + حد الحجم (نفس حدود المسار السابق)
+      const IMAGE_TYPES: Record<string, string> = {
+        "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+      };
+      const VOICE_TYPES: Record<string, string> = {
+        "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/m4a": "m4a", "audio/aac": "m4a",
+      };
+      const ext = kind === "image" ? IMAGE_TYPES[contentType] : VOICE_TYPES[contentType];
+      if (!ext) return json({ success: false, error: "INVALID_FILE_TYPE" }, 400);
+      if (!Number.isFinite(sizeBytes) || sizeBytes < 1 || sizeBytes > 8 * 1024 * 1024) {
+        return json({ success: false, error: "INVALID_FILE_SIZE" }, 400);
+      }
+      // المسار يقرره السيرفر حصراً (العميل لا يستطيع تزويره)
+      const path = `${uid}/chat/${consultId}/${crypto.randomUUID()}.${ext}`;
+      const { data: signed, error: signErr } = await supabaseAdmin.storage
+        .from("consultation_files")
+        .createSignedUploadUrl(path);
+      if (signErr || !signed?.signedUrl) {
+        return json({ success: false, error: "CHAT_SIGN_UPLOAD_FAILED" }, 400);
+      }
+      return json({ success: true, upload_url: signed.signedUrl, file_url: path, content_type: contentType });
+    }
+
     // ─── إرسال رسالة في المحادثة ───
     if (action === "send_chat_message") {
       const consultId = (body.consultation_id ?? body.consultationId)?.toString() ?? "";
