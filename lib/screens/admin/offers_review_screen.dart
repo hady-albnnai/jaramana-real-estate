@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/utils/error_utils.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة مراجعة العروض الجديدة للإدارة
 /// تعرض الصور + معلومات المرسل + التفاصيل + كشف العروض المكررة
@@ -557,24 +558,15 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                 itemBuilder: (_, i) => Image.network(
                   o.imgs[i].toString(),
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: AppTheme.deepBlack,
-                    child: const Center(
-                      child: Icon(Icons.broken_image,
-                          color: AppTheme.textGrey, size: 50),
-                    ),
-                  ),
+                  errorBuilder: (_, __, ___) =>
+                      const OfficeLogoPlaceholder(logoSize: 38),
                 ),
               ),
             )
           else
-            Container(
+            const SizedBox(
               height: 120,
-              color: AppTheme.deepBlack,
-              child: const Center(
-                child: Icon(Icons.image_not_supported,
-                    color: AppTheme.textGrey, size: 50),
-              ),
+              child: OfficeLogoPlaceholder(logoSize: 38),
             ),
 
           // التفاصيل

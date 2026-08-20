@@ -11,6 +11,7 @@ import '../../core/services/business_service.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/book_appointment_sheet.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة تفاصيل طلب البحث + العروض المطابقة
 class RequestDetailScreen extends StatefulWidget {
@@ -686,14 +687,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   child: o.imgs.isNotEmpty
                       ? Image.network(o.imgs.first.toString(),
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                              color: AppTheme.deepBlack,
-                              child: const Icon(Icons.image,
-                                  color: AppTheme.textGrey)))
-                      : Container(
-                          color: AppTheme.deepBlack,
-                          child: const Icon(Icons.image,
-                              color: AppTheme.textGrey)),
+                          errorBuilder: (_, __, ___) =>
+                              const OfficeLogoPlaceholder(logoSize: 26))
+                      : const OfficeLogoPlaceholder(logoSize: 26)),
                 ),
               ),
               AppTheme.gapWidthSmall,

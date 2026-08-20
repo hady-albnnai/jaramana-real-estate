@@ -8,6 +8,7 @@ import '../../providers/config_provider.dart';
 import '../../widgets/bottom_nav_bar.dart';
 import 'add_offer_screen.dart';
 import '../../core/utils/app_utils.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// ════════════════════════════════════════════════════════════════════
 /// شاشة خدمة التصوير العقاري — للمستخدمين العاديين والوسطاء (ليس للإدارة).
@@ -562,12 +563,10 @@ class _PhotographyServiceScreenState extends State<PhotographyServiceScreen> {
                       width: 72,
                       height: 72,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                      errorBuilder: (_, __, ___) => const SizedBox(
                         width: 72,
                         height: 72,
-                        color: AppTheme.deepBlack,
-                        child: const Icon(Icons.broken_image,
-                            color: AppTheme.textGrey, size: 20),
+                        child: OfficeLogoPlaceholder(logoSize: 24),
                       ),
                     ),
                   ),

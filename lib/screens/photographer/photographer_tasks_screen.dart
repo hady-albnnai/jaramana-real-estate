@@ -12,6 +12,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/photography_provider.dart';
 import '../../services/storage_service.dart';
 import '../../widgets/app_back_button.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 class PhotographerTasksScreen extends StatefulWidget {
   const PhotographerTasksScreen({super.key});
@@ -696,12 +697,10 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
                         width: 88,
                         height: 88,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        errorBuilder: (_, __, ___) => const SizedBox(
                           width: 88,
                           height: 88,
-                          color: AppTheme.deepBlack,
-                          child: const Icon(Icons.broken_image,
-                              color: AppTheme.textGrey),
+                          child: OfficeLogoPlaceholder(logoSize: 28),
                         ),
                       ),
                     )).toList(),
@@ -954,13 +953,14 @@ class _PhotographerTasksScreenState extends State<PhotographerTasksScreen>
                         width: 70, height: 70,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          width: 70, height: 70,
+                          width: 70,
+                          height: 70,
                           decoration: BoxDecoration(
                             borderRadius: AppTheme.radiusSmall,
                             border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
-                            color: AppTheme.deepBlack,
+                            color: AppTheme.inputBackground,
                           ),
-                          child: const Center(child: Icon(Icons.image, color: AppTheme.textGrey)),
+                          child: const OfficeLogoPlaceholder(logoSize: 28),
                         ),
                       ),
                     ),

@@ -8,6 +8,7 @@ import '../../models/offer_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/utils/error_utils.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة ترقيات العرض (spd)
 /// 5 خيارات: تمديد/تجديد / تثبيت / Boost / خصم 5% / عرض مميّز
@@ -321,10 +322,7 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const Icon(
                           Icons.image, color: AppTheme.textGrey))
-                  : Container(
-                      color: AppTheme.deepBlack,
-                      child: const Icon(Icons.image,
-                          color: AppTheme.textGrey)),
+                  : const OfficeLogoPlaceholder(logoSize: 26)),
             ),
           ),
           AppTheme.gapWidthSmall,

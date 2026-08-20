@@ -8,6 +8,7 @@ import '../../core/constants/db_constants.dart';
 import '../../models/offer_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/bottom_nav_bar.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة عروضي — تعرض كل عروض المستخدم مع فلترة بالحالة
 /// + إمكانية التعديل/الترقية/مشاهدة التفاصيل.
@@ -468,11 +469,7 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     );
   }
 
-  Widget _imgPlaceholder() => Container(
-        color: AppTheme.deepBlack,
-        child: const Icon(Icons.image_not_supported,
-            color: AppTheme.textGrey, size: 30),
-      );
+  Widget _imgPlaceholder() => const OfficeLogoPlaceholder(logoSize: 26);
 
   Widget _actionBtn({
     required IconData icon,

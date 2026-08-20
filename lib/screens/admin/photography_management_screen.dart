@@ -11,6 +11,7 @@ import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/photography_provider.dart';
 import 'admin_add_offer_screen.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 class PhotographyManagementScreen extends StatefulWidget {
   const PhotographyManagementScreen({super.key});
@@ -344,7 +345,7 @@ class _PhotographyManagementScreenState extends State<PhotographyManagementScree
                     child: ClipRRect(
                       borderRadius: AppTheme.radiusMedium,
                       child: Image.network(task.media[index], width: 76, height: 76, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(width: 76, height: 76, color: AppTheme.deepBlack, child: const Icon(Icons.broken_image, color: AppTheme.textGrey))),
+                          errorBuilder: (_, __, ___) => const SizedBox(width: 76, height: 76, child: OfficeLogoPlaceholder(logoSize: 28))),
                     ),
                   ),
                 ),

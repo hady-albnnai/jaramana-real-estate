@@ -9,6 +9,7 @@ import '../../models/offer_model.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/constants/db_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة طلبات المعاينة للسمسار — مع فلترة بالحالة + تفاصيل العميل
 /// + إجراءات: قبول / رفض / إكمال المعاينة + اتصال/واتساب
@@ -453,10 +454,7 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
     );
   }
 
-  Widget _imgPlaceholder() => Container(
-        color: AppTheme.deepBlack,
-        child: const Icon(Icons.image, color: AppTheme.textGrey, size: 24),
-      );
+  Widget _imgPlaceholder() => const OfficeLogoPlaceholder(logoSize: 24);
 
   (String, Color, IconData) _statusInfo(int s) {
     switch (s) {

@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/offer_model.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// إدارة وسائط العروض — بديل متوافق مع نموذج المشروع الحالي لفكرة إدارة التصوير.
 /// لا ينشئ جدول تصوير جديد، بل يراجع حالة الصور/الفيديو/السند ضمن offers.
@@ -235,10 +236,7 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
   }
 
   Widget _placeholder() {
-    return Container(
-      color: AppTheme.deepBlack,
-      child: const Icon(Icons.image_not_supported_outlined, color: AppTheme.textGrey),
-    );
+    return const OfficeLogoPlaceholder(logoSize: 26);
   }
 
   Widget _badge(String text, Color color) {

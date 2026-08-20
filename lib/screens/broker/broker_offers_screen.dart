@@ -6,6 +6,7 @@ import '../../providers/auth_provider.dart';
 import '../../models/offer_model.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/office_logo_placeholder.dart';
 
 /// 🏠 عروض الوسيط — العروض الخاصة به + المُسندة إليه
 class BrokerOffersScreen extends StatefulWidget {
@@ -269,11 +270,10 @@ class _BrokerOffersScreenState extends State<BrokerOffersScreen> {
   void _snack(String m) =>
       AppTheme.showSnackBar(context, SnackBar(content: Text(m)));
 
-  Widget _imgPlaceholder() => Container(
+  Widget _imgPlaceholder() => const SizedBox(
         width: 60,
         height: 60,
-        color: AppTheme.deepBlack,
-        child: const Icon(Icons.image, color: AppTheme.textGrey),
+        child: OfficeLogoPlaceholder(logoSize: 24),
       );
 
   Widget _statusBadge(int sts) {
