@@ -266,3 +266,20 @@ DELETE ثم POST — الـ POST كان يفشل 500). هذا يفسّر أعر�
 ### ملاحظة الإرسال السيرفري
 تريغر `trg_payment_new_notify` حي ويرسل push فوراً (net.http_post مباشر لا
 طابور) — التأخير المتبقي إن وُجد هو توصيل FCM للجهاز.
+
+---
+
+## ملحق 7 (2026-08-20) — خطة الثغرات الأربع (من التحليل الكمي) — أُغلقت كلها
+
+| الثغرة | الإصلاح | الملف |
+|---|---|---|
+| 1: reversed/cancelled تعرض شريط كتابة | تُعامل كمنتهية — شريط «جدد للمتابعة» + ترويسة دقيقة | consultation_chat_screen.dart |
+| 2: اعتماد تجديد بمحامٍ غير نشط | رد منظم LAWYER_INACTIVE_FOR_RENEWAL + إشعار إدارة بالخطوتين | 2026_08_20_renewal_lawyer_inactive.sql |
+| 3: V2 phone_new بلا حارس استشارة مفتوحة | حارس OPEN_CONSULTATION_EXISTS داخل prepare (منطق الحارس القديم + جلسات V2) + الكودان بقائمة التطبيع | 2026_08_20_phone_open_guard.sql + error_utils |
+| 4: لا إعادة فحص 7 أيام عند الاعتماد | نفس شرط فحص الدفع يتكرر بلحظة الاعتماد — CHAT_EXPIRED_7DAYS + إشعار إدارة | 2026_08_20_z7days_recheck.sql |
+
+**ترتيب التطبيق الحرج:** ملف z7days أبجدياً بعد renewal_lawyer_inactive (مبني عليه —
+يتضمن إصلاحي الثغرة 2+4 معاً بنسخة v3 واحدة).
+
+**التحققات المدمجة لكل ملف:** renewal_inactive_patched · open_guard_patched ·
+renewal_7days_patched (+ renewal_inactive_still_patched بالملف الأخير).
