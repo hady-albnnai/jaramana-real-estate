@@ -283,3 +283,15 @@ DELETE ثم POST — الـ POST كان يفشل 500). هذا يفسّر أعر�
 
 **التحققات المدمجة لكل ملف:** renewal_inactive_patched · open_guard_patched ·
 renewal_7days_patched (+ renewal_inactive_still_patched بالملف الأخير).
+
+---
+
+## إقفال خطة الثغرات (تحديث نهائي — 2026-08-20)
+
+- **النشر الحي اكتمل** بتشغيل المالك: الملفات الثلاثة رجعت `HTTP 201` مع
+  التحققات المدمجة (`renewal_inactive_patched` · `open_guard_patched` ·
+  `renewal_7days_patched` + `renewal_inactive_still_patched` = true) و`[DONE]`.
+- **درس 42601**: حلقات `FOR x IN` داخل الدوال تطلبت `staff RECORD` صريحاً
+  (النمط الحي `trg_payment_new_notify` يعلنه دائماً) — أُصلح بكوميت `4a25593`.
+- **CI على main**: Flutter CI أخضر + CI and Deploy أخضر (`4a25593`).
+- **على المالك**: `flutter run` لاستلام إصلاح الواجهة (ثغرة ١ + قاموس ثغرة ٣).
