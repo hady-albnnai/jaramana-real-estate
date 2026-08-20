@@ -1239,6 +1239,11 @@ class _State extends State<LegalConsultationBookingScreen>
   Widget _activeCard(Map<String, dynamic> c) {
     final status = (c['status'] ?? 0) as int;
     final chatStarted = c['chat_started_at'] != null;
+    // 🔄 2026-08-20: جلسة V2 حية (ready/join_window/active) — مصدر الحقيقة.
+    // كان الزر يظهر فقط عند chat_started_at (حقل قديم لا يُضبط إلا عند انضمام
+    // المستخدم) ⇒ بعد «المحامي جاهز» تبقى البطاقة «المحامي يدرس مشكلتك» بلا
+    // زر، والمستخدم مضطر لفتح المحادثة من الإشعار فقط.
+    final live = c['has_live_session'] == true;
     final id = c['id'].toString();
     final alias = (c['lawyer_alias'] ?? '').toString();
     final sType = (c['service_type'] ?? 0) as int;
@@ -1308,19 +1313,19 @@ class _State extends State<LegalConsultationBookingScreen>
             Text('بانتظار قبول المحامي',
                 style: TextStyle(color: AppTheme.warningOrange, fontWeight: FontWeight.bold, fontSize: 12)),
           ])
-        else if (status == 1 && !chatStarted)
+        else if (status == 1 && !chatStarted && !live)
           const Row(children: [
             Icon(Icons.menu_book, color: AppTheme.infoBlue, size: 18),
             SizedBox(width: 6),
             Text('المحامي يدرس مشكلتك',
                 style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold, fontSize: 12)),
           ])
-        else if (chatStarted)
+        else if (chatStarted || live)
           SizedBox(width: double.infinity, height: 46, child: ElevatedButton.icon(
             onPressed: () => _openChat(id),
             icon: const Icon(Icons.chat, color: Colors.black, size: 18),
-            label: const Text('فتح المحادثة',
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+            label: Text(chatStarted ? 'فتح المحادثة' : 'الدخول للمحادثة',
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.successGreen),
           )),
         if (status == 0) ...[
