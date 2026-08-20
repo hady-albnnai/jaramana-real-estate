@@ -756,7 +756,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     final myUid = context.read<AuthProvider>().userModel?.uid ?? '';
     if (myUid.isNotEmpty && myUid == offer.usrId) {
       AppTheme.showSnackBar(context,
-          const SnackBar(content: Text('لا يمكنك حجز موعد على عرضك الخاص')));
+          const SnackBar(content: Text('لا يمكنك حجز موعد على العرض الخاص بك')));
       return;
     }
 

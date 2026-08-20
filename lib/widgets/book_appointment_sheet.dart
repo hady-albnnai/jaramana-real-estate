@@ -528,7 +528,7 @@ class _BookAppointmentSheetState extends State<BookAppointmentSheet> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.block, color: AppTheme.warningOrange, size: 60),
             AppTheme.gapHeightLarge,
-            const Text('لا يمكنك حجز موعد على عرضك',
+            const Text('لا يمكنك حجز موعد على العرض الخاص بك',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     color: AppTheme.textWhite,

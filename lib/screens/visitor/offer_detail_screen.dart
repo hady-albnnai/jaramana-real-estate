@@ -220,7 +220,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
             userId: _offer!.usrId,
             type: 2, // إعجاب
             title: 'إعجاب جديد ❤️',
-            body: '${auth.userModel!.nm} أعجب بعرضك "${_offer!.ttl}"',
+            body: '${auth.userModel!.nm} أعجب بالعرض الخاص بك "${_offer!.ttl}"',
             refId: widget.offerId,
             action: 'offer_like',
           );

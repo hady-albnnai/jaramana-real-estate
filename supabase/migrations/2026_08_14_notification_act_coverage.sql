@@ -69,7 +69,7 @@ BEGIN
   END IF;
 
   -- 🔒 ACT-001 (2026-08-14): كان الإشعار بلا عمود `act` ⇒ صاحب العرض يستلم
-  -- «تغيّرت حالة عرضك» ولا يستطيع فتحه بالضغط، لأن الموجّه الموحّد يقرأ `act`
+  -- إشعار تغيّر حالة العرض الخاص به ولا يستطيع فتحه بالضغط، لأن الموجّه الموحّد يقرأ `act`
   -- ليقرّر الشاشة. القيمة offer_status تُوجّه إلى تفاصيل العرض.
   INSERT INTO notifications (uid, tp, ttl, bdy, ref_id, act, ts_crt)
   VALUES (NEW.usr_id, v_type, v_title, v_body, NEW.id, 'offer_status', NOW());

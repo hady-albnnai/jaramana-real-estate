@@ -27,7 +27,7 @@ BEGIN
 
   -- بناء نص الإشعار (بدون معلومات الطالب)
   v_title := '📅 طلب معاينة جديد';
-  v_body := 'طلب معاينة جديد على عرضك:' || E'\n'
+  v_body := 'طلب معاينة جديد على العرض الخاص بك:' || E'\n'
          || 'العرض: ' || COALESCE(v_offer_title, 'عرض') || E'\n'
          || 'الموقع: ' || COALESCE(v_offer_location, 'غير محدد') || E'\n'
          || 'التاريخ: ' || TO_CHAR(NEW.dt AT TIME ZONE 'Asia/Damascus', 'YYYY/MM/DD') || E'\n'
