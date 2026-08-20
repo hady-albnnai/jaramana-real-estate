@@ -129,7 +129,8 @@ class _State extends State<LegalConsultationBookingScreen>
       if (_guardPending(0)) return;
       setState(() => _screen = 5);
     } else if (_v2Flow == 'onsite_convert' ||
-        _v2Flow == 'onsite_reschedule') {
+        _v2Flow == 'onsite_reschedule' ||
+        _v2Flow == 'onsite_rebook') {
       _isContinuing = false;
       _serviceType = 1;
       _rescheduleAppointmentId = widget.appointmentId.isEmpty
@@ -457,6 +458,115 @@ class _State extends State<LegalConsultationBookingScreen>
     });
     return true;
   }
+
+  /// 🏢 حارس الموعد الحضوري النشط (2026-08-20):
+  /// مع وجود جلسة حضورية محجوزة، يفتح بطاقة الموعد أولاً (تاريخ + مكان +
+  /// خيارات تغيير/إعادة اختيار) — ومعالج الحجز الجديد لا يُفتح إلا بضغط
+  /// صريح «حجز جلسة جديدة». كان المستخدم يدخل الحجز مباشرة فيحجز ويدفع
+  /// ثانية بلا أي إشارة لموعده القائم.
+  bool _guardActiveOnsite() {
+    final a = _activeConsultation;
+    if (a == null) return false;
+    if ((a['service_type'] ?? 0) as int != 1) return false;
+    if ((a['status'] ?? 0) as int != 1) return false;
+    final id = a['id'].toString();
+    final apptSts = (a['appt_status'] ?? 1) as int;
+    final apptId = (a['appointment_id'] ?? '').toString();
+    final cnlRsn = (a['appt_cnl_rsn'] ?? '').toString();
+    final raw = (a['requested_slot'] ?? '').toString();
+    final dt = DateTime.tryParse(raw)?.toLocal();
+    final when = dt == null
+        ? ''
+        : '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')} — '
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    final address =
+        context.read<ConfigProvider>().config?.legalOfficeAddress ?? '';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        title: Text(
+            apptSts == 3 ? 'موعدك ملغي — بانتظار اختيارك' : 'لديك جلسة حضورية محجوزة',
+            style: const TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (when.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('📅 $when',
+                  style: const TextStyle(
+                      color: AppTheme.textWhite,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold)),
+            ),
+          if (address.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('📍 $address',
+                  style: const TextStyle(color: AppTheme.textWhite, fontSize: 13, height: 1.5)),
+            ),
+          if (apptSts == 3 && cnlRsn.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('سبب الاعتذار: $cnlRsn',
+                  style: const TextStyle(color: AppTheme.warningOrange, fontSize: 12)),
+            ),
+          const Text('☎️ الرجاء الاتصال بالمكتب قبل ساعة من الموعد للتأكيد',
+              style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('إغلاق', style: TextStyle(color: AppTheme.textGrey))),
+          if (apptSts == 1) ...[
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _v2Flow = 'onsite_reschedule';
+                _continueChatId = id;
+                _rescheduleAppointmentId = apptId.isEmpty ? null : apptId;
+                setState(() {
+                  _slotsFuture = null;
+                  _selectedDayKey = null;
+                  _selectedSlot = null;
+                  _screen = 7;
+                });
+              },
+              child: const Text('تغيير الموعد', style: TextStyle(color: AppTheme.primaryGold))),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _serviceType = 1;
+                _goTo(1);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+              child: const Text('حجز جلسة جديدة',
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ] else
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _v2Flow = 'onsite_rebook';
+                _continueChatId = id;
+                _rescheduleAppointmentId = apptId.isEmpty ? null : apptId;
+                setState(() {
+                  _slotsFuture = null;
+                  _selectedDayKey = null;
+                  _selectedSlot = null;
+                  _screen = 7;
+                });
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+              child: const Text('اختر موعداً جديداً بنفس دفعتك',
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+        ],
+      ),
+    );
+    return true;
+  }
+
   void _resetWizard() {
     _screen = 0; _serviceType = 0; _isContinuing = false; _continueChatId = null;
     _v2IntentId = null; _v2Flow = ''; _allowOtherLawyer = false;
@@ -1262,6 +1372,12 @@ class _State extends State<LegalConsultationBookingScreen>
     final sType = (c['service_type'] ?? 0) as int;
     final reassigned = ((c['reassign_count'] ?? 0) as int) > 0;
     final noLawyer = alias.isEmpty;
+    // 🏢 2026-08-20: حالة موعد الحضورية (مُثراة من list_my_consultations)
+    final apptSts = (c['appt_status'] ?? 1) as int;
+    final apptCnlRsn = (c['appt_cnl_rsn'] ?? '').toString();
+    final apptId = (c['appointment_id'] ?? '').toString();
+    final officeAddress =
+        context.read<ConfigProvider>().config?.legalOfficeAddress ?? '';
 
     final step = chatStarted ? 3 : (status == 1 ? 3 : 2);
     return _statusCard(
@@ -1286,23 +1402,39 @@ class _State extends State<LegalConsultationBookingScreen>
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.primaryGold.withOpacity(0.10),
+                color: (apptSts == 3 ? AppTheme.errorRed : AppTheme.primaryGold)
+                    .withOpacity(0.10),
                 borderRadius: AppTheme.radiusSmall,
-                border: Border.all(color: AppTheme.primaryGold.withOpacity(0.4)),
+                border: Border.all(
+                    color: (apptSts == 3 ? AppTheme.errorRed : AppTheme.primaryGold)
+                        .withOpacity(0.4)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.event, color: AppTheme.primaryGold, size: 15),
+                Icon(Icons.event,
+                    color: apptSts == 3 ? AppTheme.errorRed : AppTheme.primaryGold,
+                    size: 15),
                 const SizedBox(width: 5),
                 Text(
                   'موعدك: ${dt.year}/${dt.month.toString().padLeft(2, '0')}/'
                   '${dt.day.toString().padLeft(2, '0')} — '
                   '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
-                  style: const TextStyle(
-                      color: AppTheme.primaryGold, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      color: apptSts == 3 ? AppTheme.errorRed : AppTheme.primaryGold,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold),
                 ),
               ]),
             );
           }),
+          // 📍 مكان الجلسة + تنبيه الساعة (2026-08-20)
+          if (officeAddress.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('📍 مكان الجلسة: $officeAddress',
+                style: const TextStyle(color: AppTheme.textWhite, fontSize: 11, height: 1.5)),
+          ],
+          const SizedBox(height: 2),
+          const Text('☎️ الرجاء الاتصال بالمكتب قبل ساعة من الموعد للتأكيد',
+              style: TextStyle(color: AppTheme.textGrey, fontSize: 10)),
         ],
         if (reassigned) ...[
           const SizedBox(height: 4),
@@ -1325,6 +1457,57 @@ class _State extends State<LegalConsultationBookingScreen>
             SizedBox(width: 6),
             Text('بانتظار قبول المحامي',
                 style: TextStyle(color: AppTheme.warningOrange, fontWeight: FontWeight.bold, fontSize: 12)),
+          ])
+        else if (sType == 1 && status == 1 && apptSts == 3)
+          // 🏢 2026-08-20: المحامي اعتذر عن موعد الحضورية — الكرة بملعب المستخدم
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.event_busy, color: AppTheme.warningOrange, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('المحامي اعتذر عن موعدك — اختر موعداً جديداً بنفس دفعتك',
+                    style: const TextStyle(
+                        color: AppTheme.warningOrange,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12)),
+              ),
+            ]),
+            if (apptCnlRsn.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text('السبب: $apptCnlRsn',
+                  style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+            ],
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _v2Flow = 'onsite_rebook';
+                  _continueChatId = id;
+                  _rescheduleAppointmentId = apptId.isEmpty ? null : apptId;
+                  setState(() {
+                    _slotsFuture = null;
+                    _selectedDayKey = null;
+                    _selectedSlot = null;
+                    _screen = 7;
+                  });
+                },
+                icon: const Icon(Icons.event_available, color: Colors.black, size: 18),
+                label: const Text('اختر موعداً جديداً بنفس دفعتك',
+                    style: TextStyle(
+                        color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
+              ),
+            ),
+          ])
+        else if (sType == 1 && status == 1)
+          const Row(children: [
+            Icon(Icons.check_circle, color: AppTheme.successGreen, size: 18),
+            SizedBox(width: 6),
+            Text('✅ موعدك مؤكد في المكتب',
+                style: TextStyle(
+                    color: AppTheme.successGreen, fontWeight: FontWeight.bold, fontSize: 12)),
           ])
         else if (status == 1 && !chatStarted && !live)
           const Row(children: [
@@ -1582,7 +1765,14 @@ class _State extends State<LegalConsultationBookingScreen>
           ])))),
       AppTheme.gapWidthMedium,
       Expanded(child: GestureDetector(
-        onTap: () { if (_guardPending(1)) return; _serviceType = 1; _goTo(1); },
+        onTap: () {
+          // 🏢 2026-08-20: حارس الموعد النشط — مع وجود جلسة حضورية محجوزة،
+          // يعرض بطاقة الموعد أولاً ولا يدخل معالج الحجز إلا بضغط صريح.
+          if (_guardActiveOnsite()) return;
+          if (_guardPending(1)) return;
+          _serviceType = 1;
+          _goTo(1);
+        },
         child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: AppTheme.primaryGold.withOpacity(0.08), borderRadius: AppTheme.radiusLarge, border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3))),
           child: Column(children: [
             const Icon(Icons.business, color: AppTheme.primaryGold, size: 32),
@@ -2009,7 +2199,8 @@ class _State extends State<LegalConsultationBookingScreen>
           days: 30,
           parentConsultationId:
               (_v2Flow == 'onsite_convert' ||
-                      _v2Flow == 'onsite_reschedule') &&
+                      _v2Flow == 'onsite_reschedule' ||
+                      _v2Flow == 'onsite_rebook') &&
                   !_allowOtherLawyer
                   ? (_continueChatId ?? '')
                   : '',
@@ -2044,7 +2235,7 @@ class _State extends State<LegalConsultationBookingScreen>
           final dayTimes = byDay[activeDay] ?? const <DateTime>[];
 
           return Column(children: [
-            // ── رأس: نوع الجلسة وسعرها والمحامي ──
+            // ── رأس: نوع الجلسة وسعرها والمحامي ومكانها ──
             Padding(
               padding: AppTheme.paddingAllLarge,
               child: Container(
@@ -2054,23 +2245,33 @@ class _State extends State<LegalConsultationBookingScreen>
                   borderRadius: AppTheme.radiusMedium,
                   border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
                 ),
-                child: Row(children: [
-                  const Icon(Icons.business, color: AppTheme.primaryGold, size: 20),
-                  AppTheme.gapWidthSmall,
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('جلسة حضورية — ${_fmt(_onsitePrice)} ل.س',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 14)),
-                      if (_slotLawyerAlias.isNotEmpty)
-                        Text('⚖️ $_slotLawyerAlias',
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Icon(Icons.business, color: AppTheme.primaryGold, size: 20),
+                    AppTheme.gapWidthSmall,
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('جلسة حضورية — ${_fmt(_onsitePrice)} ل.س',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12)),
-                    ]),
-                  ),
+                            style: const TextStyle(
+                                color: AppTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 14)),
+                        if (_slotLawyerAlias.isNotEmpty)
+                          Text('⚖️ $_slotLawyerAlias',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: AppTheme.primaryGold, fontSize: 12)),
+                      ]),
+                    ),
+                  ]),
+                  // 📍 مكان الجلسة (2026-08-20) — من إعدادات الإدارة
+                  if ((context.read<ConfigProvider>().config?.legalOfficeAddress ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '📍 مكان الجلسة: ${context.read<ConfigProvider>().config!.legalOfficeAddress}',
+                      style: const TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.5),
+                    ),
+                  ],
                 ]),
               ),
             ),
@@ -2180,7 +2381,7 @@ class _State extends State<LegalConsultationBookingScreen>
                   ),
                   AppTheme.gapHeightLarge,
                   const Center(
-                    child: Text('💡 الجلسة الحضورية موعد في المكتب — لا محادثة فيها',
+                    child: Text('الرجاء الاتصال بالمكتب قبل ساعة من الموعد للتأكيد',
                         style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
                   ),
                   const SizedBox(height: 12),
@@ -2201,10 +2402,12 @@ class _State extends State<LegalConsultationBookingScreen>
                         ? null
                         : _v2Flow == 'onsite_reschedule'
                             ? _rescheduleLegalAppointment
-                            : (_v2IntentId != null &&
-                                    _pendingV2Intent?['status'] == 'payment_needs_slot')
-                                ? _replaceV2Reservation
-                                : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
+                            : _v2Flow == 'onsite_rebook'
+                                ? _rebookLegalAppointment
+                                : (_v2IntentId != null &&
+                                        _pendingV2Intent?['status'] == 'payment_needs_slot')
+                                    ? _replaceV2Reservation
+                                    : () => _goTo(_v2Flow == 'onsite_convert' ? 5 : 4),
                     icon: const Icon(Icons.arrow_back, color: Colors.black),
                     label: Text(
                         _selectedSlot == null
@@ -2265,6 +2468,33 @@ class _State extends State<LegalConsultationBookingScreen>
       final data = res.data as Map<String, dynamic>?;
       if (data?['success'] == true && mounted) {
         _snack('✅ تم تغيير موعد الجلسة بنفس الدفعة');
+        context.go('/user/my-appointments');
+      } else {
+        _snack(ErrorUtils.arabicMessage(data?['error']));
+      }
+    } catch (e) {
+      _snack(ErrorUtils.arabicMessage(e));
+    }
+    if (mounted) setState(() => _submitting = false);
+  }
+
+  /// 🏢 2026-08-20: إعادة اختيار موعد بعد اعتذار المحامي (موعد ملغي sts=3) —
+  /// نفس الدفعة، نفس المحامي (مشغول) أو المحامي الجديد (سبب آخر). الموعد
+  /// يُعاد تثبيته مؤكداً فور الاختيار بلا أي دفع جديد.
+  Future<void> _rebookLegalAppointment() async {
+    if (_rescheduleAppointmentId == null || _selectedSlot == null) return;
+    setState(() => _submitting = true);
+    try {
+      final res = await SupabaseService().invokeFunction('legal-actions', body: {
+        'action': 'rebook_legal_appointment_v2',
+        'user_uid': context.read<AuthProvider>().userModel?.uid ?? '',
+        'appointment_id': _rescheduleAppointmentId,
+        'slot': _selectedSlot,
+        'idempotency_key': _newUuid(),
+      });
+      final data = res.data as Map<String, dynamic>?;
+      if (data?['success'] == true && mounted) {
+        _snack('✅ تم تثبيت موعدك الجديد بنفس الدفعة');
         context.go('/user/my-appointments');
       } else {
         _snack(ErrorUtils.arabicMessage(data?['error']));
@@ -2444,6 +2674,8 @@ class _State extends State<LegalConsultationBookingScreen>
     final isCont = _viewingPending
         ? ((pending?['meta'] as Map?)?['continue_chat'] ?? '').toString().isNotEmpty
         : _isContinuing;
+    // 🏢 2026-08-20: خطوات الجلسة الحضورية تختلف (موعد يُثبَّت تلقائياً)
+    final isOnsite = (pending?['pkg'] ?? (_serviceType == 1 ? 1 : 0)) == 1;
 
     final String? pendingLine = pending == null
         ? null
@@ -2474,8 +2706,14 @@ class _State extends State<LegalConsultationBookingScreen>
           Text(isCont ? '🔄 تجديد محادثة سابقة' : '📋 الخطوات التالية:', style: const TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold, fontSize: 13)),
           const SizedBox(height: 8),
           const Text('1️⃣ الإدارة تراجع الدفعة (عادة خلال ساعة)', style: TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
-          Text(isCont ? '2️⃣ بعد التأكيد → تُفتح المحادثة تلقائياً' : '2️⃣ بعد التأكيد → ترسل الطلب للمحامي', style: const TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
-          if (!isCont) const Text('3️⃣ المحامي يدرس ويفتح المحادثة', style: TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
+          if (isOnsite)
+            const Text('2️⃣ بعد التأكيد → يُثبَّت موعدك تلقائياً في المكتب', style: TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8))
+          else
+            Text(isCont ? '2️⃣ بعد التأكيد → تُفتح المحادثة تلقائياً' : '2️⃣ بعد التأكيد → ترسل الطلب للمحامي', style: const TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
+          if (!isCont && isOnsite)
+            const Text('3️⃣ احضر للمكتب قبل الموعد — اتصل للتأكيد قبل ساعة', style: TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8))
+          else if (!isCont)
+            const Text('3️⃣ المحامي يدرس ويفتح المحادثة', style: TextStyle(color: AppTheme.textWhite, fontSize: 12, height: 1.8)),
         ])),
       if (_pendingV2Intent?['status'] == 'payment_needs_slot') ...[
         AppTheme.gapHeightMedium,

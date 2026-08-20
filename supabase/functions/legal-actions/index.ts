@@ -467,6 +467,20 @@ serve(async (req) => {
       return json(data as Record<string, unknown>);
     }
 
+    // 🏢 2026-08-20: إعادة اختيار موعد بعد اعتذار المحامي (موعد ملغي sts=3)
+    // — نفس الدفعة، مع محامي الاستشارة الحالي (نفسه أو الجديد بحسب سبب
+    // الاعتذار). يثبّت الموعد مؤكداً فوراً بلا دفع جديد.
+    if (action === "rebook_legal_appointment_v2") {
+      const { data, error } = await supabaseAdmin.rpc("rebook_legal_appointment_v2", {
+        p_user_uid: uid,
+        p_appointment_id: body.appointment_id,
+        p_slot: body.slot,
+        p_idempotency_key: body.idempotency_key,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      return json(data as Record<string, unknown>);
+    }
+
     if (action === "replace_consultation_reservation_v2") {
       const { data, error } = await supabaseAdmin.rpc("replace_consultation_reservation_v2", {
         p_user_uid: uid,
@@ -1230,7 +1244,10 @@ serve(async (req) => {
           "id, service_type, subject, price, status, notes, attachments, lawyer_alias, " +
           "chat_started_at, chat_duration_minutes, renew_count, rating, rating_comment, " +
           "converted_to_onsite, onsite_discount, payment_id, payment_status, " +
-          "reject_reason_code, reject_note, reassign_count, expires_at, ts_crt, ts_upd",
+          "reject_reason_code, reject_note, reassign_count, expires_at, ts_crt, ts_upd, " +
+          // 🏢 2026-08-20: موعد الحضورية وحالته (لم تكن ضمن التحديد فكان
+          // «موعدك» في البطاقة فارغاً دائماً رغم وجود موعد حقيقي)
+          "requested_slot, appointment_id",
         )
         .eq("user_uid", uid)
         .eq("i_del", 0)
@@ -1251,10 +1268,31 @@ serve(async (req) => {
           .in("status", ["ready", "join_window", "active"]);
         liveIds = new Set((live ?? []).map((r: Record<string, unknown>) => String(r.consultation_id)));
       }
-      const enriched = consRows.map((c) => ({
-        ...c,
-        has_live_session: liveIds.has(String(c.id)),
-      }));
+      // 🏢 2026-08-20: حالة موعد الحضورية لكل استشارة — يعرف المستخدم منها
+      // هل موعده مؤكد أم ملغي من المحامي (وعليه اختيار موعد جديد بنفس الدفعة).
+      const apptIds = consRows.map((c) => c.appointment_id).filter(Boolean);
+      const apptMap = new Map<string, Record<string, unknown>>();
+      if (apptIds.length > 0) {
+        const { data: appts } = await supabaseAdmin
+          .from("appointments")
+          .select("id, sts, dt, cnl_by, cnl_rsn")
+          .in("id", apptIds);
+        for (const a of (appts ?? [])) {
+          const rec = a as Record<string, unknown>;
+          apptMap.set(String(rec.id), rec);
+        }
+      }
+      const enriched = consRows.map((c) => {
+        const appt = apptMap.get(String(c.appointment_id ?? ""));
+        return {
+          ...c,
+          has_live_session: liveIds.has(String(c.id)),
+          appt_status: appt ? Number(appt.sts ?? 1) : 1,
+          appt_dt: appt ? appt.dt : null,
+          appt_cnl_by: appt ? appt.cnl_by : null,
+          appt_cnl_rsn: appt ? appt.cnl_rsn : null,
+        };
+      });
       return json({ success: true, consultations: enriched });
     }
 
@@ -1830,20 +1868,30 @@ serve(async (req) => {
     }
 
     // ─── 📅 المحامي يتصرف بموعد جلسة حضورية ───
+    // 🏢 2026-08-20: فلو الاعتذار الموحد — السبب يحدد المصير (قرار المالك):
+    //   busy     → نفس المحامي: الموعد يُلغى، العميل يختار موعداً جديداً بنفس الدفعة
+    //   need_docs→ نفس المحامي: العميل يستكمل الثبوتيات (الحالة 5) بلا دفع جديد
+    //   other    → المحامي التالي بالأولوية: العميل يختار من أوقاته بنفس الدفعة
     if (action === "lawyer_appointment_action") {
       const apptId = (body.appointment_id ?? "").toString();
       const act = (body.appt_action ?? "").toString(); // confirm | complete | cancel
       const reason = (body.reason ?? "").toString().trim().slice(0, 300);
+      const reasonCode = (body.reason_code ?? "busy").toString();
       if (!apptId) return json({ success: false, error: "APPOINTMENT_ID_REQUIRED" }, 400);
       if (!["confirm", "complete", "cancel"].includes(act)) {
         return json({ success: false, error: "INVALID_APPT_ACTION" }, 400);
       }
-      if (act === "cancel" && reason.length < 5) {
-        return json({ success: false, error: "CANCEL_REASON_REQUIRED" }, 400);
+      if (act === "cancel") {
+        if (reason.length < 5) {
+          return json({ success: false, error: "CANCEL_REASON_REQUIRED" }, 400);
+        }
+        if (!["busy", "need_docs", "other"].includes(reasonCode)) {
+          return json({ success: false, error: "INVALID_REASON_CODE" }, 400);
+        }
       }
 
       const { data: appt } = await supabaseAdmin
-        .from("appointments").select("id, bkr_id, req_uid, dt, sts")
+        .from("appointments").select("id, bkr_id, req_uid, dt, sts, consultation_id")
         .eq("id", apptId).maybeSingle();
       if (!appt) return json({ success: false, error: "APPOINTMENT_NOT_FOUND" }, 404);
       if (appt.bkr_id !== uid && !canManageLawyerProfiles(role)) {
@@ -1857,6 +1905,61 @@ serve(async (req) => {
         return json({ success: false, error: "INVALID_APPT_TRANSITION", from: cur, to: next }, 409);
       }
 
+      // 📍 عنوان المكتب (لإثراء نصوص الإشعارات)
+      let officeAddress = "";
+      {
+        const { data: cfg } = await supabaseAdmin.from("app_config")
+          .select("value").eq("key", "main").maybeSingle();
+        const legal = (cfg?.value as Record<string, unknown> | null)?.legalPrice as Record<string, unknown> | null;
+        officeAddress = String(legal?.officeAddress ?? "").trim();
+      }
+      const addrLine = officeAddress ? `\n📍 مكان الجلسة: ${officeAddress}` : "";
+
+      // ── الاعتذار بطلب ثبوتيات: الموعد يبقى، والاستشارة تنتظر استكمال العميل ──
+      if (act === "cancel" && reasonCode === "need_docs") {
+        await supabaseAdmin.from("legal_consultations")
+          .update({
+            status: 5, reject_reason_code: "need_info", reject_note: reason,
+            ts_upd: new Date().toISOString(),
+          })
+          .eq("appointment_id", apptId).eq("i_del", 0);
+        if (appt.bkr_id) {
+          await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: appt.bkr_id });
+        }
+        const ttl = "📄 المحامي يحتاج ثبوتيات إضافية";
+        const bdy = `قبل جلستك الحضورية، يطلب المحامي: ${reason} — أكمل بياناتك من بطاقة الاستشارة (لا حاجة لدفع جديد).`;
+        if (appt.req_uid) {
+          await supabaseAdmin.from("notifications").insert({
+            uid: appt.req_uid, tp: 1, ttl, bdy, ref_id: apptId,
+            act: "legal_consultation_need_info", i_rd: 0, i_del: 0,
+            ts_crt: new Date().toISOString(),
+          });
+          try {
+            await supabaseAdmin.rpc("send_push_notification", {
+              p_uid: appt.req_uid, p_title: ttl, p_body: bdy,
+              p_data: { act: "legal_consultation_need_info", ref_id: apptId },
+            });
+          } catch { /* push ثانوي */ }
+        }
+        return json({ success: true, appointment_status: Number(appt.sts), consultation_status: 5, outcome: "need_docs" });
+      }
+
+      // ── الاعتذار بسبب آخر → المحامي التالي بالأولوية (الموعد يُلغى) ──
+      let nextLawyer: string | null = null;
+      let newAlias = "";
+      if (act === "cancel" && reasonCode === "other") {
+        const { data: picked, error: pickError } = await supabaseAdmin.rpc("pick_next_lawyer", {
+          p_exclude: appt.bkr_id ? [String(appt.bkr_id)] : [],
+          p_require_slots: true,
+        });
+        if (pickError) return json({ success: false, error: "LAWYER_PICK_FAILED" }, 500);
+        nextLawyer = picked ? String(picked) : null;
+        if (nextLawyer) {
+          const { data: aliasData } = await supabaseAdmin.rpc("lawyer_alias_for", { p_lawyer_uid: nextLawyer });
+          newAlias = (aliasData as string | null) ?? "محامي المكتب";
+        }
+      }
+
       const upd: Record<string, unknown> = { sts: next };
       if (act === "cancel") { upd.cnl_by = uid; upd.cnl_rsn = reason; }
       if (act === "complete") { upd.completion_date = new Date().toISOString(); }
@@ -1864,43 +1967,114 @@ serve(async (req) => {
         .from("appointments").update(upd).eq("id", apptId);
       if (upErr) return json({ success: false, error: upErr.message }, 400);
 
-      // مزامنة حالة الاستشارة المرتبطة (مكتملة/ملغاة)
-      if (next === 2 || next === 3) {
+      if (act === "complete") {
         await supabaseAdmin.from("legal_consultations")
-          .update({ status: next === 2 ? 2 : 3, ts_upd: new Date().toISOString() })
+          .update({ status: 2, ts_upd: new Date().toISOString() })
           .eq("appointment_id", apptId).eq("i_del", 0);
         if (appt.bkr_id) {
           await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: appt.bkr_id });
         }
       }
 
-      const titles: Record<string, string> = {
-        confirm: "✅ تأكيد موعد جلستك",
-        complete: "🎉 تمت جلستك القانونية",
-        cancel: "⚠️ أُلغي موعد جلستك",
-      };
+      if (act === "cancel" && reasonCode === "other") {
+        // الاستشارة تبقى مدفوعة (status=1) وتنتقل للمحامي الجديد — أو تُصعَّد
+        if (nextLawyer) {
+          const { data: cons } = await supabaseAdmin.from("legal_consultations")
+            .select("rejected_by").eq("appointment_id", apptId).eq("i_del", 0).maybeSingle();
+          const rejectedBy: string[] = Array.isArray(cons?.rejected_by)
+            ? (cons.rejected_by as unknown[]).map(String) : [];
+          if (appt.bkr_id && !rejectedBy.includes(String(appt.bkr_id))) {
+            rejectedBy.push(String(appt.bkr_id));
+          }
+          await supabaseAdmin.from("legal_consultations")
+            .update({
+              lawyer_uid: nextLawyer, lawyer_alias: newAlias, status: 1,
+              rejected_by: rejectedBy, ts_upd: new Date().toISOString(),
+            })
+            .eq("appointment_id", apptId).eq("i_del", 0);
+          if (appt.bkr_id) {
+            await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: appt.bkr_id });
+          }
+          await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: nextLawyer });
+          if (appt.req_uid) {
+            const ttl = "🔄 تحولت جلستك إلى محامٍ آخر";
+            const bdy = `المحامي السابق اعتذر: ${reason}\nاختر موعداً جديداً من أوقات ${newAlias} بنفس دفعتك.`;
+            await supabaseAdmin.from("notifications").insert({
+              uid: appt.req_uid, tp: 1, ttl, bdy, ref_id: apptId,
+              act: "legal_appointment_update", i_rd: 0, i_del: 0,
+              ts_crt: new Date().toISOString(),
+            });
+            try {
+              await supabaseAdmin.rpc("send_push_notification", {
+                p_uid: appt.req_uid, p_title: ttl, p_body: bdy,
+                p_data: { act: "legal_appointment_update", ref_id: apptId },
+              });
+            } catch { /* push ثانوي */ }
+          }
+          await supabaseAdmin.from("notifications").insert({
+            uid: nextLawyer, tp: 1, ttl: "🏢 جلسة حضورية محوّلة إليك",
+            bdy: "اعتذر محامٍ آخر عن جلسة حضورية مدفوعة — العميل سيختار موعداً جديداً من أوقاتك.",
+            ref_id: apptId, act: "legal_consultation_new", i_rd: 0, i_del: 0,
+            ts_crt: new Date().toISOString(),
+          });
+        } else {
+          await supabaseAdmin.from("legal_consultations")
+            .update({
+              lawyer_uid: null, lawyer_alias: null, status: 0,
+              reject_reason_code: "unavailable", reject_note: reason,
+              ts_upd: new Date().toISOString(),
+            })
+            .eq("appointment_id", apptId).eq("i_del", 0);
+          if (appt.bkr_id) {
+            await supabaseAdmin.rpc("update_lawyer_active_tasks", { p_lawyer_uid: appt.bkr_id });
+          }
+          if (appt.req_uid) {
+            const ttl = "⏳ نبحث لك عن محامٍ متاح";
+            const bdy = `المحامي اعتذر: ${reason} — لا يوجد محامٍ متاح حالياً، الإدارة تتابع طلبك وستخطرك فور التوفر.`;
+            await supabaseAdmin.from("notifications").insert({
+              uid: appt.req_uid, tp: 1, ttl, bdy, ref_id: apptId,
+              act: "legal_consultation_escalated", i_rd: 0, i_del: 0,
+              ts_crt: new Date().toISOString(),
+            });
+            try {
+              await supabaseAdmin.rpc("send_push_notification", {
+                p_uid: appt.req_uid, p_title: ttl, p_body: bdy,
+                p_data: { act: "legal_consultation_escalated", ref_id: apptId },
+              });
+            } catch { /* push ثانوي */ }
+          }
+        }
+      }
+
       const when = new Date(String(appt.dt)).toLocaleString("ar", {
         timeZone: "Asia/Damascus", dateStyle: "full", timeStyle: "short",
       });
-      const bodies: Record<string, string> = {
-        confirm: `تم تأكيد موعدك: ${when} — نراك في المكتب.`,
-        complete: "شكراً لك — يسعدنا تقييمك للجلسة.",
-        cancel: `أُلغي موعد ${when}. السبب: ${reason} — يمكنك اختيار موعد آخر.`,
-      };
-      if (appt.req_uid) {
+      let title = act === "confirm"
+        ? "✅ تأكيد موعد جلستك"
+        : act === "complete" ? "🎉 تمت جلستك القانونية" : "⚠️ أُلغي موعد جلستك";
+      let bodyTxt = act === "confirm"
+        ? `تم تأكيد موعدك: ${when}${addrLine}\n☎️ الرجاء الاتصال بالمكتب قبل ساعة من الموعد للتأكيد.`
+        : act === "complete"
+          ? "شكراً لك — يسعدنا تقييمك للجلسة."
+          : "";
+      if (act === "cancel" && reasonCode === "busy") {
+        title = "⚠️ المحامي اعتذر عن موعدك";
+        bodyTxt = `المحامي اعتذر عن موعد ${when}. السبب: ${reason}\nاختر موعداً جديداً من أوقاته بنفس دفعتك.`;
+      }
+      if (bodyTxt && appt.req_uid) {
         await supabaseAdmin.from("notifications").insert({
-          uid: appt.req_uid, tp: 1, ttl: titles[act], bdy: bodies[act],
+          uid: appt.req_uid, tp: 1, ttl: title, bdy: bodyTxt,
           ref_id: apptId, act: "legal_appointment_update",
           i_rd: 0, i_del: 0, ts_crt: new Date().toISOString(),
         });
         try {
           await supabaseAdmin.rpc("send_push_notification", {
-            p_uid: appt.req_uid, p_title: titles[act], p_body: bodies[act],
+            p_uid: appt.req_uid, p_title: title, p_body: bodyTxt,
             p_data: { act: "legal_appointment_update", ref_id: apptId },
           });
         } catch { /* push ثانوي */ }
       }
-      return json({ success: true, appointment_status: next });
+      return json({ success: true, appointment_status: next, outcome: act === "cancel" ? reasonCode : act });
     }
 
     // ─── 🟢 المحامي يبدّل حالة توفره (أُضيف 2026-08-14) ───

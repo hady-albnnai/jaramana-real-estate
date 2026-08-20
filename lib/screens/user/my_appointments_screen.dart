@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/appointment_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../providers/offer_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
@@ -174,6 +175,9 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
     // 🩹 APPT-002: صفوف مهام التصوير المدموجة لا عرض لها ولا مالك.
     final isPhoto = appt.isPhotography;
     final isLegal = appt.isLegal;
+    // 📍 مكان الجلسة القانونية (2026-08-20) — من إعدادات الإدارة
+    final officeAddress =
+        context.read<ConfigProvider>().config?.legalOfficeAddress ?? '';
 
     // الجلسة القانونية والتصوير لا يرتبطان بعرض.
     final offerProv = context.read<OfferProvider>();
@@ -308,6 +312,25 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                     fontWeight: FontWeight.w600),
               ),
             ]),
+
+            // 📍 مكان الجلسة القانونية + تنبيه الساعة (2026-08-20)
+            if (isLegal && (sts == 0 || sts == 1) && officeAddress.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.location_on, size: 15, color: AppTheme.primaryGold),
+                AppTheme.gapWidthSmall,
+                Expanded(
+                  child: Text(
+                    '📍 $officeAddress',
+                    style: const TextStyle(
+                        color: AppTheme.textWhite, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 2),
+              const Text('☎️ الرجاء الاتصال بالمكتب قبل ساعة من الموعد للتأكيد',
+                  style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+            ],
             
             // عرض معلومات المشرف (إذا الموعد مؤكد وعندو مشرف)
             if (supervisorUid != null && supervisorUid.isNotEmpty && _supervisorsCache.containsKey(supervisorUid)) ...[
@@ -420,6 +443,53 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen>
                       style: TextStyle(color: AppTheme.errorRed)),
                   style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppTheme.errorRed)),
+                ),
+              ),
+            ],
+
+            // 🏢 2026-08-20: المحامي اعتذر عن الموعد — إعادة الاختيار بنفس الدفعة
+            // (إلغاء المستخدم النهائي بلا استرداد لا يعرض هذا الزر)
+            if (sts == 3 &&
+                isLegal &&
+                appt.consultationId.isNotEmpty &&
+                (appt.cnlBy ?? '') !=
+                    (context.read<AuthProvider>().userModel?.uid ?? '')) ...[
+              AppTheme.gapHeightMedium,
+              Container(
+                width: double.infinity,
+                padding: AppTheme.paddingAllMedium,
+                decoration: BoxDecoration(
+                  color: AppTheme.warningOrange.withOpacity(0.10),
+                  borderRadius: AppTheme.radiusSmall,
+                  border: Border.all(color: AppTheme.warningOrange.withOpacity(0.4)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('المحامي اعتذر عن موعدك — اختر موعداً جديداً بنفس دفعتك',
+                      style: TextStyle(
+                          color: AppTheme.warningOrange,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13)),
+                  if ((appt.cnlRsn ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text('السبب: ${appt.cnlRsn}',
+                        style: const TextStyle(
+                            color: AppTheme.textGrey, fontSize: 11)),
+                  ],
+                ]),
+              ),
+              AppTheme.gapHeightSmall,
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => context.push(
+                    '/legal/consultations?flow=onsite_rebook'
+                    '&parent=${appt.consultationId}&appointment=${appt.id}',
+                  ),
+                  icon: const Icon(Icons.event_available, color: Colors.black, size: 18),
+                  label: const Text('اختر موعداً جديداً بنفس دفعتك',
+                      style: TextStyle(
+                          color: Colors.black, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGold),
                 ),
               ),
             ],

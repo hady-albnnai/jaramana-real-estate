@@ -482,6 +482,7 @@ class LegalProvider with ChangeNotifier {
     required String appointmentId,
     required String apptAction,
     String reason = '',
+    String reasonCode = 'busy',
   }) async {
     try {
       final res = await SupabaseService().invokeFunction('legal-actions', body: {
@@ -490,6 +491,7 @@ class LegalProvider with ChangeNotifier {
         'appointment_id': appointmentId,
         'appt_action': apptAction,
         'reason': reason,
+        'reason_code': reasonCode,
       });
       final data = res.data as Map<String, dynamic>?;
       if (_ok(data, 'فشل تنفيذ الإجراء')) {

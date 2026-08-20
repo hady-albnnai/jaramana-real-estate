@@ -354,7 +354,9 @@ serve(async (req) => {
           if (!v || typeof v !== "object" || Array.isArray(v)) {
             return json({ success: false, error: "SECTION_MUST_BE_OBJECT", key: k }, 400);
           }
-          const ALLOWED_LEGAL = new Set(["phone", "onsite", "renew", "durationMins"]);
+          // 📍 2026-08-20: officeAddress — عنوان المكتب للجلسات الحضورية (نص
+          // ≤ 200 حرف)، تبقى بقية الحقول أعداداً صحيحة موجبة.
+          const ALLOWED_LEGAL = new Set(["phone", "onsite", "renew", "durationMins", "officeAddress"]);
           const badLegal = Object.keys(v as Record<string, unknown>)
             .filter((f) => !ALLOWED_LEGAL.has(f));
           if (badLegal.length > 0) {
@@ -363,6 +365,10 @@ serve(async (req) => {
           const curLegal = (value[k] && typeof value[k] === "object" && !Array.isArray(value[k]))
             ? { ...(value[k] as Record<string, unknown>) } : {};
           for (const [f, fv] of Object.entries(v as Record<string, unknown>)) {
+            if (f === "officeAddress") {
+              curLegal[f] = String(fv ?? "").trim().slice(0, 200);
+              continue;
+            }
             const n = Number(fv);
             if (!Number.isInteger(n) || n < 0 || n > 100000000) {
               return json({ success: false, error: "INVALID_LEGAL_PRICE", key: f }, 400);

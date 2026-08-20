@@ -105,10 +105,11 @@ if (-not $SkipCleanup) {
     Invoke-Sql -Label 'find test user' -Sql "SELECT id, nm, usr, role, sts FROM public.users WHERE nm = $qname OR usr = $qname;"
 }
 
-# --- 2) Apply pending migrations 2026_08_19 ----------------------------------
+# --- 2) Apply pending migrations 2026_08_19/2026_08_20 -----------------------
 if (-not $SkipMigrations) {
-    Write-Host "===== Apply migrations 2026_08_19 ====="
-    Get-ChildItem (Join-Path $Root 'supabase\migrations') -Filter '2026_08_19_*.sql' |
+    Write-Host "===== Apply migrations 2026_08_19 + 2026_08_20 ====="
+    Get-ChildItem (Join-Path $Root 'supabase\migrations') |
+        Where-Object { $_.Name -like '2026_08_19_*.sql' -or $_.Name -like '2026_08_20_*.sql' } |
         Sort-Object Name |
         ForEach-Object {
             Write-Host "  >> $($_.Name)"
@@ -133,6 +134,8 @@ if (-not $SkipFunctions) {
     Deploy-Fn 'legal-actions'
     # 🩹 2026-08-20: شارة المدفوعات تحتاج أكشن mark_read_by_act في user-notifications
     Deploy-Fn 'user-notifications'
+    # 🏢 2026-08-20: عنوان المكتب (update_sections) + فلو الاعتذار الموحد
+    Deploy-Fn 'admin-config'
 }
 
 Write-Host '[DONE] All steps completed successfully.'

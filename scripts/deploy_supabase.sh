@@ -51,7 +51,7 @@ fi
 # ── 2) تطبيق تعديلات قاعدة البيانات المعلّقة (2026_08_19) ──
 if [ "$APPLY_MIGRATIONS" = "true" ]; then
   echo "══════════ تطبيق التعديلات 2026_08_19 ══════════"
-  for f in supabase/migrations/2026_08_19_*.sql; do
+  for f in supabase/migrations/2026_08_19_*.sql supabase/migrations/2026_08_20_*.sql; do
     [ -f "$f" ] || continue
     echo "▶ $f"
     run_sql "$(basename "$f")" "$(cat "$f")"
@@ -86,6 +86,9 @@ if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
   echo "══════════ نشر دوال Edge ══════════"
   deploy_fn admin-dashboard
   deploy_fn legal-actions
+  # 🩹 2026-08-20: شارة المدفوعات (mark_read_by_act) + عنوان المكتب (update_sections)
+  deploy_fn user-notifications
+  deploy_fn admin-config
 fi
 
 echo "✅ تمت العملية بنجاح"

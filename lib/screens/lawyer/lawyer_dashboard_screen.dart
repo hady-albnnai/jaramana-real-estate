@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/network/supabase_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../providers/legal_provider.dart';
 import '../../models/expediting_task_model.dart';
 import '../../widgets/e2e.dart';
@@ -1973,6 +1974,13 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
         : '${dt.year}/${dt.month.toString().padLeft(2, '0')}/${dt.day.toString().padLeft(2, '0')}'
             '  —  ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     final isPast = dt != null && dt.isBefore(DateTime.now());
+    // 🏢 2026-08-20: من اعتذر عن الموعد؟ (المحامي نفسه = بانتظار اختيار العميل)
+    final myUid = context.read<AuthProvider>().userModel?.uid ?? '';
+    final cnlBy = (a['cnl_by'] ?? '').toString();
+    final cnlRsn = (a['cnl_rsn'] ?? '').toString();
+    final canceledByMe = cnlBy.isNotEmpty && cnlBy == myUid;
+    final officeAddress =
+        context.read<ConfigProvider>().config?.legalOfficeAddress ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1998,6 +2006,11 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
             if (isPast && sts == '1')
               const Text('⚠️ مرّ موعدها — سجّل النتيجة',
                   style: TextStyle(color: AppTheme.warningOrange, fontSize: AppTheme.fontSizeCaption)),
+            // 📍 مكان الجلسة (2026-08-20) — للمواعيد القادمة فقط
+            if ((sts == '0' || sts == '1') && officeAddress.isNotEmpty)
+              Text('📍 $officeAddress',
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
           ])),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -2006,6 +2019,34 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
                 style: TextStyle(color: c, fontSize: AppTheme.fontSizeCaption, fontWeight: FontWeight.bold)),
           ),
         ]),
+
+        // 🏢 2026-08-20: حالة الموعد الملغي — «تم الاعتذار — بانتظار الإجراء
+        // التالي» (قرار المالك) بدل بطاقة صامتة بلا تفسير
+        if (sts == '3') ...[
+          AppTheme.gapHeightMedium,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: (canceledByMe ? AppTheme.warningOrange : AppTheme.textGrey).withOpacity(0.10),
+              borderRadius: AppTheme.radiusSmall,
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                canceledByMe ? 'تم الاعتذار — بانتظار اختيار العميل موعداً جديداً' : 'ألغاها العميل',
+                style: TextStyle(
+                    color: canceledByMe ? AppTheme.warningOrange : AppTheme.textGrey,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12),
+              ),
+              if (cnlRsn.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text('السبب: $cnlRsn',
+                    style: const TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+              ],
+            ]),
+          ),
+        ],
 
         // 📅 2026-08-14: كان التبويب للعرض فقط بلا أي زر رغم دعم السيرفر
         if (sts == '0') ...[
@@ -2048,43 +2089,89 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     );
   }
 
-  /// تنفيذ إجراء على موعد: confirm | complete | cancel (الإلغاء يفرض سبباً)
+  /// تنفيذ إجراء على موعد: confirm | complete | cancel.
+  /// 🏢 2026-08-20: الاعتذار الموحد — السبب يحدد المصير (قرار المالك):
+  ///   مشغول → نفس المحامي والعميل يختار موعداً جديداً بنفس الدفعة
+  ///   يحتاج ثبوتيات → نفس المحامي والعميل يستكمل المستندات
+  ///   سبب آخر → المحامي التالي بالأولوية
   Future<void> _apptAction(String apptId, String act) async {
     if (apptId.isEmpty) return;
     String reason = '';
+    String reasonCode = 'busy';
     if (act == 'cancel') {
       final ctrl = TextEditingController();
-      final ok = await showDialog<bool>(
+      final result = await showDialog<Map<String, String>>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppTheme.surfaceBlack,
-          title: const Text('سبب الإلغاء',
-              style: TextStyle(color: AppTheme.errorRed, fontSize: 16, fontWeight: FontWeight.bold)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('يصل السبب للعميل مع دعوته لاختيار موعد آخر.',
-                style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: ctrl, maxLines: 3, maxLength: 300,
-              style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
-              decoration: const InputDecoration(
-                hintText: 'مثال: طارئ في المحكمة — أعتذر',
-                filled: true, fillColor: AppTheme.scaffoldBackground,
-              ),
-            ),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
-            ElevatedButton(onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
-                child: const Text('تأكيد', style: TextStyle(color: Colors.white))),
-          ],
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              backgroundColor: AppTheme.surfaceBlack,
+              title: const Text('سبب الاعتذار',
+                  style: TextStyle(color: AppTheme.errorRed, fontSize: 16, fontWeight: FontWeight.bold)),
+              content: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('السبب يحدد الإجراء التالي تلقائياً — ويصل للعميل مع التوضيح.',
+                    style: TextStyle(color: AppTheme.textGrey, fontSize: 12)),
+                const SizedBox(height: 10),
+                RadioListTile<String>(
+                  dense: true,
+                  value: 'busy',
+                  groupValue: reasonCode,
+                  onChanged: (v) => setLocal(() => reasonCode = v ?? 'busy'),
+                  activeColor: AppTheme.warningOrange,
+                  title: const Text('🚫 مشغول — يحتاج العميل موعداً جديداً',
+                      style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+                  subtitle: const Text('يبقى الطلب معك — يختار العميل من أوقاتك بنفس دفعته',
+                      style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                ),
+                RadioListTile<String>(
+                  dense: true,
+                  value: 'need_docs',
+                  groupValue: reasonCode,
+                  onChanged: (v) => setLocal(() => reasonCode = v ?? 'need_docs'),
+                  activeColor: AppTheme.infoBlue,
+                  title: const Text('📄 يحتاج ثبوتيات إضافية',
+                      style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+                  subtitle: const Text('يبقى الموعد والطلب معك — يستكمل العميل المستندات',
+                      style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                ),
+                RadioListTile<String>(
+                  dense: true,
+                  value: 'other',
+                  groupValue: reasonCode,
+                  onChanged: (v) => setLocal(() => reasonCode = v ?? 'other'),
+                  activeColor: AppTheme.errorRed,
+                  title: const Text('⚖️ سبب آخر — ينتقل للمحامي التالي',
+                      style: TextStyle(color: AppTheme.textWhite, fontSize: 13)),
+                  subtitle: const Text('يتحول الطلب تلقائياً لمحامٍ آخر متاح',
+                      style: TextStyle(color: AppTheme.textGrey, fontSize: 11)),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: ctrl, maxLines: 3, maxLength: 300,
+                  style: const TextStyle(color: AppTheme.textWhite, fontSize: 13),
+                  decoration: const InputDecoration(
+                    hintText: 'التوضيح للعميل (إلزامي — 5 حروف على الأقل)',
+                    filled: true, fillColor: AppTheme.scaffoldBackground,
+                  ),
+                ),
+              ]),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx),
+                    child: const Text('تراجع', style: TextStyle(color: AppTheme.textGrey))),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, {'code': reasonCode, 'text': ctrl.text.trim()}),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
+                  child: const Text('إرسال الاعتذار', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
         ),
       );
-      reason = ctrl.text.trim();
+      reasonCode = result?['code'] ?? 'busy';
+      reason = result?['text'] ?? '';
       ctrl.dispose();
-      if (ok != true) return;
+      if (result == null) return;
       if (reason.length < 5) {
         _snack('اكتب سبباً واضحاً للعميل', bg: AppTheme.errorRed);
         return;
@@ -2092,12 +2179,18 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
     }
     final legal = context.read<LegalProvider>();
     final done = await legal.lawyerAppointmentAction(
-        appointmentId: apptId, apptAction: act, reason: reason);
+        appointmentId: apptId, apptAction: act, reason: reason, reasonCode: reasonCode);
     if (!mounted) return;
     if (done) {
       _snack(act == 'confirm'
           ? '✅ تم تأكيد الموعد وإشعار العميل'
-          : act == 'complete' ? '🎉 سُجّلت الجلسة كمكتملة' : '⚠️ أُلغي الموعد وأُشعر العميل');
+          : act == 'complete'
+              ? '🎉 سُجّلت الجلسة كمكتملة'
+              : reasonCode == 'need_docs'
+                  ? '📄 أُرسل طلب الثبوتيات للعميل'
+                  : reasonCode == 'other'
+                      ? '🔄 تحول الطلب للمحامي التالي'
+                      : '⚠️ سُجّل الاعتذار — بانتظار اختيار العميل موعداً جديداً');
     } else {
       _snack(legal.error ?? 'فشل تنفيذ الإجراء', bg: AppTheme.errorRed);
     }

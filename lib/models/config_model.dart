@@ -198,6 +198,13 @@ class ConfigModel {
   int legalPriceFor(int serviceType) =>
       serviceType == 1 ? legalOnsitePrice : legalPhonePrice;
 
+  /// 📍 عنوان المكتب للجلسات الحضورية (2026-08-20) — يُدخله المدير من شاشة
+  /// الإعدادات (قسم الاستشارة القانونية) ويظهر في كل مواضع الجلسة الحضورية:
+  /// منتقي المواعيد + بطاقة المستخدم + بطاقة المحامي + نصوص الإشعارات.
+  /// فارغ = يُخفى تلقائياً في كل المواضع.
+  String get legalOfficeAddress =>
+      (legalPrices['officeAddress'] ?? '').toString().trim();
+
   int _asInt(dynamic v, int fallback) {
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v) ?? fallback;

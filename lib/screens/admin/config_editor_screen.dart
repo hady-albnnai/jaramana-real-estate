@@ -58,6 +58,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _legalOnsiteCtrl = TextEditingController();
   final _legalRenewCtrl = TextEditingController();
   final _legalDurationCtrl = TextEditingController();
+  // 📍 عنوان المكتب للجلسات الحضورية (2026-08-20)
+  final _legalAddressCtrl = TextEditingController();
   bool _socialAutoPublish = true; // مفعّل افتراضياً منذ 2026-07-13
   // للصفحات الإضافية: نستخدم قائمة بسيطة (key: label, value: url)
   final List<Map<String, TextEditingController>> _extraSocialCtrls = [];
@@ -104,6 +106,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         _legalOnsiteCtrl.text = c.legalOnsitePrice.toString();
         _legalRenewCtrl.text = c.legalRenewPrice.toString();
         _legalDurationCtrl.text = c.legalDurationMins.toString();
+        _legalAddressCtrl.text = c.legalOfficeAddress;
         _socialAutoPublish = c.socialAutoPublish;
 
         // Extra social pages (socialPages)
@@ -149,6 +152,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _legalOnsiteCtrl,
       _legalRenewCtrl,
       _legalDurationCtrl,
+      _legalAddressCtrl,
     ]) {
       c.dispose();
     }
@@ -629,6 +633,22 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                       _numField('سعر الجلسة الحضورية (ل.س)', _legalOnsiteCtrl),
                       _numField('سعر تجديد المحادثة (ل.س)', _legalRenewCtrl),
                       _numField('مدة المحادثة (دقيقة)', _legalDurationCtrl),
+                      // 📍 عنوان المكتب للجلسات الحضورية (2026-08-20) —
+                      // يظهر للمستخدم والمحامي وفي الإشعارات، قابل للتغيير دائماً.
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: TextFormField(
+                          controller: _legalAddressCtrl,
+                          maxLines: 2,
+                          style: const TextStyle(color: AppTheme.textWhite),
+                          decoration: const InputDecoration(
+                            labelText: '📍 عنوان المكتب (الجلسة الحضورية)',
+                            hintText: 'مثال: السويداء — شارع الثورة — جانب الصيدلية المركزية',
+                            filled: true,
+                            fillColor: AppTheme.surfaceBlack,
+                          ),
+                        ),
+                      ),
                       AppTheme.gapHeightXL,
 
                       _section('💳 قنوات الدفع'),
@@ -875,6 +895,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       'onsite': int.tryParse(_legalOnsiteCtrl.text.trim()) ?? 2000,
       'renew': int.tryParse(_legalRenewCtrl.text.trim()) ?? 500,
       'durationMins': int.tryParse(_legalDurationCtrl.text.trim()) ?? 15,
+      'officeAddress': _legalAddressCtrl.text.trim(),
     };
     current['legalPrice'] = legalPrice;
 
