@@ -26,6 +26,9 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
   late TabController _tab;
   List<AppointmentModel> _all = [];
   bool _loading = true;
+  String? _error;
+  int _loadGeneration = 0;
+  final Set<String> _busyAppointments = <String>{};
 
   final Map<String, OfferModel> _offers = {};
   // _requesters حُذف — القاعدة الذهبية: لا نجلب بيانات طالب الحجز أبداً
@@ -42,7 +45,9 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
   void initState() {
     super.initState();
     _tab = TabController(length: _tabs.length, vsync: this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -52,46 +57,73 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     final auth = context.read<AuthProvider>();
     final broker = context.read<BrokerProvider>();
     final brokerId = auth.userModel?.uid ?? '';
-    final list = await broker.getBrokerAppointments(brokerId);
+    if (brokerId.isEmpty) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() { _loading = false; _error = 'انتهت جلسة الوسيط'; });
+      }
+      return;
+    }
 
-    // اجلب العروض وأصحابها
-    final offIds = list.map((a) => a.offId).where((e) => e.isNotEmpty).toSet();
-    if (offIds.isNotEmpty) {
-      try {
-        final offData = await SupabaseService()
-            .client
-            .from(DbTables.offers)
-            .select(kOfferPublicColumns)
-            .inFilter('id', offIds.toList());
-        for (final o in offData as List) {
-          final m = Map<String, dynamic>.from(o as Map);
-          _offers[m['id'] as String] =
-              OfferModel.fromSupabase(m, m['id'] as String);
+    try {
+      final list = await broker.getBrokerAppointments(brokerId);
+      if (!mounted || generation != _loadGeneration) return;
+
+      // اجلب العروض المرتبطة، مع إبقاء فشل الإثراء منفصلاً عن فشل المواعيد.
+      final offIds = list.map((a) => a.offId).where((e) => e.isNotEmpty).toSet();
+      if (offIds.isNotEmpty) {
+        try {
+          final offData = await SupabaseService()
+              .client
+              .from(DbTables.offers)
+              .select(kOfferPublicColumns)
+              .inFilter('id', offIds.toList());
+          if (!mounted || generation != _loadGeneration) return;
+          for (final o in offData as List) {
+            final m = Map<String, dynamic>.from(o as Map);
+            final id = m['id']?.toString();
+            if (id != null && id.isNotEmpty) {
+              _offers[id] = OfferModel.fromSupabase(m, id);
+            }
+          }
+        } catch (_) {
+          // يبقى الموعد قابلاً للإدارة حتى لو تعذر إثراء بيانات العرض.
         }
-      } catch (e) {
-      // تم تجاهل الخطأ عمداً للحفاظ على التدفق الحالي.
-    }
-    }
+      }
 
-    if (!mounted) return;
-    setState(() {
-      _all = list;
-      _loading = false;
-    });
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _all = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loading = false;
+        _error = 'تعذر تحميل طلبات المعاينة. تحقق من الاتصال وحاول مرة أخرى.';
+      });
+    }
   }
 
   List<AppointmentModel> _byStatus(int s) =>
       s == -1 ? _all : _all.where((a) => a.sts == s).toList();
 
   Future<void> _accept(AppointmentModel a) async {
+    if (_busyAppointments.contains(a.id)) return;
+    setState(() => _busyAppointments.add(a.id));
     final broker = context.read<BrokerProvider>();
     final brokerUid = context.read<AuthProvider>().userModel?.uid ?? '';
     final ok = await broker.handleAppointment(brokerUid, a.id, 1);
     if (!mounted) return;
+    setState(() => _busyAppointments.remove(a.id));
     if (ok) {
       _snack('✅ تم قبول الموعد');
       _load();
@@ -124,10 +156,13 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
       ),
     );
     if (confirm != true || !mounted) return;
+    if (_busyAppointments.contains(a.id)) return;
+    setState(() => _busyAppointments.add(a.id));
     final broker = context.read<BrokerProvider>();
     final brokerUid = context.read<AuthProvider>().userModel?.uid ?? '';
     final ok = await broker.handleAppointment(brokerUid, a.id, 2);
     if (!mounted) return;
+    setState(() => _busyAppointments.remove(a.id));
     if (ok) {
       _snack('تم رفض الموعد');
       _load();
@@ -162,10 +197,13 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
       ),
     );
     if (confirm != true || !mounted) return;
+    if (_busyAppointments.contains(a.id)) return;
+    setState(() => _busyAppointments.add(a.id));
     final broker = context.read<BrokerProvider>();
     final brokerUid = context.read<AuthProvider>().userModel?.uid ?? '';
     final ok = await broker.completeAppointment(brokerUid, a.id);
     if (!mounted) return;
+    setState(() => _busyAppointments.remove(a.id));
     if (ok) {
       _snack('✅ تم تسجيل المعاينة كمكتملة');
       _load();
@@ -220,12 +258,32 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryGold))
-          : TabBarView(
-              controller: _tab,
-              children: _tabs.map((t) => _list(_byStatus(t.$2))).toList(),
-            ),
+          : _error != null && _all.isEmpty
+              ? _errorState()
+              : TabBarView(
+                  controller: _tab,
+                  children: _tabs.map((t) => _list(_byStatus(t.$2))).toList(),
+                ),
     );
   }
+
+  Widget _errorState() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off, size: 64, color: AppTheme.errorRed),
+            AppTheme.gapHeightLarge,
+            Text(_error!, textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.textGrey)),
+            AppTheme.gapHeightMedium,
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
 
   Widget _list(List<AppointmentModel> items) {
     if (items.isEmpty) {
@@ -258,6 +316,7 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
     final status = _statusInfo(a.sts);
     final isPending = a.sts == 0;
     final isAccepted = a.sts == 1;
+    final isBusy = _busyAppointments.contains(a.id);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -409,14 +468,16 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
           // أزرار الإجراءات
           if (isPending)
             _actionRow([
-              _actionBtn('رفض', Icons.close, AppTheme.errorRed, () => _reject(a)),
+              _actionBtn('رفض', Icons.close, AppTheme.errorRed,
+                  isBusy ? () {} : () => _reject(a)),
               _actionBtn(
-                  'قبول', Icons.check, AppTheme.successGreen, () => _accept(a)),
+                  'قبول', Icons.check, AppTheme.successGreen,
+                  isBusy ? () {} : () => _accept(a)),
             ])
           else if (isAccepted)
             _actionRow([
               _actionBtn('إكمال المعاينة', Icons.done_all, Colors.teal,
-                  () => _complete(a)),
+                  isBusy ? () {} : () => _complete(a)),
             ]),
         ],
       ),

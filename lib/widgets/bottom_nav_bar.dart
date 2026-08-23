@@ -117,20 +117,26 @@ class CustomBottomNavBar extends StatelessWidget {
               context.go('/user/home');
             }
             break;
-          case 1: context.go('/user/my-offers'); break;
-          case 2: context.go('/user/my-requests'); break;
-          case 3: context.go('/user/my-appointments'); break;
+          case 1:
+            context.go(auth.isBroker ? '/broker/offers' : '/user/my-offers');
+            break;
+          case 2:
+            context.go(auth.isBroker ? '/broker/appointments' : '/user/my-requests');
+            break;
+          case 3:
+            context.go(auth.isBroker ? '/broker/deals' : '/user/my-appointments');
+            break;
           case 4: context.go('/user/photography'); break;
           case 5: context.go('/user/profile'); break;
         }
       },
-      items: const [
-        BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_home', button: true, child: Icon(Icons.home_outlined)), activeIcon: Icon(Icons.home), label: 'الرئيسية'),
-        BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_offers', button: true, child: Icon(Icons.home_work_outlined)), activeIcon: Icon(Icons.home_work), label: 'عروضي'),
-        BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_requests', button: true, child: Icon(Icons.assignment_outlined)), activeIcon: Icon(Icons.assignment), label: 'طلباتي'),
-        BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_appointments', button: true, child: Icon(Icons.calendar_today_outlined)), activeIcon: Icon(Icons.calendar_today), label: 'مواعيدي'),
-        BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_photography', button: true, child: Icon(Icons.photo_camera_outlined)), activeIcon: Icon(Icons.photo_camera), label: 'تصوير'),
-        BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_profile', button: true, child: Icon(Icons.person_outline)), activeIcon: Icon(Icons.person), label: 'حسابي'),
+      items: [
+        const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_home', button: true, child: Icon(Icons.home_outlined)), activeIcon: Icon(Icons.home), label: 'الرئيسية'),
+        const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_offers', button: true, child: Icon(Icons.home_work_outlined)), activeIcon: Icon(Icons.home_work), label: 'عروضي'),
+        BottomNavigationBarItem(icon: const E2E(id: 'e2e_nav_requests', button: true, child: Icon(Icons.assignment_outlined)), activeIcon: const Icon(Icons.assignment), label: auth.isBroker ? 'طلبات المعاينة' : 'طلباتي'),
+        BottomNavigationBarItem(icon: const E2E(id: 'e2e_nav_appointments', button: true, child: Icon(Icons.calendar_today_outlined)), activeIcon: const Icon(Icons.calendar_today), label: auth.isBroker ? 'الصفقات' : 'مواعيدي'),
+        const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_photography', button: true, child: Icon(Icons.photo_camera_outlined)), activeIcon: Icon(Icons.photo_camera), label: 'تصوير'),
+        const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_profile', button: true, child: Icon(Icons.person_outline)), activeIcon: Icon(Icons.person), label: 'حسابي'),
       ],
     );
   }

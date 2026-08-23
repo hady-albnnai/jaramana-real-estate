@@ -20,14 +20,17 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
-  void _load() {
+  Future<void> _load() async {
+    if (!mounted) return;
     final auth = context.read<AuthProvider>();
     final id = auth.userModel?.uid ?? '';
     if (id.isNotEmpty) {
-      context.read<BrokerProvider>().fetchBrokerStats(id);
+      await context.read<BrokerProvider>().fetchBrokerStats(id);
     }
   }
 
@@ -73,7 +76,7 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
       ),
       body: RefreshIndicator(
         color: AppTheme.primaryGold,
-        onRefresh: () async => _load(),
+        onRefresh: _load,
         child: broker.isLoading && stats.isEmpty
             ? const Center(
                 child: CircularProgressIndicator(color: AppTheme.primaryGold))

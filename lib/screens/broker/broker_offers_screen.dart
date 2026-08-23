@@ -22,12 +22,17 @@ class _BrokerOffersScreenState extends State<BrokerOffersScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
-  void _load() {
+  Future<void> _load() async {
+    if (!mounted) return;
     final id = context.read<AuthProvider>().userModel?.uid ?? '';
-    if (id.isNotEmpty) context.read<BrokerProvider>().fetchBrokerOffers(id);
+    if (id.isNotEmpty) {
+      await context.read<BrokerProvider>().fetchBrokerOffers(id);
+    }
   }
 
   List<OfferModel> _apply(List<OfferModel> offers) {
@@ -79,9 +84,11 @@ class _BrokerOffersScreenState extends State<BrokerOffersScreen> {
             child: broker.isLoading && broker.offers.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.primaryGold))
-                : offers.isEmpty
-                    ? _empty()
-                    : RefreshIndicator(
+                : broker.error != null && broker.offers.isEmpty
+                    ? _error()
+                    : offers.isEmpty
+                        ? _empty()
+                        : RefreshIndicator(
                         color: AppTheme.primaryGold,
                         onRefresh: () async => _load(),
                         child: ListView.builder(
@@ -95,6 +102,24 @@ class _BrokerOffersScreenState extends State<BrokerOffersScreen> {
       ),
     );
   }
+
+  Widget _error() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off, size: 64, color: AppTheme.errorRed),
+            AppTheme.gapHeightLarge,
+            const Text('تعذر تحميل عروض الوسيط',
+                style: TextStyle(color: AppTheme.textGrey)),
+            AppTheme.gapHeightMedium,
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
 
   Widget _empty() => Center(
         child: Column(

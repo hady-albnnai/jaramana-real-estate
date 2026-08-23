@@ -19,12 +19,17 @@ class _BrokerDealsScreenState extends State<BrokerDealsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
-  void _load() {
+  Future<void> _load() async {
+    if (!mounted) return;
     final id = context.read<AuthProvider>().userModel?.uid ?? '';
-    if (id.isNotEmpty) context.read<BrokerProvider>().fetchBrokerDeals(id);
+    if (id.isNotEmpty) {
+      await context.read<BrokerProvider>().fetchBrokerDeals(id);
+    }
   }
 
   List<DealModel> _apply(List<DealModel> deals) {
@@ -119,9 +124,11 @@ class _BrokerDealsScreenState extends State<BrokerDealsScreen> {
             child: broker.isLoading && broker.deals.isEmpty
                 ? const Center(
                     child: CircularProgressIndicator(color: AppTheme.primaryGold))
-                : deals.isEmpty
-                    ? _empty()
-                    : RefreshIndicator(
+                : broker.error != null && broker.deals.isEmpty
+                    ? _error()
+                    : deals.isEmpty
+                        ? _empty()
+                        : RefreshIndicator(
                         color: AppTheme.primaryGold,
                         onRefresh: () async => _load(),
                         child: ListView.builder(
@@ -135,6 +142,24 @@ class _BrokerDealsScreenState extends State<BrokerDealsScreen> {
       ),
     );
   }
+
+  Widget _error() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off, size: 64, color: AppTheme.errorRed),
+            AppTheme.gapHeightLarge,
+            const Text('تعذر تحميل صفقات الوسيط',
+                style: TextStyle(color: AppTheme.textGrey)),
+            AppTheme.gapHeightMedium,
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
 
   Widget _empty() => Center(
         child: Column(
@@ -168,6 +193,7 @@ class _BrokerDealsScreenState extends State<BrokerDealsScreen> {
 
   Widget _dealTile(DealModel d) {
     final isDone = d.sts == 1;
+    final isBroker = context.read<AuthProvider>().isBroker;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: AppTheme.paddingAllLarge,
@@ -206,8 +232,8 @@ class _BrokerDealsScreenState extends State<BrokerDealsScreen> {
           const Divider(color: Colors.white12, height: 20),
           _row('السعر النهائي',
               '${d.finPrc.toStringAsFixed(0)} ${d.cur == 0 ? '\$' : 'ل.س'}'),
-          _row('نسبة العمولة', '${d.comPct.toStringAsFixed(1)}%'),
-          _row('قيمة العمولة', '${d.comVal.toStringAsFixed(0)} \$',
+          _row('نسبة العمولة', isBroker ? '0.0%' : '${d.comPct.toStringAsFixed(1)}%'),
+          _row('قيمة العمولة', isBroker ? '0 \$' : '${d.comVal.toStringAsFixed(0)} \$',
               highlight: true),
           if (d.tsCmpl != null)
             _row('تاريخ الإتمام',

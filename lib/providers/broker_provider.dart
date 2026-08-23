@@ -52,7 +52,9 @@ class BrokerProvider with ChangeNotifier {
               Map<String, dynamic>.from(d), d['id'] as String))
           .toList();
     } catch (e) {
-      return [];
+      // لا نحول فشل الشبكة أو الصلاحية إلى قائمة فارغة؛ الشاشة تحتاج
+      // التفريق بين «لا توجد مواعيد» و«تعذر التحميل».
+      rethrow;
     }
   }
 
@@ -66,7 +68,7 @@ class BrokerProvider with ChangeNotifier {
       if (action == 'pending') return false;
 
       // ✅ Secure via user-appointments Edge Function (broker_handle action)
-      await SupabaseService().invokeFunction(
+      final response = await SupabaseService().invokeFunction(
         'user-appointments',
         body: {
           'action': 'broker_handle',
@@ -75,6 +77,8 @@ class BrokerProvider with ChangeNotifier {
           'handle_action': action,
         },
       );
+      final data = response.data;
+      if (data is! Map || data['success'] != true) return false;
       notifyListeners();
       return true;
     } catch (e) {
@@ -85,7 +89,7 @@ class BrokerProvider with ChangeNotifier {
   Future<bool> completeAppointment(String brokerUid, String apptId) async {
     try {
       // ✅ Secure via user-appointments Edge Function (broker_handle action)
-      await SupabaseService().invokeFunction(
+      final response = await SupabaseService().invokeFunction(
         'user-appointments',
         body: {
           'action': 'broker_handle',
@@ -94,6 +98,8 @@ class BrokerProvider with ChangeNotifier {
           'handle_action': 'complete',
         },
       );
+      final data = response.data;
+      if (data is! Map || data['success'] != true) return false;
       notifyListeners();
       return true;
     } catch (e) {
@@ -163,16 +169,18 @@ class BrokerProvider with ChangeNotifier {
           'user_uid': brokerId,
         },
       );
-      final offersList = offersRes.data != null && offersRes.data['success'] == true 
-          ? offersRes.data['offers'] as List 
-          : [];
+      final offersData = offersRes.data;
+      if (offersData is! Map || offersData['success'] != true || offersData['offers'] is! List) {
+        throw Exception('BROKER_OFFERS_STATS_FAILED');
+      }
+      final offersList = offersData['offers'] as List;
       final totalOffers = offersList.length;
       final publishedOffers =
           offersList.where((o) => (o['sts'] ?? 0) == 2).length;
       final totalViews = offersList.fold<int>(
-          0, (sum, o) => sum + ((o['vws'] as int?) ?? 0));
+          0, (sum, o) => sum + _asInt((o as Map)['vws']));
       final totalFavs = offersList.fold<int>(
-          0, (sum, o) => sum + ((o['fvs'] as int?) ?? 0));
+          0, (sum, o) => sum + _asInt((o as Map)['fvs']));
 
       final apptRes = await SupabaseService().invokeFunction(
         'user-appointments',
@@ -181,9 +189,11 @@ class BrokerProvider with ChangeNotifier {
           'user_uid': brokerId,
         },
       );
-      final apptList = apptRes.data != null && apptRes.data['success'] == true 
-          ? apptRes.data['appointments'] as List 
-          : [];
+      final apptData = apptRes.data;
+      if (apptData is! Map || apptData['success'] != true || apptData['appointments'] is! List) {
+        throw Exception('BROKER_APPOINTMENTS_STATS_FAILED');
+      }
+      final apptList = apptData['appointments'] as List;
       final totalAppointments = apptList.length;
       final completedAppointments =
           apptList.where((a) => (a['sts'] ?? 0) == 2).length;
@@ -195,9 +205,11 @@ class BrokerProvider with ChangeNotifier {
           'user_uid': brokerId,
         },
       );
-      final dealsList = dealsRes.data != null && dealsRes.data['success'] == true 
-          ? dealsRes.data['deals'] as List 
-          : [];
+      final dealsData = dealsRes.data;
+      if (dealsData is! Map || dealsData['success'] != true || dealsData['deals'] is! List) {
+        throw Exception('BROKER_DEALS_STATS_FAILED');
+      }
+      final dealsList = dealsData['deals'] as List;
       final totalDeals = dealsList.length;
       final completedDeals =
           dealsList.where((d) => (d['sts'] ?? 0) == 1).length;
@@ -227,5 +239,10 @@ class BrokerProvider with ChangeNotifier {
     }
     _isLoading = false;
     notifyListeners();
+  }
+
+  int _asInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 }

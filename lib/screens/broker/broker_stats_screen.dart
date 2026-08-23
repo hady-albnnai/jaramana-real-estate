@@ -16,12 +16,17 @@ class _BrokerStatsScreenState extends State<BrokerStatsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
-  void _load() {
+  Future<void> _load() async {
+    if (!mounted) return;
     final id = context.read<AuthProvider>().userModel?.uid ?? '';
-    if (id.isNotEmpty) context.read<BrokerProvider>().fetchBrokerStats(id);
+    if (id.isNotEmpty) {
+      await context.read<BrokerProvider>().fetchBrokerStats(id);
+    }
   }
 
   @override
@@ -44,7 +49,9 @@ class _BrokerStatsScreenState extends State<BrokerStatsScreen> {
       body: broker.isLoading && s.isEmpty
           ? const Center(
               child: CircularProgressIndicator(color: AppTheme.primaryGold))
-          : RefreshIndicator(
+          : broker.error != null && s.isEmpty
+              ? _error()
+              : RefreshIndicator(
               color: AppTheme.primaryGold,
               onRefresh: () async => _load(),
               child: ListView(
@@ -115,8 +122,26 @@ class _BrokerStatsScreenState extends State<BrokerStatsScreen> {
     );
   }
 
-  int _toInt(dynamic v) => ((v ?? 0) as num).toInt();
-  double _toDouble(dynamic v) => ((v ?? 0) as num).toDouble();
+  Widget _error() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.wifi_off, size: 64, color: AppTheme.errorRed),
+            AppTheme.gapHeightLarge,
+            const Text('تعذر تحميل إحصائيات الوسيط',
+                style: TextStyle(color: AppTheme.textGrey)),
+            AppTheme.gapHeightMedium,
+            ElevatedButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
+
+  int _toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+  double _toDouble(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
 
   Widget _section(String title) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
