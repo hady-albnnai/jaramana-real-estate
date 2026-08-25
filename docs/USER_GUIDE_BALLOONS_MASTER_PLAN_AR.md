@@ -1,7 +1,8 @@
 # الخطة الرئيسية الموحدة — دليل المستخدم بنظام البالونات
 
 **تاريخ التحديث:** 2026-08-23
-**الإصدار:** 3.3 — اعتماد السلوك النهائي للوصول والتفاعل
+**الإصدار:** 4.0 — خطة التنفيذ البرمجية التفصيلية المعتمدة
+**حالة التنفيذ:** لم يبدأ التنفيذ العملي؛ هذه الوثيقة تخطيط ومواصفة فقط
 **الحالة:** مرجع عقدي موحّد للخطة والمحتوى والقرارات الحالية
 **نطاق هذا الملف:** توحيد كامل ما اتُّفق عليه للزائر والمستخدم والوسيط، وتوثيق طريقة التنفيذ المعمارية الحالية. **لا يحتوي هذا الملف بعد على خطة تنفيذ برمجية تفصيلية خطوة بخطوة؛ تُكتب بعد اعتماد الخطة الحالية بالكامل.**
 
@@ -1438,7 +1439,297 @@ guide.help_duration_minutes = 30
 
 ---
 
-## 16) ترتيب العمل القادم
+## 16) خطة التنفيذ البرمجية التفصيلية
+
+### 16.1 بوابة البدء
+
+- هذه الخطة لا تعني أن التنفيذ بدأ؛ لا يُكتب كود الدليل قبل مراجعة هذه الوثيقة والموافقة على بدء المرحلة الأولى.
+- لا نغيّر أي Provider تجاري أو SQL أو Edge Function لأجل الدليل.
+- إصلاحات شاشة الوسيط الموجودة في commits سابقة منفصلة عن نظام الدليل وليست مبرراً لتوسيع نطاقه.
+- نستخدم فرع الجلسة الحالي فقط.
+- كل مرحلة لها اختبار ومعيار قبول قبل الانتقال إلى التالية.
+
+### 16.2 الملفات التي ستُنشأ
+
+تنشأ ملفات الدليل ضمن مساحة معزولة:
+
+```text
+lib/core/guide/guide_models.dart
+lib/core/guide/guide_controller.dart
+lib/core/guide/guide_storage.dart
+lib/core/guide/guide_target_registry.dart
+lib/core/guide/guide_presenter.dart
+lib/core/guide/guide_overlay.dart
+lib/core/guide/guide_host.dart
+lib/core/guide/guide_copy.dart
+lib/core/guide/browse_tracker.dart
+lib/widgets/guide_anchor.dart
+```
+
+الأسماء قابلة للمراجعة في مرحلة التصميم البرمجي، لكن الفصل بين المجال والواجهة والتخزين والأهداف إلزامي.
+
+### 16.3 الملفات المسموح تعديلها
+
+بعد مراجعة كل diff، يسمح بالتعديل على:
+
+- `lib/app.dart` لإضافة `GuideHost` في `MaterialApp.router.builder`.
+- `lib/core/router/app_router.dart` فقط إذا احتاج المدير مراقبة المسار، دون تغيير حراس الصلاحيات.
+- `lib/screens/visitor/home_screen.dart` لتسجيل هدف القائمة وزر الفلاتر ومرور أحداث التصفح.
+- `lib/screens/visitor/offer_detail_screen.dart` لتسجيل هدف المشاركة.
+- `lib/screens/user/user_home_screen.dart` لتسجيل أهداف البحث والفلاتر عند الحاجة.
+- `lib/screens/user/my_offers_screen.dart` لتسجيل تبويب «عروضي» و«عرض جديد».
+- `lib/screens/user/my_requests_screen.dart` لتسجيل تبويب «طلباتي» فقط.
+- `lib/screens/user/my_appointments_screen.dart` لتسجيل تبويب «مواعيدي» فقط.
+- `lib/screens/broker/broker_dashboard_screen.dart` لتسجيل هدف لوحة الوسيط والأقسام.
+- `lib/screens/broker/broker_offers_screen.dart` و`broker_appointments_screen.dart` و`broker_deals_screen.dart` و`broker_stats_screen.dart` عند الحاجة لأهداف سياقية معتمدة فقط.
+- `lib/widgets/bottom_nav_bar.dart` لتسجيل أهداف الدور، مع عدم خلط IDs المستخدم والوسيط.
+- `pubspec.yaml` لإضافة `integration_test` إلى dev dependencies إن لم يكن متاحاً عبر إعداد المشروع.
+- ملفات الاختبار الجديدة تحت `test/guide/` و`integration_test/` وGolden files المعتمدة.
+
+### 16.4 الملفات المحظور تعديلها
+
+لا تُعدّل لأجل الدليل:
+
+- `lib/providers/offer_provider.dart`.
+- `lib/providers/request_provider.dart`.
+- `lib/providers/appointment_provider.dart`.
+- منطق `BrokerProvider` التجاري، عدا إصلاحات مستقلة موثقة لا تخص الدليل.
+- خدمات الدفع والمطابقة والحجز.
+- Edge Functions.
+- SQL وSupabase migrations.
+- نماذج البيانات التجارية.
+- callbacks الأصلية للأزرار.
+- مسارات Router وحراس الصلاحيات، إلا إضافة مراقبة غير مؤثرة بعد موافقة.
+
+### 16.5 واجهة الحالة
+
+يحتوي `GuideController` على API مفاهيمي واضح:
+
+```text
+initialize()
+registerTarget(target)
+unregisterTarget(targetId)
+requestRun(scope, route)
+showQuestion(run)
+acceptQuestion()
+declineQuestion()
+advance()
+closeCurrentStep()
+requestSkip()
+confirmSkip()
+cancelForRouteChange()
+cancelForAuthChange()
+retryStep(stepId)
+completeRun()
+```
+
+ولا تتصل الشاشات بالتخزين أو بالـOverlay مباشرة؛ تتواصل مع المدير عبر واجهة محددة.
+
+### 16.6 نموذج الحالة
+
+```text
+GuideScope: visitor | user | broker
+GuideRunStatus: notStarted | questionShown | introActive |
+                 balloonsActive | declined | skipped | completed
+GuideStepStatus: pending | waiting | shown | completed |
+                 skipped | retryable | unavailable
+```
+
+كل تشغيل يحمل:
+
+```text
+scope
+uid أو visitor
+role
+route
+contentVersion
+sessionToken
+currentStepId
+```
+
+وقواعد الانتقال:
+
+- `shown` لا تتحول إلى `completed` إلا بتفاعل صالح.
+- `closeCurrentStep` لا يكمل الجولة.
+- `confirmSkip` يسجل `skipped`.
+- `unavailable` لا ينتظر بلا نهاية.
+- `retryable` يعاد فقط عند عودة السياق أو طلب المستخدم.
+- لا انتقال إلى خطوة تخص Route غير الحالي.
+
+### 16.7 التخزين
+
+يستخدم `GuideStorage` Hive عبر `LocalCacheService`، بمفتاح واحد scoped لكل تشغيل:
+
+```text
+guide.v1.visitor.run
+guide.v1.user.<uid>.run
+guide.v1.broker.<uid>.run
+```
+
+يحوي JSON typed versioned، مع:
+
+- قراءة آمنة عند غياب المفتاح.
+- migration عند زيادة النسخة.
+- حذف المفتاح التالف فقط.
+- عدم مسح Cache التطبيق.
+- عدم تخزين التوكن أو بيانات حساسة.
+- حفظ `helpUntil` كتاريخ، لا الاعتماد على Timer.
+
+مصدر مدة المساعدة يحسم قبل التنفيذ: `app_config.guide.help_duration_minutes`، أو يوثق كقيمة ثابتة؛ لا يسمح بمصدرين.
+
+### 16.8 تسجيل الأهداف
+
+كل هدف يسجل عبر `GuideAnchor` أو `GlobalKey` مستقلة:
+
+```text
+visitor_home_offers
+visitor_home_filters
+visitor_offer_share
+user_nav_offers
+user_nav_requests
+user_nav_appointments
+user_new_offer
+broker_dashboard_sections
+```
+
+- `E2E` للاختبار فقط.
+- لا تستخدم النصوص وحدها.
+- لا تستخدم عناصر ListView الديناميكية كأهداف ثابتة.
+- `registerTarget` لا يعني أن الهدف جاهز؛ يجب التحقق من Rect غير صفري وظهور العنصر.
+- عند unregister لا يحتفظ المدير بمرجع الهدف.
+
+### 16.9 التموضع والرسم
+
+1. يحسب المدير مساحة الـOverlay وRect الهدف.
+2. يطبق SafeArea وقيود AppBar وBottomNavigationBar والكيبورد.
+3. يجرب المواضع الآمنة حول الهدف.
+4. يختار الموضع الذي يعرض البطاقة كاملة ولا يغطي الهدف.
+5. يحسب السهم المتأقلم.
+6. يعيد القياس بعد layout مستقر فقط.
+7. يستخدم debounce/throttle عند التمرير والـresize.
+8. عند فشل الموضع يخفي البطاقة ويسجل `retryable`.
+
+### 16.10 ترتيب التنفيذ المرحلي
+
+#### المرحلة 0 — Prototype بصري معزول
+
+- بناء بطاقة ثابتة بلا ربط بجولة أو Auth.
+- اختبار الألوان والقياسات وRTL وTextScale 2.0.
+- تجربة `OverlayPortal` و`OverlayEntry` خلف `GuidePresenter`.
+- اختيار primitive بعد اختبار التموضع وSemantics.
+
+**معيار الخروج:** بطاقة صحيحة بصرياً ولا تتجاوز SafeArea أو حواف الشاشة.
+
+#### المرحلة 1 — النواة والحالة
+
+- إنشاء models والحالات والنسخ.
+- إنشاء `GuideStorage`.
+- إنشاء قفل التشغيل و`sessionToken`.
+- إنشاء `GuideController` دون ربط وظائف تجارية.
+
+**معيار الخروج:** Unit tests للحالات والتخزين والتكرار والفساد.
+
+#### المرحلة 2 — GuideHost والـOverlay
+
+- وضع `GuideHost` في `app.dart`.
+- إضافة العزل وFocus وSemantics.
+- إلغاء الطبقة عند Route/Auth/lifecycle changes.
+- تنفيذ زر `×` والتخطي والتأكيد.
+
+**معيار الخروج:** Widget tests للبطاقة والـFocus وRTL والتكبير.
+
+#### المرحلة 3 — سؤال الزائر والشرائح
+
+- ربط `/home` بعد استقرار الشاشة.
+- منع التداخل مع Loading وSnackBar وDialog.
+- إضافة السؤال والشرائح ومؤشر التقدم.
+- لا تغيير في `OfferProvider`.
+
+**معيار الخروج:** اختبار مسار نعم/لا/إغلاق/تخطي/إعادة.
+
+#### المرحلة 4 — جولة الزائر
+
+- تسجيل هدف العروض والفلاتر والمشاركة.
+- تنفيذ `BrowseTracker` بمعرفات مختلفة واستقرار التمرير.
+- حماية Pagination وRealtime والفلترة.
+- اختبار عرض واحد، لا عروض، عروض مكررة، وفقدان الشبكة.
+
+**معيار الخروج:** نجاح مصفوفة الزائر العدائية.
+
+#### المرحلة 5 — جولة المستخدم
+
+- ربط `/setup-profile` → `/user/home` بعد اكتمال الحساب.
+- إضافة أهداف «عروضي» و«طلباتي» و«مواعيدي».
+- إضافة «عرض جديد» كسياق لاحق فقط.
+- عزل جولة المستخدم عن الوسيط.
+- عدم بدء الجولة أثناء نقاط الدخول أو تحديث Auth.
+
+**معيار الخروج:** Integration tests للمستخدم الجديد والقديم وتغيير الحساب والدور.
+
+#### المرحلة 6 — جولة الوسيط
+
+- تشغيل السؤال عند أول دخول مستقر إلى `/broker/dashboard` بعد `brk=1`.
+- عرض بالون مزايا الوسيط الواحد.
+- عدم إعادة شرح وظائف المستخدم.
+- عدم ذكر أولوية الظهور أو شبكة العملاء.
+- استخدام أهداف `guide_broker_*` مستقلة.
+
+**معيار الخروج:** اختبار وسيط معتمد، pending، مرفوض، بلا بيانات، وتغير الدور.
+
+#### المرحلة 7 — التحقق النهائي
+
+- اختبارات Android وWeb وiOS عند توفر البيئة.
+- TalkBack وVoiceOver وKeyboard.
+- Golden tests.
+- Profile performance وMemory.
+- فتح وإغلاق 100 مرة.
+- مراجعة diff للتأكد من عدم لمس المنطق التجاري.
+
+### 16.11 عقود الفشل
+
+- Auth failure: إخفاء الدليل، لا شاشة بيضاء.
+- Permission failure: إلغاء الجولة وإعادة المسار الطبيعي.
+- Network timeout: `retryable` مع استمرار التطبيق.
+- Invalid payload: `unavailable` وتسجيل Debug.
+- Hive corruption: إعادة تهيئة مفتاح الدليل فقط.
+- Route change: إلغاء فوري.
+- Duplicate tap: تجاهل التفاعل المكرر.
+- Overlay exception: إزالة الطبقة واستمرار التطبيق.
+- Share failure: لا تعتبر الخطوة ناجحة ولا تتكرر بلا نهاية.
+- Missing target: لا رسم ناقص ولا انتظار دائم.
+
+### 16.12 اختبارات وقياس القبول
+
+يجب أن تتضمن الخطة العملية اختبارات:
+
+- `flutter test test/guide`.
+- `flutter test integration_test`.
+- Accessibility Guideline API.
+- Golden tests ببيئة رسم مثبتة.
+- Maestro عبر Semantics في Debug.
+- اختبار Route وAuth وlifecycle.
+- اختبار memory soak وفتح/إغلاق 100 مرة.
+
+Flutter تفرق بين اختبارات Widget واختبارات التكامل التي تتحقق من التطبيق الكامل على جهاز أو متصفح [1](https://docs.flutter.dev/cookbook/testing/integration/introduction)، كما توفر Accessibility Guideline API لفحص التسميات والتباين وأهداف اللمس [2](https://docs.flutter.dev/ui/accessibility/accessibility-testing).
+
+### 16.13 معيار منع المفاجآت
+
+لا تنتقل مرحلة إلى التالية إذا كان أحد الآتي غير محسوم:
+
+- هدف بصري بلا ID ثابت.
+- عملية Async بلا session token.
+- تخزين بلا contentVersion.
+- Overlay بلا cleanup.
+- زر بلا Semantics.
+- شاشة بلا Empty/Error state.
+- Route بلا إلغاء للجولة.
+- Plugin بلا fallback أو اختبار منصة.
+- نص غير مطابق للخطة.
+- تعديل يمس منطقاً تجارياً.
+
+---
+
+## 17) ترتيب العمل القادم
 
 بعد اعتماد هذا التحسين، لا نبدأ بكتابة الكود مباشرة. نكتب أولاً وثيقة تنفيذ تفصيلية منفصلة أو قسماً لاحقاً يتضمن:
 
@@ -1455,7 +1746,7 @@ guide.help_duration_minutes = 30
 
 ---
 
-## 17) المراجع الخارجية المعتمدة
+## 18) المراجع الخارجية المعتمدة
 
 - Flutter `OverlayPortal`: https://api.flutter.dev/flutter/widgets/OverlayPortal-class.html
 - Flutter `OverlayEntry`: https://api.flutter.dev/flutter/widgets/OverlayEntry-class.html
@@ -1467,7 +1758,7 @@ guide.help_duration_minutes = 30
 
 ---
 
-## 18) سجل التحديث
+## 19) سجل التحديث
 
 - 2026-08-23: توحيد خطة الزائر والمستخدم والوسيط في ملف واحد.
 - 2026-08-23: تثبيت جولة الوسيط عند أول تسجيل دخول فعلي بعد اعتماد الحساب.
@@ -1488,5 +1779,6 @@ guide.help_duration_minutes = 30
 - 2026-08-23: تثبيت حالات التفاعل النهائية: إغلاق الخطوة، تأكيد التخطي، هدف تعليمي غير تفاعلي، إنهاء الجولة، وإعادة المحاولة الصامتة.
 - 2026-08-23: تثبيت القياسات النهائية، بطاقة تأكيد التخطي، ووسم الدور ومؤشر التقدم والرجوع والاهتزاز.
 - 2026-08-23: اعتماد العزل الكامل لقارئ الشاشة، والتركيز من العنوان، وترتيب أزرار RTL، والتمدد/التمرير عند ضيق المساحة.
+- 2026-08-23: اعتماد خطة التنفيذ البرمجية التفصيلية مع بوابات المراحل والعقود والاختبارات، دون بدء التنفيذ العملي.
 
 **هذا الملف هو المرجع الموحد الجديد. أي اتفاق لاحق يُضاف إليه، ولا تُنشأ ملفات تسليم موازية لنفس الموضوع.**
