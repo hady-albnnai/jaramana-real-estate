@@ -328,25 +328,38 @@ class _ProgressIndicator extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       label: 'الخطوة ${index + 1} من $total',
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(
-          total,
-          (i) => Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 3),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: i == index ? 10 : 8,
-              height: i == index ? 10 : 8,
-              decoration: BoxDecoration(
-                color: i == index
-                    ? const Color(0xFF8A6D1D)
-                    : const Color(0xFFD9C98A),
-                shape: BoxShape.circle,
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+          ...List.generate(
+            total,
+            (i) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: i == index ? 10 : 8,
+                height: i == index ? 10 : 8,
+                decoration: BoxDecoration(
+                  color: i == index
+                      ? const Color(0xFF8A6D1D)
+                      : const Color(0xFFD9C98A),
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),
-        ),
+          const SizedBox(width: 8),
+          Text(
+            'الخطوة ${index + 1} من $total',
+            style: const TextStyle(
+              color: Color(0xFF6F6656),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
       ),
     );
   }
