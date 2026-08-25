@@ -7,7 +7,7 @@
 **آخر مرحلة مكتملة:** P3
 **آخر مرحلة جارية:** P4
 **المرحلة التالية:** P5 — GuideController وGuideHost وLifecycle
-**آخر commit تنفيذ:** قيد الإعداد
+**آخر commit تنفيذ:** `0bfae64` — P4 إنشاء Presenter وOverlay للدليل
 
 > يُحدّث هذا الملف بعد كل مرحلة أو نقطة توقف. لا يُكتب «مكتمل» إلا بعد نجاح معيار خروج المرحلة.
 
@@ -45,7 +45,7 @@
 | P1 | مكتملة | `b3fde50` | `flutter analyze`: No issues found؛ نماذج P1: 6 اختبارات ناجحة؛ Prototype P0: اختباران ناجحان | Models وContracts وGuide Copy جاهزة |
 | P2 | مكتملة | `1cfd228` | `flutter analyze` بلا مشاكل؛ اختبارات Storage وModels وPrototype ناجحة | مفاتيح Hive المعزولة وحالات الفشل جاهزة |
 | P3 | مكتملة | `0aa2fab` | `flutter analyze`: No issues found؛ اختبار Registry: 3 ناجحة؛ كامل `test/guide`: 14 ناجحة | Registry وAnchor واختبارات القياس وإلغاء التسجيل ناجحة |
-| P4 | جارية | قيد الإعداد | لم تُشغّل بعد — Presenter وOverlay مضافة | اختبار الإدراج والإزالة ومنع التكرار بانتظار التشغيل |
+| P4 | جارية | `0bfae64` | لم تُشغّل بعد — Presenter وOverlay مضافة | اختبار الإدراج والإزالة ومنع التكرار بانتظار التشغيل |
 
 | P2 | لم تبدأ | — | — | — |
 | P3 | لم تبدأ | — | — | — |
