@@ -312,6 +312,7 @@ class _GuideBubbleLayer extends StatelessWidget {
                 ),
               ),
             ),
+          ),
           ],
         );
       },
