@@ -43,7 +43,7 @@
 | P0 | مكتملة | `c839a2a` | `flutter analyze` بلا مشاكل؛ `guide_visual_prototype_test.dart`: All tests passed؛ التطبيق يعمل نظامياً | Prototype معزول واختبارات Widget ناجحة |
 | P1 | مكتملة | `b3fde50` | `flutter analyze`: No issues found؛ نماذج P1: 6 اختبارات ناجحة؛ Prototype P0: اختباران ناجحان | Models وContracts وGuide Copy جاهزة |
 | P2 | مكتملة | `1cfd228` | `flutter analyze` بلا مشاكل؛ اختبارات Storage وModels وPrototype ناجحة | مفاتيح Hive المعزولة وحالات الفشل جاهزة |
-| P3 | جارية | قيد الإعداد | لم تُشغّل بعد — Registry وAnchor مضافة | اختبار Rect والهدف الصفري وإلغاء التسجيل بانتظار التشغيل |
+| P3 | جارية | `0aa2fab` | `flutter analyze` بلا مشاكل؛ أول تشغيل كشف قيود اختبار Tight؛ تم إصلاح الاختبار، ويلزم إعادة التشغيل | Registry وAnchor مضافة |
 
 | P2 | لم تبدأ | — | — | — |
 | P3 | لم تبدأ | — | — | — |
