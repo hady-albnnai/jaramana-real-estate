@@ -211,8 +211,9 @@ class _GuideBubbleLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
+    return Positioned.fill(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
         final media = MediaQuery.of(context);
         final safeTop = media.padding.top + 12;
         final safeBottom = media.padding.bottom + 12;
@@ -246,9 +247,8 @@ class _GuideBubbleLayer extends StatelessWidget {
           ((placement.top + cardHeight / 2) / screen.height * 2) - 1,
         );
 
-        return Positioned.fill(
-          child: AnimatedAlign(
-            duration: reduceMotion ? Duration.zero : repositionDuration,
+        return AnimatedAlign(
+          duration: reduceMotion ? Duration.zero : repositionDuration,
             curve: Curves.easeOut,
             alignment: alignment,
             child: SizedBox(
@@ -286,7 +286,8 @@ class _GuideBubbleLayer extends StatelessWidget {
             ),
           ),
         );
-      },
+        },
+      ),
     );
   }
 
