@@ -384,6 +384,7 @@ V1 تصفح العروض، V2 البحث والفلاتر، V3 تفاصيل ال
 | جولة المستخدم | `lib/screens/user/user_home_screen.dart` و`my_offers_screen.dart` و`my_requests_screen.dart` و`my_appointments_screen.dart` |
 | الحاوية العامة المخططة | `lib/app.dart` |
 | التخزين المحلي | Hive عبر `LocalCacheService` الموجود في المشروع؛ لا نستخدم مساراً ثانياً لحالات الدليل |
+| نقطة البدء السريعة | `docs/USER_GUIDE_START_HERE_AR.md` — ملخص الحالة والفرع والمرحلة التالية والممنوعات |
 | سجل استئناف التنفيذ | `docs/USER_GUIDE_IMPLEMENTATION_STATUS_AR.md` — حالة P0 إلى P11 والـcommit والاختبارات والبند التالي |
 
 ---
