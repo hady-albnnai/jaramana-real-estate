@@ -16,10 +16,11 @@ void main() {
           create: (_) => ConfigProvider(),
           child: GuideHost(
             child: Builder(
-            builder: (context) {
-              hostContext = context;
-              return const Scaffold(body: SizedBox.expand());
-            },
+              builder: (context) {
+                hostContext = context;
+                return const Scaffold(body: SizedBox.expand());
+              },
+            ),
           ),
         ),
       ),
