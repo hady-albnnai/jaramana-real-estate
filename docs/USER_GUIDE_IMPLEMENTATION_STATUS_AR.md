@@ -48,7 +48,7 @@
 | P4 | مكتملة | `0bfae64` | Presenter: 1 ناجح؛ كامل guide: 15 ناجحة | Presenter وOverlay |
 | P5 | مكتملة | `054be2b` | `flutter analyze`: No issues found؛ اختبارات Controller وHost وLifecycle ناجحة؛ كامل `test/guide`: 18 ناجحة | Controller وHost وLifecycle والقفل والاستئناف ناجحة |
 | P6 | مكتملة | `bae9297` | `flutter analyze`: No issues found؛ اختبارات سؤال الجولة والشرائح ناجحة؛ كامل `test/guide`: ناجح | السؤال والشرائح والتقدم والرجوع والتخطي والإغلاق ناجحة |
-| P7 | جارية | `fe35c58` | المتتبع ناجح؛ تم تسجيل الأهداف والاختبارات السابقة ناجحة؛ يلزم اختبار الواجهات بعد الربط | BrowseTracker وRegistry وأهداف العروض والفلاتر والمشاركة مربوطة اختيارياً |
+| P7 | جارية | `fe35c58` | `flutter analyze`: No issues found؛ كامل `test/guide`: ناجح | ربط Registry وGuideAnchor بأهداف قائمة العروض والفلاتر والمشاركة ناجح؛ الجولة الفعلية لم تبدأ |
 
 ## قاعدة الاستئناف عند انقطاع التواصل
 
