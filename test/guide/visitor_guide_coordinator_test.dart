@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:sweeda_real_estate/core/guide/guide_host.dart';
+import 'package:sweeda_real_estate/providers/config_provider.dart';
 import 'package:sweeda_real_estate/core/guide/visitor_guide_coordinator.dart';
 
 void main() {
@@ -10,8 +12,10 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: GuideHost(
-          child: Builder(
+        home: ChangeNotifierProvider<ConfigProvider>(
+          create: (_) => ConfigProvider(),
+          child: GuideHost(
+            child: Builder(
             builder: (context) {
               hostContext = context;
               return const Scaffold(body: SizedBox.expand());
