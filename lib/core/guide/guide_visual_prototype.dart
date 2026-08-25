@@ -241,39 +241,48 @@ class _GuideBubbleLayer extends StatelessWidget {
           onSkip: onSkip,
         );
 
-        return AnimatedPositioned(
-          duration: reduceMotion ? Duration.zero : repositionDuration,
-          curve: Curves.easeOut,
-          left: placement.left,
-          top: placement.top,
-          width: placement.width,
-          child: FocusScope(
-            autofocus: true,
-            child: Semantics(
-              container: true,
-              scopesRoute: true,
-              namesRoute: true,
-              label: [
-                if (roleLabel != null) roleLabel!,
-                title,
-                message,
-                if (stepLabel != null) stepLabel!,
-              ].join('. '),
-              child: reduceMotion
-                  ? card
-                  : TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0, end: 1),
-                      duration: animationDuration,
-                      curve: Curves.easeOut,
-                      builder: (context, value, child) => Opacity(
-                        opacity: value,
-                        child: Transform.translate(
-                          offset: Offset(0, 10 * (1 - value)),
-                          child: child,
+        final alignment = Alignment(
+          ((placement.left + placement.width / 2) / screen.width * 2) - 1,
+          ((placement.top + cardHeight / 2) / screen.height * 2) - 1,
+        );
+
+        return Positioned.fill(
+          child: AnimatedAlign(
+            duration: reduceMotion ? Duration.zero : repositionDuration,
+            curve: Curves.easeOut,
+            alignment: alignment,
+            child: SizedBox(
+              width: placement.width,
+              child: FocusScope(
+                autofocus: true,
+                child: Semantics(
+                  container: true,
+                  explicitChildNodes: true,
+                  scopesRoute: true,
+                  namesRoute: true,
+                  label: [
+                    if (roleLabel != null) roleLabel!,
+                    title,
+                    message,
+                    if (stepLabel != null) stepLabel!,
+                  ].join('. '),
+                  child: reduceMotion
+                      ? card
+                      : TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: 1),
+                          duration: animationDuration,
+                          curve: Curves.easeOut,
+                          builder: (context, value, child) => Opacity(
+                            opacity: value,
+                            child: Transform.translate(
+                              offset: Offset(0, 10 * (1 - value)),
+                              child: child,
+                            ),
+                          ),
+                          child: card,
                         ),
-                      ),
-                      child: card,
-                    ),
+                ),
+              ),
             ),
           ),
         );
@@ -514,6 +523,7 @@ class _SkipConfirmation extends StatelessWidget {
     return Center(
       child: Semantics(
         container: true,
+        explicitChildNodes: true,
         scopesRoute: true,
         namesRoute: true,
         label: 'هل تريد تخطي الجولة؟',
