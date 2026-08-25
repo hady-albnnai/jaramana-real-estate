@@ -68,7 +68,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('الشريحة الأولى'), findsOneWidget);
 
-    await tester.tap(find.text('إغلاق'));
+    await tester.tap(find.byTooltip('إغلاق'));
     expect(closed, isTrue);
     await tester.tap(find.text('تخطي الجولة'));
     expect(skipped, isTrue);
