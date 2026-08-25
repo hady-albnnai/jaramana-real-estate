@@ -3,11 +3,11 @@
 **المشروع:** المكتب العقاري الإلكتروني
 **الفرع الثابت:** `arena/01a02e86-sweeda-real-estate-office-elc`
 **المرجع الرئيسي:** `docs/USER_GUIDE_BALLOONS_MASTER_PLAN_AR.md`
-**الحالة الحالية:** تنفيذ المرحلة P5 جارٍ — GuideController وGuideHost وLifecycle
-**آخر مرحلة مكتملة:** P4
-**آخر مرحلة جارية:** P5
+**الحالة الحالية:** انتهت P5 بنجاح — GuideController وGuideHost وLifecycle
+**آخر مرحلة مكتملة:** P5
+**آخر مرحلة جارية:** لا توجد
 **المرحلة التالية:** P6 — السؤال والشرائح
-**آخر commit تنفيذ:** `96e82a7` — P5 إصلاح قفل الجلسة واختبار Directionality
+**آخر commit تنفيذ:** `054be2b` — P5 تنظيف سجل نقطة توقف الاختبارات
 
 > لا تُكتب «مكتملة» إلا بعد نجاح معيار الخروج والاختبارات. هذا الملف هو المرجع الوحيد لنقطة التوقف.
 
@@ -18,7 +18,7 @@
 - [x] P2 التخزين المحلي وحالة الإعادة — مكتملة
 - [x] P3 سجل الأهداف وGuideAnchor — مكتملة
 - [x] P4 GuidePresenter والـOverlay — مكتملة
-- [ ] P5 GuideController وGuideHost وLifecycle — جارية
+- [x] P5 GuideController وGuideHost وLifecycle — مكتملة
 - [ ] P6 السؤال والشرائح — التالية
 - [ ] P7 جولة الزائر
 - [ ] P8 جولة المستخدم
@@ -43,7 +43,7 @@
 | P2 | مكتملة | `1cfd228` | اختبارات Storage وModels وPrototype ناجحة | Hive ومفاتيح الدليل |
 | P3 | مكتملة | `0aa2fab` | Registry: 3 ناجحة؛ كامل guide: 14 ناجحة | Registry وAnchor |
 | P4 | مكتملة | `0bfae64` | Presenter: 1 ناجح؛ كامل guide: 15 ناجحة | Presenter وOverlay |
-| P5 | جارية | `96e82a7` | الاختبار السابق فشل، وتم إصلاح الأسباب؛ يلزم إعادة التشغيل | Controller وHost وLifecycle |
+| P5 | مكتملة | `054be2b` | `flutter analyze`: No issues found؛ اختبارات Controller وHost وLifecycle ناجحة؛ كامل `test/guide`: 18 ناجحة | Controller وHost وLifecycle والقفل والاستئناف ناجحة |
 
 ## قاعدة الاستئناف عند انقطاع التواصل
 
