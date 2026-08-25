@@ -17,6 +17,7 @@ class GuideOverlay extends StatelessWidget {
     this.stepLabel,
     this.isFirstStep = false,
     this.isLastStep = false,
+    this.actionLabel,
     this.onBack,
     this.onNext,
     this.onClose,
@@ -32,6 +33,7 @@ class GuideOverlay extends StatelessWidget {
   final String? stepLabel;
   final bool isFirstStep;
   final bool isLastStep;
+  final String? actionLabel;
   final VoidCallback? onBack;
   final VoidCallback? onNext;
   final VoidCallback? onClose;
@@ -49,6 +51,7 @@ class GuideOverlay extends StatelessWidget {
       stepLabel: stepLabel,
       isFirstStep: isFirstStep,
       isLastStep: isLastStep,
+      actionLabel: actionLabel,
       onBack: onBack,
       onNext: onNext,
       onClose: onClose,

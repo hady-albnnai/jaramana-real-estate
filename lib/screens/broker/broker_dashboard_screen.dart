@@ -6,6 +6,12 @@ import '../../providers/auth_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
 import '../../widgets/fit_tile.dart';
+import '../../widgets/guide_anchor.dart';
+import '../../core/guide/guide_copy.dart';
+import '../../core/guide/guide_help_button.dart';
+import '../../core/guide/guide_host.dart';
+import '../../core/guide/guide_models.dart';
+import '../../core/guide/broker_guide_coordinator.dart';
 
 /// 🤝 لوحة تحكم الوسيط/السمسار — الشاشة الرئيسية
 /// تعرض: ترحيب + إحصائيات سريعة + بطاقات تنقل للأقسام
@@ -20,8 +26,11 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _load();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (mounted) await BrokerGuideCoordinator.maybeStart(context);
     });
   }
 
@@ -42,6 +51,7 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
         ? auth.userModel!.brkNm
         : (auth.userModel?.nm ?? 'الوسيط');
     final stats = broker.stats;
+    final guideRegistry = GuideHost.maybeRegistryOf(context);
 
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
@@ -63,6 +73,11 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
           ],
         ),
         actions: [
+          GuideHelpButton(
+            scope: GuideScope.broker,
+            uid: auth.userModel?.uid ?? '',
+            onPressed: () => BrokerGuideCoordinator.maybeStart(context, force: true),
+          ),
           IconButton(
             icon: const Icon(Icons.home_outlined, color: AppTheme.primaryGold),
             tooltip: 'الواجهة الرئيسية',
@@ -135,16 +150,31 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
                             },
                           ),
                           AppTheme.gapHeightXXL,
-                          Text('الأقسام',
-                              style: TextStyle(
-                                  color: AppTheme.primaryGold,
-                                  fontSize: AppTheme.responsiveFontSize(
-                                    context,
-                                    mobile: AppTheme.fontSizeSubtitle,
-                                    tablet: AppTheme.fontSizeTitle,
-                                    desktop: AppTheme.fontSizeHeadline,
-                                  ),
-                                  fontWeight: FontWeight.bold)),
+                          if (guideRegistry != null)
+                            GuideAnchor(
+                              id: GuideStepIds.brokerSections,
+                              registry: guideRegistry,
+                              child: Text('الأقسام',
+                                  style: TextStyle(
+                                      color: AppTheme.primaryGold,
+                                      fontSize: AppTheme.responsiveFontSize(
+                                        context,
+                                        mobile: AppTheme.fontSizeSubtitle,
+                                        tablet: AppTheme.fontSizeTitle,
+                                        desktop: AppTheme.fontSizeHeadline,
+                                      ),
+                                      fontWeight: FontWeight.bold)),
+                          else
+                            Text('الأقسام',
+                                style: TextStyle(
+                                    color: AppTheme.primaryGold,
+                                    fontSize: AppTheme.responsiveFontSize(
+                                      context,
+                                      mobile: AppTheme.fontSizeSubtitle,
+                                      tablet: AppTheme.fontSizeTitle,
+                                      desktop: AppTheme.fontSizeHeadline,
+                                    ),
+                                    fontWeight: FontWeight.bold)),
                           AppTheme.gapHeightMedium,
 
                           // ── بطاقات التنقل ──

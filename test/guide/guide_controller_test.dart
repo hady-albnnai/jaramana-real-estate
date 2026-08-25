@@ -32,6 +32,7 @@ class _FakePresenter implements GuidePresenter {
     String? stepLabel,
     bool isFirstStep = false,
     bool isLastStep = false,
+    String? actionLabel,
     VoidCallback? onBack,
     VoidCallback? onNext,
     VoidCallback? onClose,

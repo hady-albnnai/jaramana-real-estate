@@ -18,6 +18,7 @@ class GuideVisualPrototype extends StatefulWidget {
     this.stepLabel,
     this.isFirstStep = false,
     this.isLastStep = false,
+    this.actionLabel,
     this.onBack,
     this.onNext,
     this.onClose,
@@ -40,6 +41,7 @@ class GuideVisualPrototype extends StatefulWidget {
   final String? stepLabel;
   final bool isFirstStep;
   final bool isLastStep;
+  final String? actionLabel;
   final VoidCallback? onBack;
   final VoidCallback? onNext;
   final VoidCallback? onClose;
@@ -81,6 +83,7 @@ class _GuideVisualPrototypeState extends State<GuideVisualPrototype> {
           stepLabel: widget.stepLabel,
           isFirstStep: widget.isFirstStep,
           isLastStep: widget.isLastStep,
+          actionLabel: widget.actionLabel,
           cardRadius: widget.cardRadius,
           cardOpacity: widget.cardOpacity,
           onBack: widget.onBack,
@@ -188,6 +191,7 @@ class _GuideBubbleLayer extends StatelessWidget {
     required this.stepLabel,
     required this.isFirstStep,
     required this.isLastStep,
+    required this.actionLabel,
     required this.cardRadius,
     required this.cardOpacity,
     required this.onBack,
@@ -206,6 +210,7 @@ class _GuideBubbleLayer extends StatelessWidget {
   final String? stepLabel;
   final bool isFirstStep;
   final bool isLastStep;
+  final String? actionLabel;
   final double cardRadius;
   final double cardOpacity;
   final VoidCallback? onBack;
@@ -450,6 +455,7 @@ class _BubbleCard extends StatelessWidget {
     required this.stepLabel,
     required this.isFirstStep,
     required this.isLastStep,
+    required this.actionLabel,
     required this.cardRadius,
     required this.cardOpacity,
     required this.onBack,
@@ -464,6 +470,7 @@ class _BubbleCard extends StatelessWidget {
   final String? stepLabel;
   final bool isFirstStep;
   final bool isLastStep;
+  final String? actionLabel;
   final double cardRadius;
   final double cardOpacity;
   final VoidCallback? onBack;
@@ -580,7 +587,7 @@ class _BubbleCard extends StatelessWidget {
                         foregroundColor: const Color(0xFF17130A),
                         shape: const StadiumBorder(),
                       ),
-                      child: Text(isLastStep ? 'إنهاء الجولة' : 'التالي'),
+                      child: Text(actionLabel ?? (isLastStep ? 'إنهاء الجولة' : 'التالي')),
                     ),
                   ),
                 ),
