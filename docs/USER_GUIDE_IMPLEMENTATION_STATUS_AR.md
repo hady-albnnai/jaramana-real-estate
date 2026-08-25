@@ -3,11 +3,11 @@
 **المشروع:** المكتب العقاري الإلكتروني
 **الفرع الثابت:** `arena/01a02e86-sweeda-real-estate-office-elc`
 **المرجع الرئيسي:** `docs/USER_GUIDE_BALLOONS_MASTER_PLAN_AR.md`
-**الحالة الحالية:** تنفيذ المرحلة P3 جارٍ — Target Registry وGuideAnchor
-**آخر مرحلة مكتملة:** P2
-**آخر مرحلة جارية:** P3
+**الحالة الحالية:** انتهت P3 بنجاح — Target Registry وGuideAnchor
+**آخر مرحلة مكتملة:** P3
+**آخر مرحلة جارية:** لا توجد
 **المرحلة التالية:** P4 — GuidePresenter والـOverlay
-**آخر commit تنفيذ:** قيد الإعداد
+**آخر commit تنفيذ:** `0aa2fab` — P3 تصحيح قيود اختبار الأهداف البصرية
 
 > يُحدّث هذا الملف بعد كل مرحلة أو نقطة توقف. لا يُكتب «مكتمل» إلا بعد نجاح معيار خروج المرحلة.
 
@@ -16,7 +16,7 @@
 - [x] P0 ما قبل التنفيذ والـPrototype البصري — **مكتملة**
 - [x] P1 عقود الحالة والنسخ والأخطاء — **مكتملة**
 - [x] P2 التخزين المحلي وحالة الإعادة — **مكتملة**
-- [ ] P3 سجل الأهداف وGuideAnchor — **جارية**
+- [x] P3 سجل الأهداف وGuideAnchor — **مكتملة**
 - [ ] P4 GuidePresenter والـOverlay — **التالية**
 - [ ] P3 سجل الأهداف وGuideAnchor
 - [ ] P4 GuidePresenter والـOverlay
@@ -43,7 +43,7 @@
 | P0 | مكتملة | `c839a2a` | `flutter analyze` بلا مشاكل؛ `guide_visual_prototype_test.dart`: All tests passed؛ التطبيق يعمل نظامياً | Prototype معزول واختبارات Widget ناجحة |
 | P1 | مكتملة | `b3fde50` | `flutter analyze`: No issues found؛ نماذج P1: 6 اختبارات ناجحة؛ Prototype P0: اختباران ناجحان | Models وContracts وGuide Copy جاهزة |
 | P2 | مكتملة | `1cfd228` | `flutter analyze` بلا مشاكل؛ اختبارات Storage وModels وPrototype ناجحة | مفاتيح Hive المعزولة وحالات الفشل جاهزة |
-| P3 | جارية | `0aa2fab` | `flutter analyze` بلا مشاكل؛ أول تشغيل كشف قيود اختبار Tight؛ تم إصلاح الاختبار، ويلزم إعادة التشغيل | Registry وAnchor مضافة |
+| P3 | مكتملة | `0aa2fab` | `flutter analyze`: No issues found؛ اختبار Registry: 3 ناجحة؛ كامل `test/guide`: 14 ناجحة | Registry وAnchor واختبارات القياس وإلغاء التسجيل ناجحة |
 
 | P2 | لم تبدأ | — | — | — |
 | P3 | لم تبدأ | — | — | — |
