@@ -1,8 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/widgets.dart';
 
-import 'guide_controller.dart';
 import 'guide_copy.dart';
 import 'guide_host.dart';
 import 'guide_intro.dart';
@@ -76,6 +73,34 @@ class VisitorGuideCoordinator {
       if (!controller.isDisposed) controller.hide();
     }
 
+    Future<void> showFilters() async {
+      final snapshot = await _waitForTarget(registry, GuideStepIds.visitorFilters);
+      if (!context.mounted || snapshot?.ready != true) {
+        await save(stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.retryable);
+        controller.hide();
+        return;
+      }
+      await save(stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.shown);
+      controller.showStep(
+        targetRect: snapshot!.rect!,
+        title: GuideCopy.visitorFiltersTitle,
+        message: GuideCopy.visitorFiltersBody,
+        roleLabel: GuideCopy.roleLabel(GuideScope.visitor),
+        stepLabel: 'الخطوة 2 من 2',
+        isLastStep: true,
+        onNext: () async {
+          await save(status: GuideRunStatus.completed,
+              stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.completed);
+          controller.hide();
+        },
+        onClose: () async {
+          await save(stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.retryable);
+          controller.hide();
+        },
+        onConfirmSkip: skip,
+      );
+    }
+
     Future<void> showOffers() async {
       final snapshot = await _waitForTarget(registry, GuideStepIds.visitorOffers);
       if (!context.mounted || snapshot?.ready != true) {
@@ -104,33 +129,6 @@ class VisitorGuideCoordinator {
       );
     }
 
-    Future<void> showFilters() async {
-      final snapshot = await _waitForTarget(registry, GuideStepIds.visitorFilters);
-      if (!context.mounted || snapshot?.ready != true) {
-        await save(stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.retryable);
-        controller.hide();
-        return;
-      }
-      await save(stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.shown);
-      controller.showStep(
-        targetRect: snapshot!.rect!,
-        title: GuideCopy.visitorFiltersTitle,
-        message: GuideCopy.visitorFiltersBody,
-        roleLabel: GuideCopy.roleLabel(GuideScope.visitor),
-        stepLabel: 'الخطوة 2 من 2',
-        isLastStep: true,
-        onNext: () async {
-          await save(status: GuideRunStatus.completed,
-              stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.completed);
-          controller.hide();
-        },
-        onClose: () async {
-          await save(stepId: GuideStepIds.visitorFilters, stepStatus: GuideStepStatus.retryable);
-          controller.hide();
-        },
-        onConfirmSkip: skip,
-      );
-    }
 
     await save(status: GuideRunStatus.questionShown);
     controller.showWidget((overlayContext) => GuideQuestion(
