@@ -8,6 +8,9 @@ import '../../widgets/offer_filters.dart';
 import '../../widgets/shimmer_loading.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/e2e.dart';
+import '../../widgets/guide_anchor.dart';
+import '../../core/guide/guide_host.dart';
+import '../../core/guide/guide_models.dart';
 import 'package:go_router/go_router.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -92,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final offerProvider = context.watch<OfferProvider>();
     final auth = context.watch<AuthProvider>();
+    final guideRegistry = GuideHost.maybeRegistryOf(context);
     // القائمة المرئية = عروض المزوّد بعد تطبيق الفلاتر المتقدمة (المشتركة)
     final offers = _advF.apply(offerProvider.offers);
 
@@ -157,7 +161,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               AppTheme.gapWidthSmall,
-              OfferFiltersButton(count: _advF.activeCount, onTap: _openFilters),
+              if (guideRegistry != null)
+                GuideAnchor(
+                  id: GuideStepIds.visitorFilters,
+                  registry: guideRegistry,
+                  child: OfferFiltersButton(
+                    count: _advF.activeCount,
+                    onTap: _openFilters,
+                  ),
+                )
+              else
+                OfferFiltersButton(count: _advF.activeCount, onTap: _openFilters),
             ],
           ),
         ),
@@ -241,23 +255,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
                           return false;
                         },
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 15),
-                          itemCount: offers.length +
-                              (offerProvider.hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index >= offers.length) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                      color: AppTheme.primaryGold),
-                                ),
-                              );
-                            }
-                            return OfferCard(offer: offers[index]);
-                          },
-                        ),
+                        child: guideRegistry != null
+                            ? GuideAnchor(
+                                id: GuideStepIds.visitorOffers,
+                                registry: guideRegistry,
+                                child: _buildVisitorOffersList(offers, offerProvider),
+                              )
+                            : _buildVisitorOffersList(offers, offerProvider),
                       ),
                     ),
         ),
@@ -280,6 +284,25 @@ class _HomeScreenState extends State<HomeScreen> {
           if (index == 3) context.push('/user/profile');
         },
       ),
+    );
+  }
+
+  Widget _buildVisitorOffersList(
+      List<dynamic> offers, OfferProvider offerProvider) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      itemCount: offers.length + (offerProvider.hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= offers.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryGold),
+            ),
+          );
+        }
+        return OfferCard(offer: offers[index]);
+      },
     );
   }
 

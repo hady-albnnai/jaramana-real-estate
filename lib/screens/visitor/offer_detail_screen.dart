@@ -22,6 +22,9 @@ import '../../widgets/location_picker.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../widgets/fit_tile.dart';
+import '../../widgets/guide_anchor.dart';
+import '../../core/guide/guide_host.dart';
+import '../../core/guide/guide_models.dart';
 
 class OfferDetailScreen extends StatefulWidget {
   final String offerId;
@@ -944,9 +947,22 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                     ),
                   ],
                 ),
-              IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: _share,
+              Builder(
+                builder: (ctx) {
+                  final registry = GuideHost.maybeRegistryOf(ctx);
+                  final button = IconButton(
+                    tooltip: 'مشاركة العرض',
+                    icon: const Icon(Icons.share),
+                    onPressed: _share,
+                  );
+                  return registry == null
+                      ? button
+                      : GuideAnchor(
+                          id: GuideStepIds.visitorShare,
+                          registry: registry,
+                          child: button,
+                        );
+                },
               ),
               // ❤️ القلب يتعتّم على عروضك الخاصة (والسيرفر يرفض النقاط كذلك)
               // زر القلب — حيّ ومتزامن مع البطاقات بالقوائم (فئة المفضلة)
