@@ -147,7 +147,7 @@ class _SpotlightPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, overlayPaint);
 
     final highlight = targetRect.inflate(padding);
-    final radius = math.min(16, highlight.shortestSide / 3);
+    final radius = math.min(16.0, highlight.shortestSide / 3);
     final clearPaint = Paint()..blendMode = BlendMode.clear;
     canvas.drawRRect(
       RRect.fromRectAndRadius(highlight, Radius.circular(radius)),
