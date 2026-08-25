@@ -1,5 +1,10 @@
 import 'dart:convert';
 
+DateTime? _parseGuideDate(dynamic value) {
+  final raw = value?.toString();
+  return raw == null || raw.isEmpty ? null : DateTime.tryParse(raw);
+}
+
 /// The three independently persisted guide scopes.
 enum GuideScope { visitor, user, broker }
 
@@ -150,9 +155,9 @@ class GuideStepState {
       stepId: json['stepId']?.toString() ?? '',
       status: status,
       contentVersion: json['contentVersion']?.toString() ?? 'guide.v1',
-      shownAt: _date(json['shownAt']),
-      completedAt: _date(json['completedAt']),
-      skippedAt: _date(json['skippedAt']),
+      shownAt: _parseGuideDate(json['shownAt']),
+      completedAt: _parseGuideDate(json['completedAt']),
+      skippedAt: _parseGuideDate(json['skippedAt']),
     );
   }
 
