@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'guide_copy.dart';
@@ -17,10 +18,22 @@ class VisitorGuideCoordinator {
   static const _version = GuideStorage.contentVersion;
 
   static Future<void> maybeStart(BuildContext context) async {
+    try {
+      await _maybeStart(context);
+    } catch (error, stack) {
+      debugPrint('[GUIDE] visitor coordinator failed: $error');
+      debugPrintStack(stackTrace: stack);
+    }
+  }
+
+  static Future<void> _maybeStart(BuildContext context) async {
     if (!context.mounted) return;
     final controller = GuideHost.maybeOf(context);
     final registry = GuideHost.maybeRegistryOf(context);
-    if (controller == null || registry == null || controller.isDisposed) return;
+    if (controller == null || registry == null || controller.isDisposed) {
+      debugPrint('[GUIDE] visitor start skipped: host/registry unavailable');
+      return;
+    }
 
     final storage = GuideStorage();
     final existing = storage.readRun(scope: GuideScope.visitor);
@@ -36,7 +49,11 @@ class VisitorGuideCoordinator {
       route: _route,
       contentVersion: _version,
     );
-    if (!started) return;
+    if (!started) {
+      debugPrint('[GUIDE] visitor start skipped: duplicate session');
+      return;
+    }
+    debugPrint('[GUIDE] visitor session started');
 
     var run = GuideRunState.initial(
       scope: GuideScope.visitor,
