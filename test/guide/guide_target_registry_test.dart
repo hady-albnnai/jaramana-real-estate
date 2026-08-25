@@ -10,10 +10,15 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: GuideAnchor(
-          id: GuideStepIds.userOffers,
-          registry: registry,
-          child: const SizedBox(width: 120, height: 48),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: GuideAnchor(
+              id: GuideStepIds.userOffers,
+              registry: registry,
+              child: const SizedBox(width: 120, height: 48),
+            ),
+          ),
         ),
       ),
     );
@@ -31,10 +36,15 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: GuideAnchor(
-          id: 'zero-target',
-          registry: registry,
-          child: const SizedBox.shrink(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: GuideAnchor(
+              id: 'zero-target',
+              registry: registry,
+              child: const SizedBox.shrink(),
+            ),
+          ),
         ),
       ),
     );
