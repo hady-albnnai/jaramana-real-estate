@@ -284,11 +284,10 @@ class _GuideBubbleLayer extends StatelessWidget {
                 ),
               ),
             ),
-          ),
         );
-        },
-      ),
-    );
+      },
+    ),
+  );
   }
 
   double _cardWidth(double screenWidth) {
