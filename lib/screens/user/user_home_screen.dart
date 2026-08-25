@@ -16,6 +16,9 @@ import '../../widgets/error_widget.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/services/permission_service.dart';
+import '../../core/guide/guide_models.dart';
+import '../../core/guide/guide_help_button.dart';
+import '../../core/guide/user_guide_coordinator.dart';
 
 /// الشاشة الرئيسية للمستخدم بعد تسجيل الدخول
 /// تحتوي على: بحث + فلتر + عروض + BottomNavigationBar
@@ -78,6 +81,10 @@ class _UserHomeScreenState extends State<UserHomeScreen>
           AppUtils.showPointsAwarded(context, 50, label: 'نقطة دخول يومي');
         }
       }
+      // لا نعرض الجولة فوق شاشة الإعداد أو أثناء انتقال المصادقة؛ ننتظر
+      // دورة رسم إضافية حتى يثبت الشريط السفلي والأهداف الحقيقية.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (mounted) await UserGuideCoordinator.maybeStart(context);
     });
   }
 
@@ -185,6 +192,11 @@ class _UserHomeScreenState extends State<UserHomeScreen>
           ],
         ),
         actions: [
+          GuideHelpButton(
+            scope: GuideScope.user,
+            uid: auth.userModel?.uid ?? '',
+            onPressed: () => UserGuideCoordinator.maybeStart(context, force: true),
+          ),
           if (_roleShortcutRoute(auth) != null)
             IconButton(
               icon: Icon(_roleShortcutIcon(auth), color: AppTheme.primaryGold),

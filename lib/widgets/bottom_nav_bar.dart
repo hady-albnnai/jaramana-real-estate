@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../core/theme/app_theme.dart';
+import '../core/guide/guide_models.dart';
+import '../core/guide/guide_host.dart';
+import 'guide_anchor.dart';
 import 'e2e.dart';
 
 /// شريط التنقل السفلي الرئيسي للتطبيق
@@ -12,6 +15,19 @@ import 'e2e.dart';
 class CustomBottomNavBar extends StatelessWidget {
   final int currentIndex;
   const CustomBottomNavBar({super.key, required this.currentIndex});
+
+  Widget _userGuideIcon(BuildContext context, String id, Icon icon) {
+    final auth = context.read<AuthProvider>();
+    final registry = GuideHost.maybeRegistryOf(context);
+    final isUser = auth.isLoggedIn && !auth.isBroker && !auth.isInternal;
+    final child = E2E(
+      id: id.replaceFirst('guide_user_nav_', 'e2e_nav_'),
+      button: true,
+      child: icon,
+    );
+    if (!isUser || registry == null) return child;
+    return GuideAnchor(id: id, registry: registry, child: child);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,9 +148,9 @@ class CustomBottomNavBar extends StatelessWidget {
       },
       items: [
         const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_home', button: true, child: Icon(Icons.home_outlined)), activeIcon: Icon(Icons.home), label: 'الرئيسية'),
-        const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_offers', button: true, child: Icon(Icons.home_work_outlined)), activeIcon: Icon(Icons.home_work), label: 'عروضي'),
-        BottomNavigationBarItem(icon: const E2E(id: 'e2e_nav_requests', button: true, child: Icon(Icons.assignment_outlined)), activeIcon: const Icon(Icons.assignment), label: auth.isBroker ? 'طلبات المعاينة' : 'طلباتي'),
-        BottomNavigationBarItem(icon: const E2E(id: 'e2e_nav_appointments', button: true, child: Icon(Icons.calendar_today_outlined)), activeIcon: const Icon(Icons.calendar_today), label: auth.isBroker ? 'الصفقات' : 'مواعيدي'),
+        BottomNavigationBarItem(icon: _userGuideIcon(context, GuideStepIds.userOffers, const Icon(Icons.home_work_outlined)), activeIcon: const Icon(Icons.home_work), label: 'عروضي'),
+        BottomNavigationBarItem(icon: _userGuideIcon(context, GuideStepIds.userRequests, const Icon(Icons.assignment_outlined)), activeIcon: const Icon(Icons.assignment), label: auth.isBroker ? 'طلبات المعاينة' : 'طلباتي'),
+        BottomNavigationBarItem(icon: _userGuideIcon(context, GuideStepIds.userAppointments, const Icon(Icons.calendar_today_outlined)), activeIcon: const Icon(Icons.calendar_today), label: auth.isBroker ? 'الصفقات' : 'مواعيدي'),
         const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_photography', button: true, child: Icon(Icons.photo_camera_outlined)), activeIcon: Icon(Icons.photo_camera), label: 'تصوير'),
         const BottomNavigationBarItem(icon: E2E(id: 'e2e_nav_profile', button: true, child: Icon(Icons.person_outline)), activeIcon: Icon(Icons.person), label: 'حسابي'),
       ],

@@ -10,6 +10,7 @@ void main() {
       expect(GuideScope.broker.key, 'broker');
       expect(GuideCopy.roleLabel(GuideScope.broker), 'جولة الوسيط');
       expect(GuideCopy.question(GuideScope.user), contains('وظائف حسابك'));
+      expect(GuideCopy.userIntroSlides, hasLength(3));
     });
 
     test('maps stable step IDs to approved copy', () {
