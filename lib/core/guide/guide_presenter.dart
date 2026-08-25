@@ -47,8 +47,12 @@ class OverlayEntryGuidePresenter implements GuidePresenter {
     required WidgetBuilder builder,
   }) {
     hide();
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) return;
+    final overlay = Overlay.maybeOf(context, rootOverlay: true) ??
+        Navigator.maybeOf(context, rootNavigator: true)?.overlay;
+    if (overlay == null) {
+      debugPrint('[GUIDE] no Navigator overlay available for widget');
+      return;
+    }
     final entry = OverlayEntry(builder: builder);
     _entry = entry;
     overlay.insert(entry);

@@ -15,6 +15,7 @@ class GuideController extends ChangeNotifier {
   bool _suspended = false;
   bool _disposed = false;
   int _generation = 0;
+  VoidCallback? _replayPresentation;
 
   GuideSessionToken? get sessionToken => _sessionToken;
   bool get isSuspended => _suspended;
@@ -48,6 +49,7 @@ class GuideController extends ChangeNotifier {
       contentVersion: contentVersion,
       generation: ++_generation,
     );
+    _replayPresentation = null;
     if (_presenter.isShowing) _presenter.hide();
     _sessionToken = next;
     _suspended = false;
@@ -57,10 +59,16 @@ class GuideController extends ChangeNotifier {
 
   /// Shows a question or intro widget through the same presenter.
   bool showWidget(WidgetBuilder builder) {
-    if (_disposed || _suspended || _sessionToken == null) return false;
+    if (_disposed || _sessionToken == null) return false;
     final context = _contextForPresentation;
     if (context == null) return false;
-    _presenter.showWidget(context: context, builder: builder);
+    _replayPresentation = () {
+      final currentContext = _contextForPresentation;
+      if (currentContext != null && !_disposed && !_suspended) {
+        _presenter.showWidget(context: currentContext, builder: builder);
+      }
+    };
+    _replayPresentation!.call();
     notifyListeners();
     return true;
   }
@@ -81,24 +89,29 @@ class GuideController extends ChangeNotifier {
     VoidCallback? onConfirmSkip,
     bool reduceMotion = false,
   }) {
-    if (_disposed || _suspended || _sessionToken == null) return false;
+    if (_disposed || _sessionToken == null) return false;
     final context = _contextForPresentation;
     if (context == null) return false;
-    _presenter.show(
-      context: context,
-      targetRect: targetRect,
-      title: title,
-      message: message,
-      roleLabel: roleLabel,
-      stepLabel: stepLabel,
-      isFirstStep: isFirstStep,
-      isLastStep: isLastStep,
-      onBack: onBack,
-      onNext: onNext,
-      onClose: onClose,
-      onConfirmSkip: onConfirmSkip,
-      reduceMotion: reduceMotion,
-    );
+    _replayPresentation = () {
+      final currentContext = _contextForPresentation;
+      if (currentContext == null || _disposed || _suspended) return;
+      _presenter.show(
+        context: currentContext,
+        targetRect: targetRect,
+        title: title,
+        message: message,
+        roleLabel: roleLabel,
+        stepLabel: stepLabel,
+        isFirstStep: isFirstStep,
+        isLastStep: isLastStep,
+        onBack: onBack,
+        onNext: onNext,
+        onClose: onClose,
+        onConfirmSkip: onConfirmSkip,
+        reduceMotion: reduceMotion,
+      );
+    };
+    _replayPresentation!.call();
     notifyListeners();
     return true;
   }
@@ -110,6 +123,7 @@ class GuideController extends ChangeNotifier {
 
   void hide() {
     if (_disposed) return;
+    _replayPresentation = null;
     _presenter.hide();
     notifyListeners();
   }
@@ -129,6 +143,9 @@ class GuideController extends ChangeNotifier {
     switch (state) {
       case AppLifecycleState.resumed:
         _suspended = false;
+        if (_replayPresentation != null && !_presenter.isShowing) {
+          _replayPresentation!.call();
+        }
         notifyListeners();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
