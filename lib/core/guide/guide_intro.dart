@@ -244,7 +244,9 @@ class _GuideModalShell extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
               decoration: BoxDecoration(
-                color: Colors.white,
+                // The same high-opacity translucent surface is shared by the
+              // question, slides, and target bubbles.
+              color: Colors.white.withOpacity(0.96),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: const Color(0xFFD4AF37)),
                 boxShadow: const [
