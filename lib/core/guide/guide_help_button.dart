@@ -48,7 +48,7 @@ class _GuideHelpButtonState extends State<GuideHelpButton>
     final active = until != null && until.isAfter(DateTime.now());
     if (mounted) setState(() => _active = active);
     if (active) {
-      _expiryTimer = Timer(until!.difference(DateTime.now()), () {
+      _expiryTimer = Timer(until.difference(DateTime.now()), () {
         if (mounted) setState(() => _active = false);
       });
     }
