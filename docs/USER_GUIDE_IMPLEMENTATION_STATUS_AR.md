@@ -7,23 +7,19 @@
 **آخر مرحلة مكتملة:** P4
 **آخر مرحلة جارية:** P5
 **المرحلة التالية:** P6 — السؤال والشرائح
-**آخر commit تنفيذ:** `f79d1d2` — P5 إضافة Controller وHost ودورة حياة الدليل
+**آخر commit تنفيذ:** `96e82a7` — P5 إصلاح قفل الجلسة واختبار Directionality
 
-> يُحدّث هذا الملف بعد كل مرحلة أو نقطة توقف. لا يُكتب «مكتمل» إلا بعد نجاح معيار خروج المرحلة.
+> لا تُكتب «مكتملة» إلا بعد نجاح معيار الخروج والاختبارات. هذا الملف هو المرجع الوحيد لنقطة التوقف.
 
 ## الحالة المختصرة
 
-- [x] P0 ما قبل التنفيذ والـPrototype البصري — **مكتملة**
-- [x] P1 عقود الحالة والنسخ والأخطاء — **مكتملة**
-- [x] P2 التخزين المحلي وحالة الإعادة — **مكتملة**
-- [x] P3 سجل الأهداف وGuideAnchor — **مكتملة**
-- [x] P4 GuidePresenter والـOverlay — **مكتملة**
-- [ ] P5 GuideController وGuideHost وLifecycle — **جارية**
-- [ ] P6 السؤال والشرائح — **التالية**
-- [ ] P3 سجل الأهداف وGuideAnchor
-- [ ] P4 GuidePresenter والـOverlay
-- [ ] P5 GuideController وGuideHost وLifecycle
-- [ ] P6 سؤال الجولة والشرائح
+- [x] P0 ما قبل التنفيذ والـPrototype البصري — مكتملة
+- [x] P1 عقود الحالة والنسخ والأخطاء — مكتملة
+- [x] P2 التخزين المحلي وحالة الإعادة — مكتملة
+- [x] P3 سجل الأهداف وGuideAnchor — مكتملة
+- [x] P4 GuidePresenter والـOverlay — مكتملة
+- [ ] P5 GuideController وGuideHost وLifecycle — جارية
+- [ ] P6 السؤال والشرائح — التالية
 - [ ] P7 جولة الزائر
 - [ ] P8 جولة المستخدم
 - [ ] P9 جولة الوسيط
@@ -32,44 +28,33 @@
 
 ## نقطة التوقف الحالية
 
-- تم إنشاء Prototype مستقل للبطاقة في `lib/core/guide/guide_visual_prototype.dart`.
-- تم إنشاء اختبارات Widget أولية في `test/guide/guide_visual_prototype_test.dart`.
-- لم يتم ربط Prototype بـ`app.dart` أو Router أو أي شاشة تجارية.
-- لم يتم اختيار primitive نهائي قبل توفر وتشغيل Flutter فعلياً.
-- الاختبارات لم تُشغّل لأن Flutter غير مثبت في البيئة الحالية.
+- تم إنشاء `GuideController` و`GuideHost` وربط Host في `lib/app.dart`.
+- تم إصلاح منطق Idempotency في `beginSession`.
+- تم إصلاح اختبار Directionality.
+- لم تُعتمد P5 بعد؛ يلزم تشغيل الاختبارات على آخر commit.
+- لا توجد جولة مرتبطة بالمسارات أو الأدوار بعد.
 
 ## سجل التغييرات المرحلية
 
 | المرحلة | الحالة | Commit | الاختبارات | ملاحظات |
 |---|---|---|---|---|
-| P0 | مكتملة | `c839a2a` | `flutter analyze` بلا مشاكل؛ `guide_visual_prototype_test.dart`: All tests passed؛ التطبيق يعمل نظامياً | Prototype معزول واختبارات Widget ناجحة |
-| P1 | مكتملة | `b3fde50` | `flutter analyze`: No issues found؛ نماذج P1: 6 اختبارات ناجحة؛ Prototype P0: اختباران ناجحان | Models وContracts وGuide Copy جاهزة |
-| P2 | مكتملة | `1cfd228` | `flutter analyze` بلا مشاكل؛ اختبارات Storage وModels وPrototype ناجحة | مفاتيح Hive المعزولة وحالات الفشل جاهزة |
-| P3 | مكتملة | `0aa2fab` | `flutter analyze`: No issues found؛ اختبار Registry: 3 ناجحة؛ كامل `test/guide`: 14 ناجحة | Registry وAnchor واختبارات القياس وإلغاء التسجيل ناجحة |
-| P4 | مكتملة | `0bfae64` | `flutter analyze`: No issues found؛ اختبار Presenter: 1 ناجح؛ كامل `test/guide`: 15 ناجحة | Presenter وOverlay والإدراج والإزالة ومنع التكرار ناجحة |
-| P5 | جارية | `f79d1d2` | لم تُشغّل بعد — Controller وHost وLifecycle مضافة | اختبارات القفل والاستئناف والـHost بانتظار التشغيل |
-
-| P2 | لم تبدأ | — | — | — |
-| P3 | لم تبدأ | — | — | — |
-| P4 | لم تبدأ | — | — | — |
-| P5 | لم تبدأ | — | — | — |
-| P6 | لم تبدأ | — | — | — |
-| P7 | لم تبدأ | — | — | — |
-| P8 | لم تبدأ | — | — | — |
-| P9 | لم تبدأ | — | — | — |
-| P10 | لم تبدأ | — | — | — |
-| P11 | لم تبدأ | — | — | — |
+| P0 | مكتملة | `c839a2a` | analyze ناجح؛ Prototype ناجح | Prototype معزول |
+| P1 | مكتملة | `b3fde50` | analyze ناجح؛ 6 اختبارات | Models وContracts وGuide Copy |
+| P2 | مكتملة | `1cfd228` | اختبارات Storage وModels وPrototype ناجحة | Hive ومفاتيح الدليل |
+| P3 | مكتملة | `0aa2fab` | Registry: 3 ناجحة؛ كامل guide: 14 ناجحة | Registry وAnchor |
+| P4 | مكتملة | `0bfae64` | Presenter: 1 ناجح؛ كامل guide: 15 ناجحة | Presenter وOverlay |
+| P5 | جارية | `96e82a7` | الاختبار السابق فشل، وتم إصلاح الأسباب؛ يلزم إعادة التشغيل | Controller وHost وLifecycle |
 
 ## قاعدة الاستئناف عند انقطاع التواصل
 
-1. اقرأ أولاً `docs/USER_GUIDE_START_HERE_AR.md`.
+1. اقرأ `docs/USER_GUIDE_START_HERE_AR.md`.
 2. اقرأ `docs/USER_GUIDE_BALLOONS_MASTER_PLAN_AR.md`.
 3. اقرأ هذا الملف.
-4. افحص `git status` على الفرع الثابت.
-5. ابحث عن آخر مرحلة حالتها «جارية» أو «مكتملة».
-6. اقرأ commit المرحلة الأخيرة ونتائج اختبارها.
-7. لا تنتقل للمرحلة التالية إذا كان معيار خروج المرحلة الأخيرة غير مثبت.
-8. لا تعد تنفيذ مرحلة مكتملة؛ ابدأ من أول بند غير مكتمل.
+4. نفذ `git status` على الفرع الثابت.
+5. اقرأ آخر commit للمرحلة الجارية.
+6. شغّل اختبارات المرحلة قبل أي انتقال.
+7. لا تعد تنفيذ مرحلة مكتملة.
+8. لا تنتقل للمرحلة التالية قبل تحديث الحالة ومعيار الخروج.
 
 ## قالب تحديث نقطة التوقف
 
