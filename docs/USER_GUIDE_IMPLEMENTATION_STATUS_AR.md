@@ -3,11 +3,11 @@
 **المشروع:** المكتب العقاري الإلكتروني
 **الفرع الثابت:** `arena/01a02e86-sweeda-real-estate-office-elc`
 **المرجع الرئيسي:** `docs/USER_GUIDE_BALLOONS_MASTER_PLAN_AR.md`
-**الحالة الحالية:** انتهت P3 بنجاح — Target Registry وGuideAnchor
+**الحالة الحالية:** تنفيذ المرحلة P4 جارٍ — GuidePresenter والـOverlay
 **آخر مرحلة مكتملة:** P3
-**آخر مرحلة جارية:** لا توجد
-**المرحلة التالية:** P4 — GuidePresenter والـOverlay
-**آخر commit تنفيذ:** `0aa2fab` — P3 تصحيح قيود اختبار الأهداف البصرية
+**آخر مرحلة جارية:** P4
+**المرحلة التالية:** P5 — GuideController وGuideHost وLifecycle
+**آخر commit تنفيذ:** قيد الإعداد
 
 > يُحدّث هذا الملف بعد كل مرحلة أو نقطة توقف. لا يُكتب «مكتمل» إلا بعد نجاح معيار خروج المرحلة.
 
@@ -17,7 +17,8 @@
 - [x] P1 عقود الحالة والنسخ والأخطاء — **مكتملة**
 - [x] P2 التخزين المحلي وحالة الإعادة — **مكتملة**
 - [x] P3 سجل الأهداف وGuideAnchor — **مكتملة**
-- [ ] P4 GuidePresenter والـOverlay — **التالية**
+- [ ] P4 GuidePresenter والـOverlay — **جارية**
+- [ ] P5 GuideController وGuideHost وLifecycle — **التالية**
 - [ ] P3 سجل الأهداف وGuideAnchor
 - [ ] P4 GuidePresenter والـOverlay
 - [ ] P5 GuideController وGuideHost وLifecycle
@@ -44,6 +45,7 @@
 | P1 | مكتملة | `b3fde50` | `flutter analyze`: No issues found؛ نماذج P1: 6 اختبارات ناجحة؛ Prototype P0: اختباران ناجحان | Models وContracts وGuide Copy جاهزة |
 | P2 | مكتملة | `1cfd228` | `flutter analyze` بلا مشاكل؛ اختبارات Storage وModels وPrototype ناجحة | مفاتيح Hive المعزولة وحالات الفشل جاهزة |
 | P3 | مكتملة | `0aa2fab` | `flutter analyze`: No issues found؛ اختبار Registry: 3 ناجحة؛ كامل `test/guide`: 14 ناجحة | Registry وAnchor واختبارات القياس وإلغاء التسجيل ناجحة |
+| P4 | جارية | قيد الإعداد | لم تُشغّل بعد — Presenter وOverlay مضافة | اختبار الإدراج والإزالة ومنع التكرار بانتظار التشغيل |
 
 | P2 | لم تبدأ | — | — | — |
 | P3 | لم تبدأ | — | — | — |
