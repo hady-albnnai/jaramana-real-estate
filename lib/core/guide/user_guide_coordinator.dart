@@ -56,7 +56,9 @@ class UserGuideCoordinator {
       role: auth.userModel!.role,
       route: _route,
       contentVersion: _version,
-    )) return;
+    )) {
+      return;
+    }
 
     var run = GuideRunState.initial(
       scope: GuideScope.user,
@@ -94,7 +96,7 @@ class UserGuideCoordinator {
     }
 
     Future<void> showTarget(String id, String title, String message, int number,
-        {required bool last, required VoidCallback next}) async {
+        {required bool last, required Future<void> Function() next}) async {
       final snapshot = await _waitForTarget(registry, id);
       if (!context.mounted || snapshot?.ready != true) {
         await save(stepId: id, stepStatus: GuideStepStatus.retryable);
