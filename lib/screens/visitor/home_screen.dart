@@ -11,6 +11,7 @@ import '../../widgets/e2e.dart';
 import '../../widgets/guide_anchor.dart';
 import '../../core/guide/guide_host.dart';
 import '../../core/guide/guide_models.dart';
+import '../../core/guide/guide_help_button.dart';
 import '../../core/guide/visitor_guide_coordinator.dart';
 import 'package:go_router/go_router.dart';
 
@@ -179,6 +180,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 )
               else
                 OfferFiltersButton(count: _advF.activeCount, onTap: _openFilters),
+              GuideHelpButton(
+                scope: GuideScope.visitor,
+                onPressed: () => VisitorGuideCoordinator.maybeStart(
+                  context,
+                  force: true,
+                ),
+              ),
             ],
           ),
         ),

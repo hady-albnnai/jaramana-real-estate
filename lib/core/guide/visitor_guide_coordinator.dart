@@ -19,16 +19,16 @@ class VisitorGuideCoordinator {
   static const _role = 0;
   static const _version = GuideStorage.contentVersion;
 
-  static Future<void> maybeStart(BuildContext context) async {
+  static Future<void> maybeStart(BuildContext context, {bool force = false}) async {
     try {
-      await _maybeStart(context);
+      await _maybeStart(context, force: force);
     } catch (error, stack) {
       debugPrint('[GUIDE] visitor coordinator failed: $error');
       debugPrintStack(stackTrace: stack);
     }
   }
 
-  static Future<void> _maybeStart(BuildContext context) async {
+  static Future<void> _maybeStart(BuildContext context, {required bool force}) async {
     if (!context.mounted) return;
     final controller = GuideHost.maybeOf(context);
     final registry = GuideHost.maybeRegistryOf(context);
@@ -44,11 +44,12 @@ class VisitorGuideCoordinator {
     final storage = GuideStorage();
     final officeAddress = context.read<ConfigProvider>().config?.officeAddress;
     final existing = storage.readRun(scope: GuideScope.visitor);
-    if (existing != null &&
+    if (!force && existing != null &&
         (existing.isComplete || existing.isSkipped || existing.isDeclined)) {
       if (!existing.isDeclined || existing.hasTemporaryHelp) return;
     }
 
+    if (force) controller.cancelForRouteChange();
     final started = controller.beginSession(
       scope: GuideScope.visitor,
       uid: '',
@@ -176,6 +177,10 @@ class VisitorGuideCoordinator {
           helpUntil: DateTime.now().add(const Duration(minutes: 30)),
         );
         await storage.saveRun(run);
+        await storage.saveHelpUntil(
+          scope: GuideScope.visitor,
+          until: run.helpUntil!,
+        );
         controller.hide();
       },
       onClose: () async {
