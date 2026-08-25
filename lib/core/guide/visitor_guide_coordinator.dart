@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:provider/provider.dart';
 
 import 'guide_copy.dart';
 import 'guide_host.dart';
@@ -7,6 +8,7 @@ import 'guide_intro.dart';
 import 'guide_models.dart';
 import 'guide_storage.dart';
 import 'guide_target_registry.dart';
+import '../../providers/config_provider.dart';
 
 /// Coordinates only the visitor guide. It is deliberately separate from the
 /// visitor screen's data providers and never invokes a business callback.
@@ -40,6 +42,7 @@ class VisitorGuideCoordinator {
     controller.attachContext(context);
 
     final storage = GuideStorage();
+    final officeAddress = context.read<ConfigProvider>().config?.officeAddress;
     final existing = storage.readRun(scope: GuideScope.visitor);
     if (existing != null &&
         (existing.isComplete || existing.isSkipped || existing.isDeclined)) {
@@ -158,7 +161,7 @@ class VisitorGuideCoordinator {
         await save(status: GuideRunStatus.introActive);
         controller.showWidget((_) => GuideIntroSlides(
           scope: GuideScope.visitor,
-          slides: GuideCopy.visitorIntroSlides,
+          slides: GuideCopy.visitorIntroSlides(officeAddress: officeAddress),
           onComplete: showOffers,
           onSkip: skip,
           onClose: () async {

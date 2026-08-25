@@ -633,8 +633,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                       _numField('سعر الجلسة الحضورية (ل.س)', _legalOnsiteCtrl),
                       _numField('سعر تجديد المحادثة (ل.س)', _legalRenewCtrl),
                       _numField('مدة المحادثة (دقيقة)', _legalDurationCtrl),
-                      // 📍 عنوان المكتب للجلسات الحضورية (2026-08-20) —
-                      // يظهر للمستخدم والمحامي وفي الإشعارات، قابل للتغيير دائماً.
+                      // 📍 عنوان المكتب الرئيسي (2026-08-20) —
+                      // مصدر مركزي يظهر في الشرح والخدمات الحضورية والإشعارات، وقابل للتغيير دائماً.
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: TextFormField(
@@ -642,8 +642,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                           maxLines: 2,
                           style: const TextStyle(color: AppTheme.textWhite),
                           decoration: const InputDecoration(
-                            labelText: '📍 عنوان المكتب (الجلسة الحضورية)',
-                            hintText: 'مثال: السويداء — شارع الثورة — جانب الصيدلية المركزية',
+                            labelText: '📍 عنوان المكتب الرئيسي',
+                            hintText: 'مثال: السويداء — المجمع المقابل لدائرة المناهج والمعلوماتية — الطابق الأول',
                             filled: true,
                             fillColor: AppTheme.surfaceBlack,
                           ),

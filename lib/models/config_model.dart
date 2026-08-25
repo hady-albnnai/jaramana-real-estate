@@ -202,8 +202,12 @@ class ConfigModel {
   /// الإعدادات (قسم الاستشارة القانونية) ويظهر في كل مواضع الجلسة الحضورية:
   /// منتقي المواعيد + بطاقة المستخدم + بطاقة المحامي + نصوص الإشعارات.
   /// فارغ = يُخفى تلقائياً في كل المواضع.
-  String get legalOfficeAddress =>
+  /// العنوان العام للمكتب، مصدر مركزي لكل الخدمات والشرح داخل التطبيق.
+  String get officeAddress =>
       (legalPrices['officeAddress'] ?? '').toString().trim();
+
+  /// توافق خلفي مع مواضع الجلسات القانونية القديمة.
+  String get legalOfficeAddress => officeAddress;
 
   int _asInt(dynamic v, int fallback) {
     if (v is num) return v.toInt();

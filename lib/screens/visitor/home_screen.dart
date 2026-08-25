@@ -34,16 +34,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     // FIX 6: استدعاء fetchOffers عند أول تحميل للزائر
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final offerProv = context.read<OfferProvider>();
       if (offerProv.offers.isEmpty) {
         offerProv.fetchOffers();
       }
       // مصادر تصنيفات الفلاتر (catProp/docTp/carDocTp) — لازمة لقوائم نافذة الفلاتر
-      context.read<ConfigProvider>().loadConfig();
+      await context.read<ConfigProvider>().loadConfig();
+      if (!mounted) return;
       final auth = context.read<AuthProvider>();
       if (!auth.isLoggedIn) {
-        VisitorGuideCoordinator.maybeStart(context);
+        await VisitorGuideCoordinator.maybeStart(context);
       }
     });
   }

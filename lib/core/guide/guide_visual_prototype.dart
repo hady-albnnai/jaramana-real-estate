@@ -24,6 +24,7 @@ class GuideVisualPrototype extends StatefulWidget {
     this.onSkip,
     this.onConfirmSkip,
     this.overlayOpacity = 0.20,
+    this.cardOpacity = 0.96,
     this.targetPadding = 6,
     this.cardRadius = 24,
     this.animationDuration = const Duration(milliseconds: 260),
@@ -45,6 +46,9 @@ class GuideVisualPrototype extends StatefulWidget {
   final VoidCallback? onSkip;
   final VoidCallback? onConfirmSkip;
   final double overlayOpacity;
+  /// High-opacity target bubbles preserve the underlying context without
+  /// allowing it to compete with Arabic body text.
+  final double cardOpacity;
   final double targetPadding;
   final double cardRadius;
   final Duration animationDuration;
@@ -78,6 +82,7 @@ class _GuideVisualPrototypeState extends State<GuideVisualPrototype> {
           isFirstStep: widget.isFirstStep,
           isLastStep: widget.isLastStep,
           cardRadius: widget.cardRadius,
+          cardOpacity: widget.cardOpacity,
           onBack: widget.onBack,
           onNext: widget.onNext,
           onClose: widget.onClose,
@@ -184,6 +189,7 @@ class _GuideBubbleLayer extends StatelessWidget {
     required this.isFirstStep,
     required this.isLastStep,
     required this.cardRadius,
+    required this.cardOpacity,
     required this.onBack,
     required this.onNext,
     required this.onClose,
@@ -201,6 +207,7 @@ class _GuideBubbleLayer extends StatelessWidget {
   final bool isFirstStep;
   final bool isLastStep;
   final double cardRadius;
+  final double cardOpacity;
   final VoidCallback? onBack;
   final VoidCallback? onNext;
   final VoidCallback? onClose;
@@ -236,6 +243,7 @@ class _GuideBubbleLayer extends StatelessWidget {
           isFirstStep: isFirstStep,
           isLastStep: isLastStep,
           cardRadius: cardRadius,
+          cardOpacity: cardOpacity,
           onBack: onBack,
           onNext: onNext,
           onClose: onClose,
@@ -247,11 +255,31 @@ class _GuideBubbleLayer extends StatelessWidget {
           ((placement.top + cardHeight / 2) / screen.height * 2) - 1,
         );
 
-        return AnimatedAlign(
-          duration: reduceMotion ? Duration.zero : repositionDuration,
-            curve: Curves.easeOut,
-            alignment: alignment,
-            child: SizedBox(
+        final cardTop = placement.top;
+        final cardBottom = placement.top + cardHeight;
+        final cardCenterX = placement.left + placement.width / 2;
+        final targetIsAbove = targetRect.bottom <= cardTop;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _ArrowPainter(
+                  targetRect: targetRect,
+                  cardTop: cardTop,
+                  cardBottom: cardBottom,
+                  cardCenterX: cardCenterX,
+                  targetIsAbove: targetIsAbove,
+                  padding: targetRect.width > 0 ? 6 : 0,
+                ),
+              ),
+            ),
+            AnimatedAlign(
+              duration: reduceMotion ? Duration.zero : repositionDuration,
+              curve: Curves.easeOut,
+              alignment: alignment,
+              child: SizedBox(
               width: placement.width,
               child: FocusScope(
                 autofocus: true,
@@ -284,6 +312,7 @@ class _GuideBubbleLayer extends StatelessWidget {
                 ),
               ),
             ),
+          ],
         );
       },
     ),
@@ -338,6 +367,72 @@ class _GuideBubbleLayer extends StatelessWidget {
   }
 }
 
+class _ArrowPainter extends CustomPainter {
+  const _ArrowPainter({
+    required this.targetRect,
+    required this.cardTop,
+    required this.cardBottom,
+    required this.cardCenterX,
+    required this.targetIsAbove,
+    required this.padding,
+  });
+
+  final Rect targetRect;
+  final double cardTop;
+  final double cardBottom;
+  final double cardCenterX;
+  final bool targetIsAbove;
+  final double padding;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (targetRect.width <= 0 || targetRect.height <= 0) return;
+    final paint = Paint()
+      ..color = const Color(0xFFD4AF37)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    final x = targetRect.center.dx;
+    final start = targetIsAbove
+        ? Offset(cardCenterX, cardTop)
+        : Offset(cardCenterX, cardBottom);
+    final end = targetIsAbove
+        ? Offset(x, targetRect.bottom + padding)
+        : Offset(x, targetRect.top - padding);
+    canvas.drawLine(start, end, paint);
+
+    // A small directional head makes the relationship unambiguous without
+    // turning the spotlight into a noisy animation.
+    final direction = (end - start);
+    final length = direction.distance;
+    if (length > 8) {
+      final unit = direction / length;
+      final perpendicular = Offset(-unit.dy, unit.dx);
+      final headBase = end - unit * 8;
+      final path = Path()
+        ..moveTo(end.dx, end.dy)
+        ..lineTo(
+          headBase.dx + perpendicular.dx * 4,
+          headBase.dy + perpendicular.dy * 4,
+        )
+        ..moveTo(end.dx, end.dy)
+        ..lineTo(
+          headBase.dx - perpendicular.dx * 4,
+          headBase.dy - perpendicular.dy * 4,
+        );
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ArrowPainter oldDelegate) {
+    return oldDelegate.targetRect != targetRect ||
+        oldDelegate.cardTop != cardTop ||
+        oldDelegate.cardBottom != cardBottom ||
+        oldDelegate.cardCenterX != cardCenterX;
+  }
+}
+
 class _Placement {
   const _Placement({required this.left, required this.top, required this.width});
 
@@ -355,6 +450,7 @@ class _BubbleCard extends StatelessWidget {
     required this.isFirstStep,
     required this.isLastStep,
     required this.cardRadius,
+    required this.cardOpacity,
     required this.onBack,
     required this.onNext,
     required this.onClose,
@@ -368,6 +464,7 @@ class _BubbleCard extends StatelessWidget {
   final bool isFirstStep;
   final bool isLastStep;
   final double cardRadius;
+  final double cardOpacity;
   final VoidCallback? onBack;
   final VoidCallback? onNext;
   final VoidCallback? onClose;
@@ -380,7 +477,7 @@ class _BubbleCard extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(minHeight: 190),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.white.withOpacity(cardOpacity.clamp(0.96, 1.0).toDouble()),
           borderRadius: BorderRadius.circular(cardRadius),
           border: Border.all(color: const Color(0xFFD4AF37), width: 1),
           boxShadow: const [
