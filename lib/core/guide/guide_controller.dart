@@ -31,6 +31,15 @@ class GuideController extends ChangeNotifier {
     String contentVersion = 'guide.v1',
   }) {
     if (_disposed) return false;
+    final current = _sessionToken;
+    if (current != null &&
+        current.scope == scope &&
+        current.uid == uid &&
+        current.role == role &&
+        current.route == route &&
+        current.contentVersion == contentVersion) {
+      return false;
+    }
     final next = GuideSessionToken(
       scope: scope,
       uid: uid,
@@ -39,8 +48,7 @@ class GuideController extends ChangeNotifier {
       contentVersion: contentVersion,
       generation: ++_generation,
     );
-    if (_sessionToken?.value == next.value) return false;
-    _presenter.hide();
+    if (_presenter.isShowing) _presenter.hide();
     _sessionToken = next;
     _suspended = false;
     notifyListeners();

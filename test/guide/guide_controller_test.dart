@@ -92,10 +92,12 @@ void main() {
   testWidgets('GuideHost provides one controller and disposes its owned presenter',
       (tester) async {
     await tester.pumpWidget(
-      GuideHost(
-        child: Builder(
-          builder: (context) => Text(
-            GuideHost.of(context).isDisposed ? 'disposed' : 'ready',
+      MaterialApp(
+        home: GuideHost(
+          child: Builder(
+            builder: (context) => Text(
+              GuideHost.of(context).isDisposed ? 'disposed' : 'ready',
+            ),
           ),
         ),
       ),
