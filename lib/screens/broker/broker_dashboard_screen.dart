@@ -7,7 +7,6 @@ import '../../core/theme/app_theme.dart';
 import '../../widgets/app_back_button.dart';
 import '../../widgets/fit_tile.dart';
 import '../../widgets/guide_anchor.dart';
-import '../../core/guide/guide_copy.dart';
 import '../../core/guide/guide_help_button.dart';
 import '../../core/guide/guide_host.dart';
 import '../../core/guide/guide_models.dart';
@@ -163,7 +162,7 @@ class _BrokerDashboardScreenState extends State<BrokerDashboardScreen> {
                                         tablet: AppTheme.fontSizeTitle,
                                         desktop: AppTheme.fontSizeHeadline,
                                       ),
-                                      fontWeight: FontWeight.bold)),
+                                      fontWeight: FontWeight.bold))),
                           else
                             Text('الأقسام',
                                 style: TextStyle(

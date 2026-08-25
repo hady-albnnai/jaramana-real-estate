@@ -52,7 +52,9 @@ class BrokerGuideCoordinator {
       role: auth.userModel!.role,
       route: _route,
       contentVersion: _version,
-    )) return;
+    )) {
+      return;
+    }
 
     var run = GuideRunState.initial(
       scope: GuideScope.broker,

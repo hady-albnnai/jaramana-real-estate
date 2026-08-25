@@ -247,6 +247,7 @@ class _GuideBubbleLayer extends StatelessWidget {
           stepLabel: stepLabel,
           isFirstStep: isFirstStep,
           isLastStep: isLastStep,
+          actionLabel: actionLabel,
           cardRadius: cardRadius,
           cardOpacity: cardOpacity,
           onBack: onBack,
