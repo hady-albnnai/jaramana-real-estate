@@ -79,8 +79,8 @@ class _GuideHostState extends State<GuideHost> with WidgetsBindingObserver {
 class _GuideScope extends InheritedNotifier<GuideController> {
   const _GuideScope({
     required GuideController controller,
-    required Widget child,
-  }) : super(notifier: controller, child: child);
+    required super.child,
+  }) : super(notifier: controller);
 
   GuideController get controller => notifier!;
 }
