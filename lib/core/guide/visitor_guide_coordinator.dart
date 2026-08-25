@@ -34,6 +34,10 @@ class VisitorGuideCoordinator {
       debugPrint('[GUIDE] visitor start skipped: host/registry unavailable');
       return;
     }
+    // HomeScreen is below the Router/Navigator, so it provides the valid
+    // overlay context. The Host itself lives in MaterialApp.builder and may
+    // be above the Navigator overlay.
+    controller.attachContext(context);
 
     final storage = GuideStorage();
     final existing = storage.readRun(scope: GuideScope.visitor);
@@ -148,7 +152,7 @@ class VisitorGuideCoordinator {
 
 
     await save(status: GuideRunStatus.questionShown);
-    controller.showWidget((overlayContext) => GuideQuestion(
+    final questionShown = controller.showWidget((overlayContext) => GuideQuestion(
       scope: GuideScope.visitor,
       onYes: () async {
         await save(status: GuideRunStatus.introActive);
@@ -176,6 +180,9 @@ class VisitorGuideCoordinator {
         controller.hide();
       },
     ));
+    if (!questionShown) {
+      debugPrint('[GUIDE] visitor question could not be presented');
+    }
   }
 
   static Future<GuideTargetSnapshot?> _waitForTarget(
