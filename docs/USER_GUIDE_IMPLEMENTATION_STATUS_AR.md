@@ -3,19 +3,19 @@
 **المشروع:** المكتب العقاري الإلكتروني
 **الفرع الثابت:** `arena/01a02e86-sweeda-real-estate-office-elc`
 **المرجع الرئيسي:** `docs/USER_GUIDE_BALLOONS_MASTER_PLAN_AR.md`
-**الحالة الحالية:** تنفيذ المرحلة P1 جارٍ — Models وContracts
-**آخر مرحلة مكتملة:** P0
-**آخر مرحلة جارية:** P1
+**الحالة الحالية:** انتهت P1 بنجاح — Models وContracts
+**آخر مرحلة مكتملة:** P1
+**آخر مرحلة جارية:** لا توجد
 **المرحلة التالية:** P2 — Storage
-**آخر commit تنفيذ:** `f42a34f` — P1 إصلاح محلل تواريخ حالات الدليل
+**آخر commit تنفيذ:** `b3fde50` — P1 تحديث سجل نماذج وعقود الدليل
 
 > يُحدّث هذا الملف بعد كل مرحلة أو نقطة توقف. لا يُكتب «مكتمل» إلا بعد نجاح معيار خروج المرحلة.
 
 ## الحالة المختصرة
 
 - [x] P0 ما قبل التنفيذ والـPrototype البصري — **مكتملة**
-- [ ] P1 عقود الحالة والنسخ والأخطاء — **جارية**
-- [ ] P2 التخزين المحلي وحالة الإعادة
+- [x] P1 عقود الحالة والنسخ والأخطاء — **مكتملة**
+- [ ] P2 التخزين المحلي وحالة الإعادة — **التالية**
 - [ ] P3 سجل الأهداف وGuideAnchor
 - [ ] P4 GuidePresenter والـOverlay
 - [ ] P5 GuideController وGuideHost وLifecycle
@@ -39,7 +39,7 @@
 | المرحلة | الحالة | Commit | الاختبارات | ملاحظات |
 |---|---|---|---|---|
 | P0 | مكتملة | `c839a2a` | `flutter analyze` بلا مشاكل؛ `guide_visual_prototype_test.dart`: All tests passed؛ التطبيق يعمل نظامياً | Prototype معزول واختبارات Widget ناجحة |
-| P1 | جارية | `f42a34f` | لم تُشغّل بعد — يلزم تشغيل `flutter analyze` و`flutter test test/guide` | Models وContracts وGuide Copy |
+| P1 | مكتملة | `b3fde50` | `flutter analyze`: No issues found؛ نماذج P1: 6 اختبارات ناجحة؛ Prototype P0: اختباران ناجحان | Models وContracts وGuide Copy جاهزة |
 
 | P2 | لم تبدأ | — | — | — |
 | P3 | لم تبدأ | — | — | — |
