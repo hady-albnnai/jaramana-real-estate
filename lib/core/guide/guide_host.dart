@@ -21,6 +21,10 @@ class GuideHost extends StatefulWidget {
   @override
   State<GuideHost> createState() => _GuideHostState();
 
+  static GuideController? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_GuideScope>()?.controller;
+  }
+
   static GuideController of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<_GuideScope>();
     if (scope == null) {

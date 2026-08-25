@@ -14,6 +14,15 @@ class _FakePresenter implements GuidePresenter {
   bool get isShowing => showing;
 
   @override
+  void showWidget({
+    required BuildContext context,
+    required WidgetBuilder builder,
+  }) {
+    showing = true;
+    showCount++;
+  }
+
+  @override
   void show({
     required BuildContext context,
     required Rect targetRect,

@@ -11,6 +11,7 @@ import '../../widgets/e2e.dart';
 import '../../widgets/guide_anchor.dart';
 import '../../core/guide/guide_host.dart';
 import '../../core/guide/guide_models.dart';
+import '../../core/guide/visitor_guide_coordinator.dart';
 import 'package:go_router/go_router.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -40,6 +41,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       // مصادر تصنيفات الفلاتر (catProp/docTp/carDocTp) — لازمة لقوائم نافذة الفلاتر
       context.read<ConfigProvider>().loadConfig();
+      final auth = context.read<AuthProvider>();
+      if (!auth.isLoggedIn) {
+        VisitorGuideCoordinator.maybeStart(context);
+      }
     });
   }
 

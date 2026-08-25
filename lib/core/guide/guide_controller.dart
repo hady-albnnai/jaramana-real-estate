@@ -55,6 +55,16 @@ class GuideController extends ChangeNotifier {
     return true;
   }
 
+  /// Shows a question or intro widget through the same presenter.
+  bool showWidget(WidgetBuilder builder) {
+    if (_disposed || _suspended || _sessionToken == null) return false;
+    final context = _contextForPresentation;
+    if (context == null) return false;
+    _presenter.showWidget(context: context, builder: builder);
+    notifyListeners();
+    return true;
+  }
+
   /// Shows one already-approved step. Progression and persistence are added
   /// by the later state-machine phase; this method only owns presentation.
   bool showStep({

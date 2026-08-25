@@ -8,6 +8,11 @@ import 'guide_overlay.dart';
 abstract interface class GuidePresenter {
   bool get isShowing;
 
+  void showWidget({
+    required BuildContext context,
+    required WidgetBuilder builder,
+  });
+
   void show({
     required BuildContext context,
     required Rect targetRect,
@@ -35,6 +40,19 @@ class OverlayEntryGuidePresenter implements GuidePresenter {
 
   @override
   bool get isShowing => _entry?.mounted ?? false;
+
+  @override
+  void showWidget({
+    required BuildContext context,
+    required WidgetBuilder builder,
+  }) {
+    hide();
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+    final entry = OverlayEntry(builder: builder);
+    _entry = entry;
+    overlay.insert(entry);
+  }
 
   @override
   void show({

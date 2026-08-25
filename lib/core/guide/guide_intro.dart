@@ -230,8 +230,15 @@ class _GuideModalShell extends StatelessWidget {
       label: [roleLabel, if (title.isNotEmpty) title].join('. '),
       child: Material(
         color: Colors.transparent,
-        child: Center(
-          child: ConstrainedBox(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ModalBarrier(
+              color: Color.fromRGBO(0, 0, 0, 0.20),
+              dismissible: false,
+            ),
+            Center(
+              child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -303,8 +310,10 @@ class _GuideModalShell extends StatelessWidget {
             ),
           ),
         ),
+        ],
       ),
-    );
+    ),
+  );
   }
 
   static ButtonStyle _primaryButtonStyle() => ElevatedButton.styleFrom(
