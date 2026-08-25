@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
+import 'core/guide/guide_host.dart';
 import 'core/network/supabase_service.dart';
 import 'core/constants/supabase_constants.dart';
 import 'providers/auth_provider.dart';
@@ -215,7 +216,10 @@ class _MyAppState extends State<MyApp> {
                 // الشاشات تظهر تحت أزرار النظام. SafeArea سفلي يرفع محتوى
                 // التطبيق فوق الشريط في كل الشاشات (النوافذ السفلية
                 // المضمّنة SafeArea لا تتضاعف مسافتها).
-                child: SafeArea(top: false, child: child!),
+                child: SafeArea(
+                  top: false,
+                  child: GuideHost(child: child!),
+                ),
               ),
             );
           },
