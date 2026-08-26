@@ -31,6 +31,7 @@ class _GuideHelpButtonState extends State<GuideHelpButton>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    GuideStorage.helpRevision.addListener(_refresh);
     _refresh();
   }
 
@@ -64,6 +65,7 @@ class _GuideHelpButtonState extends State<GuideHelpButton>
 
   @override
   void dispose() {
+    GuideStorage.helpRevision.removeListener(_refresh);
     WidgetsBinding.instance.removeObserver(this);
     _expiryTimer?.cancel();
     super.dispose();
