@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بوسترات عقارات السويداء — معاينة الحملة الإعلانية المتكاملة</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: #0d0d0d;
+            color: #fff;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        .header {
+            background: linear-gradient(180deg, #181818 0%, #0d0d0d 100%);
+            border-bottom: 2px solid #D4AF37;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.4rem;
+            font-weight: 900;
+            color: #D4AF37;
+            margin-bottom: 8px;
+        }
+        
+        .header .slogan {
+            font-size: 1.3rem;
+            color: #fff;
+            margin-bottom: 5px;
+            font-weight: 700;
+        }
+        
+        .header .values {
+            font-size: 1.1rem;
+            color: #D4AF37;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        
+        .header p {
+            font-size: 1rem;
+            color: #aaa;
+            max-width: 800px;
+            margin: 0 auto 20px;
+        }
+
+        .btn-pack {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #D4AF37 0%, #AA820A 100%);
+            color: #000;
+            font-weight: 900;
+            font-size: 1.15rem;
+            text-decoration: none;
+            padding: 16px 36px;
+            border-radius: 35px;
+            box-shadow: 0 10px 25px rgba(212, 175, 55, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin: 8px;
+        }
+
+        .btn-pack:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 14px 30px rgba(212, 175, 55, 0.6);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #1e1e1e;
+            color: #D4AF37;
+            border: 2px solid #D4AF37;
+            font-weight: 700;
+            font-size: 1.05rem;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 35px;
+            margin: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: #D4AF37;
+            color: #000;
+        }
+
+        .section {
+            max-width: 1300px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        
+        .section-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #D4AF37;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+            margin-top: 25px;
+        }
+        
+        .grid.stories {
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        
+        .card {
+            background: #181818;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid #333;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: #D4AF37;
+            box-shadow: 0 15px 35px rgba(212, 175, 55, 0.2);
+        }
+        
+        .card img {
+            width: 100%;
+            height: auto;
+            display: block;
+            background: #000;
+        }
+        
+        .card-info {
+            padding: 22px;
+        }
+        
+        .card-info h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #D4AF37;
+            margin-bottom: 8px;
+        }
+        
+        .card-info p {
+            font-size: 0.95rem;
+            color: #bbb;
+            line-height: 1.6;
+        }
+        
+        .card-info .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+        
+        .tag {
+            background: rgba(212, 175, 55, 0.15);
+            color: #D4AF37;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .tag.priority {
+            background: #D4AF37;
+            color: #000;
+            font-weight: 700;
+        }
+
+        .video-box {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 35px;
+            align-items: center;
+            justify-content: center;
+            background: #141414;
+            border-radius: 24px;
+            padding: 35px;
+            border: 1px solid #D4AF37;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+
+        .video-player {
+            max-width: 320px;
+            width: 100%;
+            border-radius: 22px;
+            overflow: hidden;
+            border: 2px solid #D4AF37;
+            box-shadow: 0 12px 30px rgba(212, 175, 55, 0.25);
+            background: #000;
+        }
+
+        .video-player video {
+            width: 100%;
+            display: block;
+        }
+
+        .video-desc {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .overview-box {
+            background: #141414;
+            border-radius: 24px;
+            overflow: hidden;
+            border: 2px solid #D4AF37;
+            margin-bottom: 40px;
+            box-shadow: 0 12px 30px rgba(212, 175, 55, 0.15);
+        }
+
+        .overview-box img {
+            width: 100%;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>المكتب العقاري الالكتروني</h1>
+        <div class="slogan">السويداء</div>
+        <div class="values">أمان — دقة — مصداقية</div>
+        <p>معاينة الحملة الإعلانية الكاملة وفيديو الريلز لفيسبوك وإنستغرام</p>
+        
+        <div style="display: flex; justify-content: center; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
+            <a href="sweeda_marketing_complete_pack.zip" download="sweeda_marketing_complete_pack.zip" class="btn-pack">
+                <span>📦</span> تحميل الحزمة الكاملة بملف ZIP واحد (زر واحد)
+            </a>
+            <a href="sweeda_posters_and_stories.zip" download="sweeda_posters_and_stories.zip" class="btn-secondary">
+                <span>🖼️</span> تحميل البوسترات والستوريات فقط (ZIP)
+            </a>
+        </div>
+    </div>
+    
+    <!-- البوستر التجميعي الشامل -->
+    <div class="section">
+        <h2 class="section-title">
+            <span>🏆</span> البوستر التجميعي الشامل (Showcase Overview)
+        </h2>
+        <p style="color: #aaa; margin-bottom: 20px;">يجمع البوسترات العشرة ورقم التواصل في تصميم بانورامي واحد مناسب لغلاف الصفحة أو المنشور المثبت</p>
+        <div class="overview-box">
+            <img src="showcase_overview.png" alt="البوستر التجميعي الشامل">
+        </div>
+    </div>
+
+    <!-- فيديو الريلز -->
+    <div class="section">
+        <h2 class="section-title">
+            <span>🎬</span> فيديو الريلز الترويجي (Reels Video 1080×1920)
+        </h2>
+        <p style="color: #aaa; margin-bottom: 20px;">فيديو رأسي مدته 60 ثانية (6 ثوانٍ لكل بوستر) بانتقالات انسيابية هادئة وبدون أي مقاطعة صوتية</p>
+        
+        <div class="video-box">
+            <div class="video-player">
+                <video controls preload="metadata">
+                    <source src="reels_promo_60s.mp4" type="video/mp4">
+                    متصفحك لا يدعم مشغل الفيديو.
+                </video>
+            </div>
+            <div class="video-desc">
+                <h3 style="color: #D4AF37; font-size: 1.35rem; margin-bottom: 12px;">ميزات الريل:</h3>
+                <ul style="color: #ddd; line-height: 2; margin-right: 20px; margin-bottom: 25px;">
+                    <li><strong>المدة:</strong> 60 ثانية كاملة (6 ثوانٍ لكل بوستر لقراءة مريحة لكل التفاصيل).</li>
+                    <li><strong>المقاس:</strong> 1080×1920 (أبعاد Instagram & Facebook Reels و WhatsApp Status).</li>
+                    <li><strong>المؤثرات:</strong> زوم سينمائي هادئ وتلاشٍ ناعم (Crossfade) بين الخطوات العشر.</li>
+                    <li><strong>الموسيقى:</strong> خلفية هادئة مستمرة بدون أي أصوات فجائية عند التقليب.</li>
+                    <li><strong>رقم التواصل:</strong> مدمج وواضح في كافة البوسترات <code>0958750199</code>.</li>
+                </ul>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                    <a href="reels_promo_60s.mp4" download="Sweeda_RealEstate_Reels_60s.mp4" class="btn-pack" style="font-size: 1rem; padding: 12px 24px;">
+                        ⬇️ تحميل الريل بالموسيقى (MP4)
+                    </a>
+                    <a href="reels_promo_silent.mp4" download="Sweeda_RealEstate_Reels_Silent.mp4" class="btn-secondary" style="font-size: 0.95rem; padding: 12px 20px;">
+                        🔇 تحميل النسخة الصامتة (للتريند)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- البوسترات العشرة -->
+    <div class="section">
+        <h2 class="section-title">
+            <span>📱</span> بوسترات المنشورات المربعة (1080×1080)
+        </h2>
+        <p style="color: #aaa; margin-bottom: 25px;">مناسبة لمنشورات فيسبوك وإنستغرام المربعة</p>
+        
+        <div class="grid">
+            <div class="card">
+                <img src="posts/poster_01_intro.png" alt="البوستر التعريفي الرئيسي">
+                <div class="card-info">
+                    <h3>1. البوستر التعريفي الرئيسي</h3>
+                    <p>يعرض الشعار الرسمي والقيم (أمان، دقة، مصداقية) مع أهم 12 ميزة للتطبيق ورقم التواصل المعتمد.</p>
+                    <div class="tags">
+                        <span class="tag priority">أولوية أولى</span>
+                        <span class="tag">تعريف بالبراند</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_02_publish.png" alt="انشر عقارك أو مركبتك">
+                <div class="card-info">
+                    <h3>2. انشر عقارك أو مركبتك</h3>
+                    <p>يشرح خطوات نشر العقارات والمركبات للبيع أو الإيجار ورفع الصور والموقع وتحديد المواعيد.</p>
+                    <div class="tags">
+                        <span class="tag">نشر عروض</span>
+                        <span class="tag">عقارات ومركبات</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_03_appointments.png" alt="احجز موعد المعاينة">
+                <div class="card-info">
+                    <h3>3. احجز موعد المعاينة</h3>
+                    <p>حجز الموعد بسهولة ومتابعة مراحل الحجز بالإشعارات مع مرافقة مندوب المكتب وتقييم التجربة.</p>
+                    <div class="tags">
+                        <span class="tag">معاينة</span>
+                        <span class="tag">مندوب المكتب</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_04_matching.png" alt="المطابقة الآلية">
+                <div class="card-info">
+                    <h3>4. المطابقة الآلية</h3>
+                    <p>إنشاء طلب شراء أو استئجار مع بحث ذكي يطابق احتياجاتك وعرض الخيارات الأقرب وحجز فوري.</p>
+                    <div class="tags">
+                        <span class="tag">ذكاء ومطابقة</span>
+                        <span class="tag">طلبات</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_05_legal.png" alt="الاستشارات القانونية">
+                <div class="card-info">
+                    <h3>5. الاستشارات القانونية</h3>
+                    <p>استشارة قانونية هاتفية من داخل التطبيق مع محامين مختصين ومحادثة مباشرة لحماية حقوقك.</p>
+                    <div class="tags">
+                        <span class="tag">أمان قانوني</span>
+                        <span class="tag">محامون</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_06_photography.png" alt="خدمة التصوير العقاري">
+                <div class="card-info">
+                    <h3>6. خدمة التصوير العقاري</h3>
+                    <p>تصوير احترافي عالي الجودة لعقارك يطلب مباشرة من التطبيق لزيادة فرص وسرعة البيع.</p>
+                    <div class="tags">
+                        <span class="tag">تصوير احترافي</span>
+                        <span class="tag">جودة عالية</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_07_deals.png" alt="إتمام الصفقة">
+                <div class="card-info">
+                    <h3>7. إتمام الصفقة</h3>
+                    <p>لقاء في المكتب لحسم السعر، استخراج الوثائق ودراستها وتنظيم العقود ضمن العمولة المعتمدة.</p>
+                    <div class="tags">
+                        <span class="tag">جلسة المكتب</span>
+                        <span class="tag">تنظيم عقود</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_08_transfer.png" alt="نقل الملكية">
+                <div class="card-info">
+                    <h3>8. نقل الملكية</h3>
+                    <p>العمل على نقل الملكية بأضمن الطرق وأسرعها عبر مختصين معتمدين وبأتعاب مخفضة بوساطة المكتب.</p>
+                    <div class="tags">
+                        <span class="tag">نقل ملكية</span>
+                        <span class="tag">أتعاب مخفضة</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_09_archive.png" alt="الأرشيف الموثق">
+                <div class="card-info">
+                    <h3>9. الأرشيف الموثق</h3>
+                    <p>أرشيف كامل لعمليات البيع والإيجار وحفظ الوثائق والعقود لمدة لا تقل عن عامين بسرية وأمان تام.</p>
+                    <div class="tags">
+                        <span class="tag">حفظ وثائق</span>
+                        <span class="tag">أمان وسرية</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/poster_10_download.png" alt="تحميل التطبيق">
+                <div class="card-info">
+                    <h3>10. تحميل التطبيق</h3>
+                    <p>دعوة مباشرة لتحميل التطبيق مع واجهة التطبيق الحقيقية والميزات الرئيسية ورقم التواصل المعتمد.</p>
+                    <div class="tags">
+                        <span class="tag priority">CTA</span>
+                        <span class="tag">حمّل الآن</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- بوسترات الستوري -->
+    <div class="section">
+        <h2 class="section-title">
+            <span>📲</span> بوسترات الستوري الرأسية (1080×1920)
+        </h2>
+        <p style="color: #aaa; margin-bottom: 25px;">مناسبة لستوري إنستغرام وفيسبوك وحالات واتساب</p>
+        
+        <div class="grid stories">
+            <div class="card">
+                <img src="posts/story_01_welcome.png" alt="ستوري الترحيب والتعريف">
+                <div class="card-info">
+                    <h3>1. ستوري الترحيب والتعريف</h3>
+                    <p>تعريف شامل بالبراند والقيم الأساسية (أمان — دقة — مصداقية) وأهم ركائز الخدمة ورقم التواصل.</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/story_02_features.png" alt="ستوري الخدمات المتكاملة">
+                <div class="card-info">
+                    <h3>2. ستوري الخدمات المتكاملة</h3>
+                    <p>عرض منظم للخدمات الخمس الأساسية بالأرقام وشرح سريع لكل ميزة مع رقم التواصل.</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <img src="posts/story_03_cta.png" alt="ستوري تحميل التطبيق">
+                <div class="card-info">
+                    <h3>3. ستوري تحميل التطبيق</h3>
+                    <p>هاتف ذكي أنيق يعرض واجهة التطبيق مع ميزات التطبيق وزر التحميل المباشر ورقم التواصل.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
