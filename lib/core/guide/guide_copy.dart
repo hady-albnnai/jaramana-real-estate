@@ -74,7 +74,7 @@ abstract final class GuideCopy {
 
   static const brokerBenefitsTitle = 'مزايا الوسيط';
   static const brokerBenefitsBody =
-      'بصفتك وسيطاً معتمداً، يمكنك إدراج حتى خمسة عروض وخمسة طلبات، وتتابع عروضك ومواعيد المعاينة وصفقاتك من لوحة واحدة. كما أن عروضك معفاة من عمولة المكتب.';
+      'بصفتك وسيطاً معتمداً، يمكنك إدراج حتى خمسة عروض وخمسة طلبات مجاناً، وتتابع عروضك ومواعيد المعاينة وصفقاتك من لوحة واحدة. كما أن عروضك معفاة من عمولة المكتب.';
 
   static String titleFor(String stepId) => switch (stepId) {
         GuideStepIds.visitorOffers => visitorOffersTitle,
