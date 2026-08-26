@@ -149,6 +149,11 @@ class LocalCacheService {
     return _box!.get(key);
   }
 
+  Future<void> remove(String key) async {
+    if (!isReady) return;
+    await _box!.delete(key);
+  }
+
   Future<void> clear() async {
     if (!isReady) return;
     await _box!.clear();
