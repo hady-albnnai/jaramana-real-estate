@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../core/services/local_cache_service.dart';
 import 'guide_models.dart';
 
@@ -14,6 +16,10 @@ class GuideStorage {
 
   static const String contentVersion = 'guide.v1';
   final LocalCacheService _cache;
+
+  /// Increments whenever the help-window state changes, so the temporary `?`
+  /// affordance can re-read and show/hide itself without a full rebuild.
+  static final ValueNotifier<int> helpRevision = ValueNotifier<int>(0);
 
   String runKey({required GuideScope scope, String uid = ''}) {
     final normalizedUid = uid.trim();
@@ -92,6 +98,7 @@ class GuideStorage {
         helpUntilKey(scope: scope, uid: uid),
         until.toUtc().toIso8601String(),
       );
+      helpRevision.value++;
       return true;
     } catch (_) {
       return false;
@@ -112,6 +119,7 @@ class GuideStorage {
   Future<void> _deleteHelpQuietly({required GuideScope scope, String uid = ''}) async {
     try {
       await _cache.remove(helpUntilKey(scope: scope, uid: uid));
+      helpRevision.value++;
     } catch (_) {}
   }
 }
