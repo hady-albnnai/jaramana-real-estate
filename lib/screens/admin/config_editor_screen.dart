@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -296,6 +297,28 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                             'عند تعطيله يبقى العرض في قائمة «جاهز للنشر» ويُنشر من الزر اليدوي.',
                             style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
                           ),
+                        ),
+                      ),
+                      // 2026-08-27: مدخل إدارة حسابات النشر (توكنات فيسبوك/إنستغرام)
+                      // من داخل التطبيق — قبل هذا التاريخ كانت التوكنات مفاتيح
+                      // بيئة ثابتة على السيرفر فقط.
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceBlack,
+                          borderRadius: AppTheme.radiusMedium,
+                          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
+                        ),
+                        child: ListTile(
+                          leading: const Icon(Icons.campaign_outlined, color: AppTheme.primaryGold),
+                          title: const Text('حسابات النشر (التوكنات)',
+                              style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+                          subtitle: const Text(
+                            'إضافة/تعديل صفحات فيسبوك وحسابات إنستغرام مع توكناتها — النشر التلقائي يوزّع عليها كلها.',
+                            style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
+                          ),
+                          trailing: const Icon(Icons.chevron_left, color: AppTheme.primaryGold),
+                          onTap: () => context.push('/admin/social-accounts'),
                         ),
                       ),
                       TextFormField(
