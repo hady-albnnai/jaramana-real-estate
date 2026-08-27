@@ -48,11 +48,10 @@ if [ "$APPLY_MIGRATIONS" = "true" ] || [ "$CLEANUP" = "true" ]; then
   fi
 fi
 
-# ── 2) تطبيق تعديلات قاعدة البيانات المعلّقة ──
+# ── 2) تطبيق تعديلات قاعدة البيانات المعلّقة (2026_08_19) ──
 if [ "$APPLY_MIGRATIONS" = "true" ]; then
-  echo "══════════ تطبيق التعديلات 2026_08_19 → 2026_08_27 ══════════"
-  # كل الملفات idempotent (IF NOT EXISTS / OR REPLACE) — آمنة لإعادة التشغيل
-  for f in supabase/migrations/2026_08_19_*.sql supabase/migrations/2026_08_20_*.sql supabase/migrations/2026_08_27_*.sql; do
+  echo "══════════ تطبيق التعديلات 2026_08_19 ══════════"
+  for f in supabase/migrations/2026_08_19_*.sql supabase/migrations/2026_08_20_*.sql; do
     [ -f "$f" ] || continue
     echo "▶ $f"
     run_sql "$(basename "$f")" "$(cat "$f")"
@@ -72,29 +71,15 @@ fi
 # تنشئ الدالة إن لم توجد وتحدّثها إن وُجدت — لا حاجة لـ PATCH (كان يفشل 500 بسبب
 # import_map_path:null) ولا DELETE+POST ولا POST /functions/{slug} (404).
 deploy_fn() {
-  local slug="$1"; local file="${2:-supabase/functions/$slug/index.ts}"; local meta code
+  local slug="$1"; local meta code
   meta=$(python3 -c 'import json; print(json.dumps({"name":"'"$slug"'","verify_jwt":false,"entrypoint_path":"index.ts"}))')
   code=$(curl -sS --max-time 300 -o /tmp/fn_resp.json -w "%{http_code}" -X POST "$API/functions/deploy?slug=$slug" \
     -H "Authorization: Bearer $PAT" \
     --form-string "metadata=$meta" \
-    -F "file=@$file;type=text/plain")
+    -F "file=@supabase/functions/$slug/index.ts;type=text/plain")
   echo "── $slug [POST /functions/deploy?slug=] HTTP $code"
   cat /tmp/fn_resp.json; echo
   if [ "$code" != "200" ] && [ "$code" != "201" ]; then echo "❌ فشل نشر $slug"; exit 1; fi
-}
-
-# ── 4-ب) دمج دالة تستورد ../_shared/social_publisher.ts بملف واحد ──
-# 2026-08-27: نقطة النشر أعلاه ترفع ملفاً واحداً — فالدوال التي تستورد الناشر
-# المشترك (admin-offers و publish-to-social) تُدمج: يُسقَط سطر الاستيراد ويُقرَّن
-# محتوى social_publisher.ts أعلاها مع إعادة تسمية env→metaEnv لأن كلا الملفين
-# يعرّف env(...) بمستوى الوحدة (تصادم أسماء).
-build_bundle() {
-  local slug="$1"
-  local dir="/tmp/bundle_$slug"
-  mkdir -p "$dir"
-  sed 's/\benv(/metaEnv(/g' supabase/functions/_shared/social_publisher.ts > "$dir/index.ts"
-  grep -v 'from "../_shared/social_publisher.ts"' "supabase/functions/$slug/index.ts" >> "$dir/index.ts"
-  echo "$dir/index.ts"
 }
 
 if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
@@ -106,15 +91,6 @@ if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
   deploy_fn admin-config
   # 🛡️ دين 1 (2026-08-20): توقيع رفع إثبات الدفع (إقفال فتحة الإغراق)
   deploy_fn user-account
-  # 📣 2026-08-27: نظام حسابات النشر الاجتماعي (multi-account publishing)
-  # social-accounts مستقلة (imports خارجية فقط) — تُرفع مباشرة.
-  deploy_fn social-accounts
-  # admin-offers + publish-to-social تستوردان الناشر المشترك — تُرفعان مدمجتين.
-  deploy_fn admin-offers "$(build_bundle admin-offers)"
-  deploy_fn publish-to-social "$(build_bundle publish-to-social)"
-
-  # تحقق حي بعد النشر: الجدول + الدالة الجديدان
-  run_sql "تحقق social_accounts" "SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='social_accounts') AS accounts_table, (SELECT count(*) FROM information_schema.routines WHERE routine_schema='public' AND routine_name='claim_social_publication_v2') AS claim_v2, (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='social_publications' AND column_name='account_id') AS account_id_col;"
 fi
 
 

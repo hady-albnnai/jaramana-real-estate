@@ -99,7 +99,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
             autoEnabled && o.iSoc == 1
-                ? 'سيتم نشر العرض ليصبح مرئياً للجميع وسيتم نشره تلقائياً على حسابات التواصل المفعّلة${o.imgs.isEmpty ? ' (لا نشر اجتماعي بلا صورة)' : ''}. هل أنت متأكد؟'
+                ? 'سيتم نشر العرض ليصبح مرئياً للجميع وسيتم نشره تلقائياً على فيسبوك وإنستغرام${o.imgs.isEmpty ? ' (يحتاج صورة للإنستغرام)' : ''}. هل أنت متأكد؟'
                 : 'سيتم نشر العرض ليصبح مرئياً للجميع. هل أنت متأكد؟',
             style: const TextStyle(color: AppTheme.textGrey)),
         actions: [
@@ -140,14 +140,13 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
           final already = social['alreadyPublished'] == true;
           msg += already
               ? ' • 📣 كان منشوراً مسبقاً على السوشيال'
-              : ' • 📣 ✅ تم النشر تلقائياً على حسابات التواصل';
+              : ' • 📣 ✅ تم النشر تلقائياً على فيسبوك وإنستغرام';
         } else {
           final err = (social['error'] ?? '').toString();
-          if (err.contains('META_SECRETS_NOT_CONFIGURED') ||
-              err.contains('NO_SOCIAL_ACCOUNTS_CONFIGURED')) {
-            msg += ' • ⚠️ لا توجد حسابات نشر مضبوطة (أضفها من «حسابات النشر»)، بقي في قائمة الجاهزة';
+          if (err.contains('META_SECRETS_NOT_CONFIGURED')) {
+            msg += ' • ⚠️ التوكنات غير مضبوطة، بقي في قائمة الجاهزة';
           } else if (err.contains('PUBLIC_IMAGE_REQUIRED')) {
-            msg += ' • ⚠️ لا توجد صورة عامة صالحة للنشر — أضف صوراً للعرض، بقي في قائمة الجاهزة';
+            msg += ' • ⚠️ لا توجد صورة عامة للنشر، بقي في قائمة الجاهزة';
           } else {
             msg += ' • ⚠️ فشل النشر التلقائي (${err.isEmpty ? 'خطأ غير معروف' : err}). سيبقى في قائمة الجاهزة لإعادة المحاولة';
           }
@@ -167,10 +166,8 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
 
   Future<void> _publishToSocial(OfferModel o) async {
     if (_publishingIds.contains(o.id)) return;
-    // 🖼️ متوافق مع IMG-001 (قرار المالك): لا نشر بدون صورة — العرض يبقى
-    // بالقائمة حتى تُضاف له صورة من شاشة تعديل العرض.
     if (o.imgs.isEmpty) {
-      _snack('لا يمكن النشر بدون صورة واحدة على الأقل — عدّل العرض وأضف صوراً');
+      _snack('لا يمكن النشر على إنستغرام بدون صورة واحدة على الأقل');
       return;
     }
 
@@ -178,10 +175,10 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppTheme.surfaceBlack,
-        title: const Text('نشر على حسابات التواصل',
+        title: const Text('نشر على فيسبوك + إنستغرام',
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
-          'سيتم نشر ${o.imgs.length > 10 ? 10 : o.imgs.length} صورة كألبوم مع نص العرض على كل الحسابات المفعّلة. هل تريد المتابعة؟',
+          'سيتم نشر ${o.imgs.length > 10 ? 10 : o.imgs.length} صورة كألبوم مع نص العرض. هل تريد المتابعة؟',
           style: const TextStyle(color: AppTheme.textGrey),
         ),
         actions: [
@@ -206,7 +203,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     if (!mounted) return;
     setState(() => _publishingIds.remove(o.id));
     if (ok) {
-      _snack('✅ تم النشر على حسابات التواصل المفعّلة');
+      _snack('✅ تم النشر فعلياً على فيسبوك وإنستغرام');
       // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام النشر
       await _load();
       // تحديث Provider لإشعار الشاشات الأخرى
@@ -227,7 +224,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         title: const Text('نشر جميع العروض الجاهزة',
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
-          'سيتم محاولة نشر ${_socialQueue.length} عرض تلقائياً على كل حسابات التواصل المفعّلة (العروض بلا صور تُتخطى). المتابعة؟',
+          'سيتم محاولة نشر ${_socialQueue.length} عرض تلقائياً على فيسبوك وإنستغرام. المتابعة؟',
           style: const TextStyle(color: AppTheme.textGrey),
         ),
         actions: [
@@ -251,7 +248,6 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     int failCount = 0;
 
     for (final offer in List<OfferModel>.from(_socialQueue)) {
-      // 🖼️ IMG-001: بدون صورة لا نشر — يتخطاه ويُعدَّل لاحقاً بإضافة صور.
       if (offer.imgs.isEmpty) {
         failCount++;
         continue;
@@ -441,7 +437,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                             Expanded(
                               child: Text(
                                 autoEnabled
-                                    ? 'الوضع التلقائي مفعّل: سيُنشر العرض تلقائياً على حسابات التواصل بعد الموافقة'
+                                    ? 'الوضع التلقائي مفعّل: سيُنشر العرض تلقائياً على فيسبوك وإنستغرام بعد الموافقة'
                                     : 'الوضع التلقائي معطل: العروض ستُجدول فقط وتحتاج نشر يدوي من قائمة الجاهزة',
                                 style: TextStyle(
                                     color: autoEnabled ? AppTheme.successGreen : AppTheme.warningOrange,

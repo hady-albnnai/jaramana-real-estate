@@ -44,17 +44,6 @@ class ErrorUtils {
       'EMPTY_RESPONSE',
       'METHOD_NOT_ALLOWED',
       'META_SECRETS_NOT_CONFIGURED',
-      'NO_SOCIAL_ACCOUNTS_CONFIGURED',
-      'INSTAGRAM_IMAGE_REQUIRED',
-      'INVALID_PLATFORM',
-      'ACCOUNT_NAME_REQUIRED',
-      'INVALID_ACCOUNT_EXTERNAL_ID',
-      'ACCESS_TOKEN_REQUIRED',
-      'INVALID_ACCESS_TOKEN',
-      'ACCOUNT_NOT_FOUND',
-      'ACCOUNT_ID_REQUIRED',
-      'ACCOUNT_SAVE_FAILED',
-      'META_VERIFY_EMPTY_RESPONSE',
       'OFFER_NOT_APPROVED',
       'OPEN_CONSULTATION_EXISTS',
       'PENDING_CONSULTATION_PAYMENT_EXISTS',
@@ -557,28 +546,6 @@ class ErrorUtils {
         return 'طريقة الطلب غير مسموحة.';
       case 'META_SECRETS_NOT_CONFIGURED':
         return 'بيانات ربط Meta غير مضبوطة على السيرفر بعد.';
-      case 'NO_SOCIAL_ACCOUNTS_CONFIGURED':
-        return 'لا توجد حسابات نشر مفعّلة — أضفها من «حسابات النشر» في الإدارة.';
-      case 'INSTAGRAM_IMAGE_REQUIRED':
-        return 'يحتاج إنستغرام إلى صورة عامة صالحة واحدة على الأقل.';
-      case 'INVALID_PLATFORM':
-        return 'منصة النشر غير مدعومة.';
-      case 'ACCOUNT_NAME_REQUIRED':
-        return 'اكتب اسماً للحساب.';
-      case 'INVALID_ACCOUNT_EXTERNAL_ID':
-        return 'رقم الحساب/الصفحة غير صالح.';
-      case 'ACCESS_TOKEN_REQUIRED':
-        return 'الصق توكن الوصول.';
-      case 'INVALID_ACCESS_TOKEN':
-        return 'توكن الوصول غير صالح.';
-      case 'ACCOUNT_NOT_FOUND':
-        return 'الحساب غير موجود.';
-      case 'ACCOUNT_ID_REQUIRED':
-        return 'معرّف الحساب مطلوب.';
-      case 'ACCOUNT_SAVE_FAILED':
-        return 'تعذر حفظ الحساب.';
-      case 'META_VERIFY_EMPTY_RESPONSE':
-        return 'لم يصل رد صالح من Meta أثناء التحقق.';
       case 'OFFER_NOT_APPROVED':
         return 'يجب اعتماد العرض ونشره داخل التطبيق أولاً.';
       case 'SOCIAL_PUBLISH_NOT_ENABLED':

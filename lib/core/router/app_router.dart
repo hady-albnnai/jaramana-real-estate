@@ -89,7 +89,6 @@ import '../../screens/admin/deals_management_screen.dart';
 import '../../screens/admin/payments_screen.dart';
 import '../../screens/admin/reports_screen.dart';
 import '../../screens/admin/config_editor_screen.dart';
-import '../../screens/admin/social_accounts_screen.dart';
 import '../../screens/admin/analytics_screen.dart';
 import '../../screens/admin/revenue_dashboard_screen.dart';
 import '../../providers/auth_provider.dart';
@@ -117,7 +116,6 @@ class AppRouter {
     if (path == '/admin/payments') return PermissionKeys.managePayments;
     if (path == '/admin/reports') return PermissionKeys.manageReports;
     if (path == '/admin/config') return PermissionKeys.manageConfig;
-    if (path == '/admin/social-accounts') return PermissionKeys.manageConfig;
     if (path == '/admin/analytics') return PermissionKeys.viewAnalytics;
     if (path == '/admin/resource-usage') return PermissionKeys.resourceUsage;
     if (path == '/admin/completion-requests') return PermissionKeys.completionRequests;
@@ -330,7 +328,6 @@ class AppRouter {
       GoRoute(path: '/admin/requests', builder: (context, state) => const RequestsManagementScreen()),
       GoRoute(path: '/admin/resource-usage', builder: (context, state) => const ResourceUsageScreen()),
       GoRoute(path: '/admin/config', builder: (context, state) => const ConfigEditorScreen()),
-      GoRoute(path: '/admin/social-accounts', builder: (context, state) => const SocialAccountsScreen()),
       GoRoute(path: '/admin/analytics', builder: (context, state) => const AnalyticsScreen()),
       GoRoute(path: '/admin/revenue', builder: (context, state) => const RevenueDashboardScreen()),
       GoRoute(path: '/admin/completion-requests', builder: (context, state) => const CompletionRequestsScreen()),
