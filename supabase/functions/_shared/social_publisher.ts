@@ -1,5 +1,15 @@
 // Shared Meta publisher used by publish-to-social and admin-offers.
-// Secrets (Supabase Edge Function secrets):
+//
+// 🔄 2026-08-27 — تعدد الحسابات: مصدر الحسابات أصبح جدول social_accounts
+// (يُدار من داخل التطبيق عبر Edge Function: social-accounts). الناشر يقرأ كل
+// الحسابات المفعّلة وينشر عليها واحدة تلو الأخرى، مع سجل مستقل لكل حساب في
+// social_publications (عبر claim_social_publication_v2).
+//
+// التوافق الخلفي: إن لم يوجد أي حساب في القاعدة، يُستخدم المسار القديم
+// بمفاتيح البيئة (claim_social_publication) — أي أن النشر يبقى فاقداً فقط
+// عند غياب الحسابين معاً.
+//
+// Secrets (المسار القديم فقط):
 // META_PAGE_ACCESS_TOKEN, META_FACEBOOK_PAGE_ID, META_INSTAGRAM_ACCOUNT_ID
 // Optional: META_GRAPH_API_VERSION (default: v25.0)
 
@@ -8,6 +18,7 @@ export type SocialPublishResult = {
   alreadyPublished?: boolean;
   facebook?: PlatformResult;
   instagram?: PlatformResult;
+  accounts?: AccountPublishResult[];
   error?: string;
 };
 
@@ -15,11 +26,39 @@ type Platform = "facebook" | "instagram";
 type PlatformResult = {
   success: boolean;
   skipped?: boolean;
+  postIds?: string[];
+  error?: string;
+};
+type AccountPublishResult = {
+  accountId: string;
+  accountName: string;
+  platform: Platform;
+  success: boolean;
+  skipped?: boolean;
   postId?: string;
   error?: string;
 };
 
 type SupabaseAdmin = any;
+
+type AccountRow = {
+  id: string;
+  platform: string;
+  name: string | null;
+  account_external_id: string;
+  access_token: string;
+};
+
+type Account = {
+  /** UUID للسسجلات القاعدية، أو "env:<platform>" للمسار البيئي. */
+  id: string;
+  /** true = حساب قاعدي (claim v2)، false = مسار مفاتيح البيئة (claim قديم). */
+  isDb: boolean;
+  platform: Platform;
+  name: string;
+  externalId: string;
+  accessToken: string;
+};
 
 type OfferRow = {
   id: string;
@@ -83,63 +122,121 @@ async function graphPost(
   return payload;
 }
 
-async function claimPlatform(
+// ─── تحميل الحسابات: القاعدة أولاً ثم fallback البيئة ───
+
+async function loadAccounts(supabase: SupabaseAdmin): Promise<Account[]> {
+  const { data, error } = await supabase
+    .from("social_accounts")
+    .select("id,platform,name,account_external_id,access_token")
+    .eq("i_del", 0)
+    .eq("is_active", true)
+    .in("platform", ["facebook", "instagram"])
+    .order("ts_crt", { ascending: true });
+  // خطأ القراءة لا يُجهض النشر كلياً: نجرب المسار البيئي قبل الاستسلام.
+  if (!error && Array.isArray(data) && data.length > 0) {
+    const accounts = (data as AccountRow[])
+      .map((row) => ({
+        id: String(row.id ?? ""),
+        isDb: true,
+        platform: row.platform === "instagram" ? ("instagram" as Platform) : ("facebook" as Platform),
+        name: String(row.name ?? row.platform).trim() || String(row.platform),
+        externalId: String(row.account_external_id ?? "").trim(),
+        accessToken: String(row.access_token ?? "").trim(),
+      }))
+      .filter((a) => a.id && a.externalId && a.accessToken);
+    if (accounts.length > 0) return accounts;
+  }
+
+  // المسار القديم: مفاتيح البيئة (توافق خلفي كامل مع التوثيق السابق).
+  const accounts: Account[] = [];
+  const pageToken = env("META_PAGE_ACCESS_TOKEN");
+  const pageId = env("META_FACEBOOK_PAGE_ID");
+  const instagramId = env("META_INSTAGRAM_ACCOUNT_ID");
+  if (pageId && pageToken) {
+    accounts.push({
+      id: "env:facebook",
+      isDb: false,
+      platform: "facebook",
+      name: "فيسبوك (مفاتيح السيرفر)",
+      externalId: pageId,
+      accessToken: pageToken,
+    });
+  }
+  if (instagramId && pageToken) {
+    accounts.push({
+      id: "env:instagram",
+      isDb: false,
+      platform: "instagram",
+      name: "إنستغرام (مفاتيح السيرفر)",
+      externalId: instagramId,
+      accessToken: pageToken,
+    });
+  }
+  return accounts;
+}
+
+// ─── الحجز الذرّي: v2 للحسابات القاعدية، القديمة للمسار البيئي ───
+
+async function claimForAccount(
   supabase: SupabaseAdmin,
   offerId: string,
-  platform: Platform,
+  account: Account,
   attemptToken: string,
 ): Promise<"claimed" | "published" | "busy"> {
-  const { data, error } = await supabase.rpc("claim_social_publication", {
-    p_offer_id: offerId,
-    p_platform: platform,
-    p_attempt_token: attemptToken,
-  });
+  const rpcArgs = account.isDb
+    ? {
+      p_offer_id: offerId,
+      p_account_id: account.id,
+      p_platform: account.platform,
+      p_attempt_token: attemptToken,
+    }
+    : {
+      p_offer_id: offerId,
+      p_platform: account.platform,
+      p_attempt_token: attemptToken,
+    };
+  const rpcName = account.isDb ? "claim_social_publication_v2" : "claim_social_publication";
+  const { data, error } = await supabase.rpc(rpcName, rpcArgs);
   if (error) throw new Error(`SOCIAL_CLAIM_FAILED: ${error.message}`);
   const state = String(data ?? "busy");
   if (state === "claimed" || state === "published") return state;
   return "busy";
 }
 
-async function markPublished(
+async function markResult(
   supabase: SupabaseAdmin,
   offerId: string,
-  platform: Platform,
+  account: Account,
   attemptToken: string,
-  postId: string,
+  result: { status: "published"; postId: string } | { status: "failed"; errorMessage: string },
 ): Promise<void> {
-  const { error } = await supabase
-    .from("social_publications")
-    .update({
+  const values = result.status === "published"
+    ? {
       status: "published",
-      post_id: postId,
+      post_id: result.postId,
       error_message: "",
       published_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    })
-    .eq("offer_id", offerId)
-    .eq("platform", platform)
-    .eq("attempt_token", attemptToken);
-  if (error) throw new Error(`SOCIAL_RESULT_SAVE_FAILED: ${error.message}`);
+    }
+    : {
+      status: "failed",
+      error_message: result.errorMessage.slice(0, 1000),
+      updated_at: new Date().toISOString(),
+    };
+  let query = supabase.from("social_publications").update(values).eq("offer_id", offerId);
+  if (account.isDb) {
+    query = query.eq("account_id", account.id);
+  } else {
+    query = query.is("account_id", null).eq("platform", account.platform);
+  }
+  query = query.eq("attempt_token", attemptToken);
+  const { error } = await query;
+  if (error && result.status === "published") {
+    throw new Error(`SOCIAL_RESULT_SAVE_FAILED: ${error.message}`);
+  }
 }
 
-async function markFailed(
-  supabase: SupabaseAdmin,
-  offerId: string,
-  platform: Platform,
-  attemptToken: string,
-  errorMessage: string,
-): Promise<void> {
-  await supabase
-    .from("social_publications")
-    .update({
-      status: "failed",
-      error_message: errorMessage.slice(0, 1000),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("offer_id", offerId)
-    .eq("platform", platform)
-    .eq("attempt_token", attemptToken);
-}
+// ─── النشر الفعلي لكل منصة ───
 
 async function publishFacebook(
   pageId: string,
@@ -148,6 +245,7 @@ async function publishFacebook(
   images: string[],
 ): Promise<string> {
   // Upload photos as unpublished, then attach them to one feed post.
+  // فيسبوك يقبل النشر النصي فقط (بلا صور) — الإنستغرام هو من يشترط الصور.
   const mediaIds: string[] = [];
   for (const image of images) {
     const uploaded = await graphPost(`${pageId}/photos`, token, {
@@ -210,37 +308,46 @@ async function publishInstagram(
   return id;
 }
 
-async function runPlatform(
+// ─── تنفيذ حساب واحد مع الحجز والتسجيل (idempotent لكل حساب) ───
+
+async function runAccount(
   supabase: SupabaseAdmin,
   offerId: string,
-  platform: Platform,
+  account: Account,
   publish: () => Promise<string>,
-): Promise<PlatformResult> {
+): Promise<AccountPublishResult> {
+  const base = {
+    accountId: account.id,
+    accountName: account.name,
+    platform: account.platform,
+  };
   const attemptToken = crypto.randomUUID();
-  const claim = await claimPlatform(supabase, offerId, platform, attemptToken);
-  if (claim === "published") return { success: true, skipped: true };
-  if (claim === "busy") return { success: false, skipped: true, error: "PUBLISH_IN_PROGRESS" };
+  const claim = await claimForAccount(supabase, offerId, account, attemptToken);
+  if (claim === "published") return { ...base, success: true, skipped: true };
+  if (claim === "busy") {
+    return { ...base, success: false, skipped: true, error: "PUBLISH_IN_PROGRESS" };
+  }
 
   try {
     const postId = await publish();
-    await markPublished(supabase, offerId, platform, attemptToken, postId);
-    return { success: true, postId };
+    await markResult(supabase, offerId, account, attemptToken, { status: "published", postId });
+    return { ...base, success: true, postId };
   } catch (error) {
     const message = safeError(error);
-    await markFailed(supabase, offerId, platform, attemptToken, message);
-    return { success: false, error: message };
+    await markResult(supabase, offerId, account, attemptToken, { status: "failed", errorMessage: message });
+    return { ...base, success: false, error: message };
   }
 }
+
+// ─── نقطة الدخول الموحّدة ───
 
 export async function publishOfferToSocial(
   supabase: SupabaseAdmin,
   offerId: string,
 ): Promise<SocialPublishResult> {
-  const pageToken = env("META_PAGE_ACCESS_TOKEN");
-  const pageId = env("META_FACEBOOK_PAGE_ID");
-  const instagramId = env("META_INSTAGRAM_ACCOUNT_ID");
-  if (!pageToken || !pageId || !instagramId) {
-    return { success: false, error: "META_SECRETS_NOT_CONFIGURED" };
+  const accounts = await loadAccounts(supabase);
+  if (accounts.length === 0) {
+    return { success: false, error: "NO_SOCIAL_ACCOUNTS_CONFIGURED" };
   }
 
   const { data, error } = await supabase
@@ -260,30 +367,54 @@ export async function publishOfferToSocial(
   if (offer.soc_pub === 2) return { success: true, alreadyPublished: true };
 
   const images = cleanImages(offer.imgs);
-  if (images.length === 0) return { success: false, error: "PUBLIC_IMAGE_REQUIRED" };
   const caption = String(offer.soc_txt ?? "").trim().slice(0, 2200);
 
-  // Run sequentially to reduce Meta throttling. Per-platform records make retries idempotent.
-  const facebook = await runPlatform(
-    supabase,
-    offerId,
-    "facebook",
-    () => publishFacebook(pageId, pageToken, caption, images),
-  );
-  const instagram = await runPlatform(
-    supabase,
-    offerId,
-    "instagram",
-    () => publishInstagram(instagramId, pageToken, caption, images),
-  );
+  // Run sequentially to reduce Meta throttling. Per-account records make retries idempotent.
+  // فيسبوك: النشر النصي مسموح بدون صور. إنستغرام: يشترط صورة عامة واحدة على الأقل.
+  const accountResults: AccountPublishResult[] = [];
+  for (const account of accounts) {
+    if (account.platform === "instagram" && images.length === 0) {
+      accountResults.push({
+        accountId: account.id,
+        accountName: account.name,
+        platform: "instagram",
+        success: false,
+        error: "INSTAGRAM_IMAGE_REQUIRED",
+      });
+      continue;
+    }
+    const publish = account.platform === "facebook"
+      ? () => publishFacebook(account.externalId, account.accessToken, caption, images)
+      : () => publishInstagram(account.externalId, account.accessToken, caption, images);
+    accountResults.push(await runAccount(supabase, offerId, account, publish));
+  }
 
-  const success = facebook.success && instagram.success;
+  // ملخص لكل منصة (متوافق شكلاً مع الاستهلاك السابق في التطبيق).
+  const platformResult = (platform: Platform): PlatformResult => {
+    const rows = accountResults.filter((r) => r.platform === platform);
+    if (rows.length === 0) return { success: true, skipped: true };
+    const failures = rows.filter((r) => !r.success);
+    return {
+      success: failures.length === 0,
+      postIds: rows.filter((r) => r.postId).map((r) => r.postId as string),
+      error: failures.length === 0 ? undefined : failures.map((r) => r.error ?? "FAILED").join(" | "),
+    };
+  };
+  const facebook = platformResult("facebook");
+  const instagram = platformResult("instagram");
+
+  const success = accountResults.every((r) => r.success);
   if (success) {
     await supabase.from("offers").update({ soc_pub: 2 }).eq("id", offerId);
   }
-  const failures = [
-    !facebook.success ? `Facebook: ${facebook.error ?? "FAILED"}` : "",
-    !instagram.success ? `Instagram: ${instagram.error ?? "FAILED"}` : "",
-  ].filter(Boolean).join(" | ");
-  return { success, facebook, instagram, error: success ? undefined : failures || "PARTIAL_OR_TOTAL_FAILURE" };
+  const failures = accountResults
+    .filter((r) => !r.success)
+    .map((r) => `${r.accountName}: ${r.error ?? "FAILED"}`);
+  return {
+    success,
+    facebook,
+    instagram,
+    accounts: accountResults,
+    error: success ? undefined : failures.join(" | ") || "PARTIAL_OR_TOTAL_FAILURE",
+  };
 }

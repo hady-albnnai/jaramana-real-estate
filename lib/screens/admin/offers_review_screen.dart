@@ -99,7 +99,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
             autoEnabled && o.iSoc == 1
-                ? 'سيتم نشر العرض ليصبح مرئياً للجميع وسيتم نشره تلقائياً على فيسبوك وإنستغرام${o.imgs.isEmpty ? ' (يحتاج صورة للإنستغرام)' : ''}. هل أنت متأكد؟'
+                ? 'سيتم نشر العرض ليصبح مرئياً للجميع وسيتم نشره تلقائياً على حسابات التواصل المفعّلة${o.imgs.isEmpty ? ' (إنستغرام يحتاج صورة)' : ''}. هل أنت متأكد؟'
                 : 'سيتم نشر العرض ليصبح مرئياً للجميع. هل أنت متأكد؟',
             style: const TextStyle(color: AppTheme.textGrey)),
         actions: [
@@ -140,13 +140,15 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
           final already = social['alreadyPublished'] == true;
           msg += already
               ? ' • 📣 كان منشوراً مسبقاً على السوشيال'
-              : ' • 📣 ✅ تم النشر تلقائياً على فيسبوك وإنستغرام';
+              : ' • 📣 ✅ تم النشر تلقائياً على حسابات التواصل';
         } else {
           final err = (social['error'] ?? '').toString();
-          if (err.contains('META_SECRETS_NOT_CONFIGURED')) {
-            msg += ' • ⚠️ التوكنات غير مضبوطة، بقي في قائمة الجاهزة';
-          } else if (err.contains('PUBLIC_IMAGE_REQUIRED')) {
-            msg += ' • ⚠️ لا توجد صورة عامة للنشر، بقي في قائمة الجاهزة';
+          if (err.contains('META_SECRETS_NOT_CONFIGURED') ||
+              err.contains('NO_SOCIAL_ACCOUNTS_CONFIGURED')) {
+            msg += ' • ⚠️ لا توجد حسابات نشر مضبوطة (أضفها من «حسابات النشر»)، بقي في قائمة الجاهزة';
+          } else if (err.contains('PUBLIC_IMAGE_REQUIRED') ||
+              err.contains('INSTAGRAM_IMAGE_REQUIRED')) {
+            msg += ' • ⚠️ إنستغرام يحتاج صورة عامة — نُشر على فيسبوك فقط، بقي في قائمة الجاهزة';
           } else {
             msg += ' • ⚠️ فشل النشر التلقائي (${err.isEmpty ? 'خطأ غير معروف' : err}). سيبقى في قائمة الجاهزة لإعادة المحاولة';
           }
@@ -166,19 +168,44 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
 
   Future<void> _publishToSocial(OfferModel o) async {
     if (_publishingIds.contains(o.id)) return;
+    // 2026-08-27: فيسبوك ينشر نصاً فقط بدون صور — المنع الصارم كان بسبب
+    // إنستغرام حصراً. الآن التحذير، والسيرفر يقرر لكل حساب على حدة.
     if (o.imgs.isEmpty) {
-      _snack('لا يمكن النشر على إنستغرام بدون صورة واحدة على الأقل');
-      return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: AppTheme.surfaceBlack,
+          title: const Text('العرض بلا صور',
+              style: TextStyle(color: AppTheme.textWhite)),
+          content: const Text(
+            'فيسبوك سينشر نص العرض فقط بدون صور.\n'
+            'حساب إنستغرام (إن وُجد مفعّلاً) يتطلب صورة واحدة على الأقل وسيُسجَّل فشله.\n'
+            'هل تريد المتابعة؟',
+            style: TextStyle(color: AppTheme.textGrey, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('متابعة'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
     }
 
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppTheme.surfaceBlack,
-        title: const Text('نشر على فيسبوك + إنستغرام',
+        title: const Text('نشر على حسابات التواصل',
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
-          'سيتم نشر ${o.imgs.length > 10 ? 10 : o.imgs.length} صورة كألبوم مع نص العرض. هل تريد المتابعة؟',
+          'سيتم نشر العرض على كل الحسابات المفعّلة${o.imgs.isNotEmpty ? ' (${o.imgs.length > 10 ? 10 : o.imgs.length} صورة كألبوم على فيسبوك)' : ' (نص فقط على فيسبوك)'}. هل تريد المتابعة؟',
           style: const TextStyle(color: AppTheme.textGrey),
         ),
         actions: [
@@ -203,7 +230,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     if (!mounted) return;
     setState(() => _publishingIds.remove(o.id));
     if (ok) {
-      _snack('✅ تم النشر فعلياً على فيسبوك وإنستغرام');
+      _snack('✅ تم النشر على حسابات التواصل المفعّلة');
       // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام النشر
       await _load();
       // تحديث Provider لإشعار الشاشات الأخرى
@@ -224,7 +251,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         title: const Text('نشر جميع العروض الجاهزة',
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
-          'سيتم محاولة نشر ${_socialQueue.length} عرض تلقائياً على فيسبوك وإنستغرام. المتابعة؟',
+          'سيتم محاولة نشر ${_socialQueue.length} عرض تلقائياً على كل حسابات التواصل المفعّلة. عروض بلا صور: فيسبوك فقط. المتابعة؟',
           style: const TextStyle(color: AppTheme.textGrey),
         ),
         actions: [
@@ -248,10 +275,8 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     int failCount = 0;
 
     for (final offer in List<OfferModel>.from(_socialQueue)) {
-      if (offer.imgs.isEmpty) {
-        failCount++;
-        continue;
-      }
+      // 2026-08-27: لا نتخطى العروض بلا صور — فيسبوك ينشرها نصاً فقط،
+      // وفشل إنستغرام (إن وُجد) يُسجَّل في social_publications ويُعاد لاحقاً.
       final ok = await admin.publishOfferToSocial(adminUid, offer.id);
       if (ok) {
         successCount++;
@@ -437,7 +462,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                             Expanded(
                               child: Text(
                                 autoEnabled
-                                    ? 'الوضع التلقائي مفعّل: سيُنشر العرض تلقائياً على فيسبوك وإنستغرام بعد الموافقة'
+                                    ? 'الوضع التلقائي مفعّل: سيُنشر العرض تلقائياً على حسابات التواصل بعد الموافقة'
                                     : 'الوضع التلقائي معطل: العروض ستُجدول فقط وتحتاج نشر يدوي من قائمة الجاهزة',
                                 style: TextStyle(
                                     color: autoEnabled ? AppTheme.successGreen : AppTheme.warningOrange,
