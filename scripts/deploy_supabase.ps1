@@ -3,9 +3,12 @@
 #
 # Steps:
 #   1) Live checks (print only): offers/payments triggers + function diffs
-#   2) Apply pending SQL migrations (supabase/migrations/2026_08_19_*.sql)
+#   2) Apply pending SQL migrations (supabase/migrations/2026_08_19..2026_08_27)
 #   3) Delete test user data (consultations/payments/notifications/chats/...)
-#   4) Deploy Edge functions: admin-dashboard + legal-actions (POST/PATCH)
+#   4) Deploy Edge functions: admin-dashboard, legal-actions, user-notifications,
+#      admin-config, user-account + 2026-08-27: social-accounts, admin-offers,
+#      publish-to-social (the last two deployed as inlined single-file bundles
+#      because they import supabase/functions/_shared/social_publisher.ts)
 #
 # NOTE: This file is pure ASCII on purpose - Arabic strings break PowerShell 5.1
 # encoding on non-UTF8 consoles. The Arabic test-user name is embedded as base64
@@ -69,7 +72,7 @@ function Invoke-DeployOnce {
 }
 
 function Deploy-Fn {
-    param([string]$Slug)
+    param([string]$Slug, [string]$BundlePath = '')
     # CORRECT endpoint (from Supabase official docs/discussions):
     #   POST /v1/projects/{ref}/functions/deploy?slug={slug}
     # It creates the function if missing, or UPDATES it if exists -
@@ -80,9 +83,16 @@ function Deploy-Fn {
     # Passing it inline via --form-string breaks on PowerShell 5.1
     # (embedded double quotes get mangled when calling native curl.exe),
     # and the API rejects the payload: "Invalid metadata JSON payload".
+    #
+    # 2026-08-27: optional $BundlePath lets us deploy an inlined single-file
+    # bundle (see Build-Bundle) for functions importing ../_shared modules.
     $meta = @{ name = $Slug; verify_jwt = $false; entrypoint_path = 'index.ts' } |
         ConvertTo-Json -Compress
-    $filePath = Join-Path $Root "supabase\functions\$Slug\index.ts"
+    if ([string]::IsNullOrWhiteSpace($BundlePath)) {
+        $filePath = Join-Path $Root "supabase\functions\$Slug\index.ts"
+    } else {
+        $filePath = $BundlePath
+    }
     $metaFile = Join-Path $env:TEMP ("meta_" + [guid]::NewGuid().ToString('N') + ".json")
     $out = Join-Path $env:TEMP ("fn_" + [guid]::NewGuid().ToString('N') + ".json")
     [System.IO.File]::WriteAllText($metaFile, $meta, (New-Object System.Text.UTF8Encoding($false)))
@@ -117,11 +127,11 @@ if (-not $SkipCleanup) {
     Invoke-Sql -Label 'find test user' -Sql "SELECT id, nm, usr, role, sts FROM public.users WHERE nm = $qname OR usr = $qname;"
 }
 
-# --- 2) Apply pending migrations 2026_08_19/2026_08_20 -----------------------
+# --- 2) Apply pending migrations 2026_08_19/2026_08_20/2026_08_27 -------------
 if (-not $SkipMigrations) {
-    Write-Host "===== Apply migrations 2026_08_19 + 2026_08_20 ====="
+    Write-Host "===== Apply migrations 2026_08_19 + 2026_08_20 + 2026_08_27 ====="
     Get-ChildItem (Join-Path $Root 'supabase\migrations') |
-        Where-Object { $_.Name -like '2026_08_19_*.sql' -or $_.Name -like '2026_08_20_*.sql' } |
+        Where-Object { $_.Name -like '2026_08_19_*.sql' -or $_.Name -like '2026_08_20_*.sql' -or $_.Name -like '2026_08_27_*.sql' } |
         Sort-Object Name |
         ForEach-Object {
             Write-Host "  >> $($_.Name)"
@@ -140,6 +150,27 @@ if (-not $SkipCleanup) {
 }
 
 # --- 4) Deploy Edge functions -------------------------------------------------
+function Build-Bundle {
+    # 2026-08-27: the deploy endpoint uploads a SINGLE file, but admin-offers
+    # and publish-to-social import ../_shared/social_publisher.ts. This builds
+    # an inlined index.ts: the shared publisher content is prepended (with
+    # env( -> metaEnv( rename to avoid a name collision, because both files
+    # define env() at module level) and the import line is dropped.
+    param([string]$Slug)
+    $dir = Join-Path $env:TEMP ("bundle_" + $Slug)
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $publisher = [System.IO.File]::ReadAllText(
+        (Join-Path $Root "supabase\functions\_shared\social_publisher.ts"), [System.Text.Encoding]::UTF8)
+    $publisher = $publisher -replace '\benv\(', 'metaEnv('
+    $index = [System.IO.File]::ReadAllText(
+        (Join-Path $Root "supabase\functions\$Slug\index.ts"), [System.Text.Encoding]::UTF8)
+    $index = $index -replace '(?m)^import\s*\{[^}]*\}\s*from\s*"\.\./_shared/social_publisher\.ts";\s*\r?\n?', ''
+    $bundlePath = Join-Path $dir "index.ts"
+    [System.IO.File]::WriteAllText($bundlePath, ($publisher + "`n" + $index),
+        (New-Object System.Text.UTF8Encoding($false)))
+    return $bundlePath
+}
+
 if (-not $SkipFunctions) {
     Write-Host "===== Deploy Edge functions ====="
     Deploy-Fn 'admin-dashboard'
@@ -150,6 +181,15 @@ if (-not $SkipFunctions) {
     Deploy-Fn 'admin-config'
     # 2026-08-20: signed payment-proof upload (flood-hole closure)
     Deploy-Fn 'user-account'
+    # 2026-08-27: social publishing accounts system (multi-account publishing)
+    # social-accounts is standalone (external imports only) - direct deploy.
+    Deploy-Fn 'social-accounts'
+    # admin-offers + publish-to-social import the shared publisher - deploy inlined bundles.
+    Deploy-Fn 'admin-offers' -BundlePath (Build-Bundle 'admin-offers')
+    Deploy-Fn 'publish-to-social' -BundlePath (Build-Bundle 'publish-to-social')
+
+    # 2026-08-27: post-deploy live verification of the new table + RPC + column
+    Invoke-Sql -Label 'verify social_accounts' -Sql "SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='social_accounts') AS accounts_table, (SELECT count(*) FROM information_schema.routines WHERE routine_schema='public' AND routine_name='claim_social_publication_v2') AS claim_v2, (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='social_publications' AND column_name='account_id') AS account_id_col;"
 }
 
 
