@@ -53,5 +53,11 @@ class SocialAccountModel {
 
   bool get isFacebook => platform == 'facebook';
 
-  String get platformLabel => isFacebook ? 'فيسبوك' : 'إنستغرام';
+  bool get isTelegram => platform == 'telegram';
+
+  String get platformLabel {
+    if (isFacebook) return 'فيسبوك';
+    if (isTelegram) return 'تليجرام';
+    return 'إنستغرام';
+  }
 }

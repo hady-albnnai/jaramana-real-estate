@@ -127,11 +127,11 @@ if (-not $SkipCleanup) {
     Invoke-Sql -Label 'find test user' -Sql "SELECT id, nm, usr, role, sts FROM public.users WHERE nm = $qname OR usr = $qname;"
 }
 
-# --- 2) Apply pending migrations 2026_08_19/2026_08_20/2026_08_27 -------------
+# --- 2) Apply pending migrations 2026_08_19..2026_08_28 -----------------------
 if (-not $SkipMigrations) {
-    Write-Host "===== Apply migrations 2026_08_19 + 2026_08_20 + 2026_08_27 ====="
+    Write-Host "===== Apply migrations 2026_08_19 + 2026_08_20 + 2026_08_27 + 2026_08_28 ====="
     Get-ChildItem (Join-Path $Root 'supabase\migrations') |
-        Where-Object { $_.Name -like '2026_08_19_*.sql' -or $_.Name -like '2026_08_20_*.sql' -or $_.Name -like '2026_08_27_*.sql' } |
+        Where-Object { $_.Name -like '2026_08_19_*.sql' -or $_.Name -like '2026_08_20_*.sql' -or $_.Name -like '2026_08_27_*.sql' -or $_.Name -like '2026_08_28_*.sql' } |
         Sort-Object Name |
         ForEach-Object {
             Write-Host "  >> $($_.Name)"

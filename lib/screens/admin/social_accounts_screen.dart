@@ -104,6 +104,9 @@ class _SocialAccountsScreenState extends State<SocialAccountsScreen> {
                     DropdownMenuItem(
                         value: 'instagram',
                         child: Text('إنستغرام — حساب مهني')),
+                    DropdownMenuItem(
+                        value: 'telegram',
+                        child: Text('تليجرام — قناة (بوت)')),
                   ],
                   onChanged: (v) {
                     if (v != null) setDialogState(() => platform = v);
@@ -117,7 +120,7 @@ class _SocialAccountsScreenState extends State<SocialAccountsScreen> {
                   maxLength: 100,
                   decoration: const InputDecoration(
                     labelText: 'اسم الحساب (للعرض داخل التطبيق)',
-                    hintText: 'مثال: صفحة المكتب العقاري على فيسبوك',
+                    hintText: 'مثال: قناة المكتب العقاري على تليجرام',
                     filled: true,
                     fillColor: AppTheme.inputBackground,
                     prefixIcon: Icon(Icons.label_outline,
@@ -126,22 +129,28 @@ class _SocialAccountsScreenState extends State<SocialAccountsScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // المعرف لدى Meta
+                // المعرف لدى المنصة
                 TextFormField(
                   controller: externalIdCtrl,
                   decoration: InputDecoration(
                     labelText: platform == 'facebook'
                         ? 'رقم صفحة فيسبوك (Page ID)'
-                        : 'رقم حساب إنستغرام المهني',
+                        : platform == 'telegram'
+                            ? 'معرف قناة تليجرام'
+                            : 'رقم حساب إنستغرام المهني',
                     hintText: platform == 'facebook'
                         ? 'مثال: 61592278445595'
-                        : 'مثال: 17841400000000000',
+                        : platform == 'telegram'
+                            ? 'مثال: -1001234567890 أو @channel_name'
+                            : 'مثال: 17841400000000000',
                     filled: true,
                     fillColor: AppTheme.inputBackground,
                     prefixIcon: const Icon(Icons.tag, color: AppTheme.primaryGold),
                     helperText: platform == 'facebook'
                         ? 'رقم الصفحة تجده من صفحتها ← «عن» ← «معرّف الصفحة»'
-                        : 'رقم الحساب المهني يظهر عند ربطه بصفحة فيسبوك',
+                        : platform == 'telegram'
+                            ? 'معرف القناة الرقمي (‎-100...) أو معرفها النصي (@name)'
+                            : 'رقم الحساب المهني يظهر عند ربطه بصفحة فيسبوك',
                     helperMaxLines: 2,
                   ),
                 ),
@@ -155,8 +164,14 @@ class _SocialAccountsScreenState extends State<SocialAccountsScreen> {
                   decoration: InputDecoration(
                     labelText: isEdit
                         ? 'توكن الوصول (اتركه فارغاً للإبقاء على الحالي)'
-                        : 'توكن الوصول (Page Access Token طويل الأمد)',
-                    hintText: isEdit ? null : 'الصق التوكن هنا',
+                        : platform == 'telegram'
+                            ? 'توكن البوت (من BotFather)'
+                            : 'توكن الوصول (Page Access Token طويل الأمد)',
+                    hintText: isEdit
+                        ? null
+                        : platform == 'telegram'
+                            ? 'مثال: 123456789:AAH3x9...'
+                            : 'الصق التوكن هنا',
                     filled: true,
                     fillColor: AppTheme.inputBackground,
                     prefixIcon: const Icon(Icons.key_outlined,
@@ -426,6 +441,7 @@ class _SocialAccountsScreenState extends State<SocialAccountsScreen> {
           const SizedBox(height: 8),
           const Text(
             '• عند قبول المدير لعرض مفعّل به «النشر على السوشيال» يُنشر تلقائياً مع صوره كألبوم على كل الحسابات المفعّلة هنا.\n'
+            '• المنصات: فيسبوك + إنستغرام (توكن Meta — معطّل مؤقتاً بسبب حظر التسجيل) وتليجرام (بوت — جاهز للتفعيل متى شئت: قناة + توكن من BotFather).\n'
             '• لا نشر بدون صورة عامة واحدة على الأقل (متوافق مع قاعدة إلزام الصور).\n'
             '• التوكن لا يظهر كاملاً بعد حفظه — فقط آخر 4 محارف للتأكد.\n'
             '• تجديد التوكن: عدّل الحساب والصق التوكن الجديد.',
@@ -500,7 +516,9 @@ class _SocialAccountsScreenState extends State<SocialAccountsScreen> {
               Icon(
                 account.isFacebook
                     ? Icons.facebook
-                    : Icons.camera_alt_outlined,
+                    : account.isTelegram
+                        ? Icons.send_outlined
+                        : Icons.camera_alt_outlined,
                 color: AppTheme.primaryGold,
                 size: 28,
               ),

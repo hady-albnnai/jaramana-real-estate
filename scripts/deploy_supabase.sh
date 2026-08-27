@@ -50,9 +50,9 @@ fi
 
 # ── 2) تطبيق تعديلات قاعدة البيانات المعلّقة ──
 if [ "$APPLY_MIGRATIONS" = "true" ]; then
-  echo "══════════ تطبيق التعديلات 2026_08_19 → 2026_08_27 ══════════"
+  echo "══════════ تطبيق التعديلات 2026_08_19 → 2026_08_28 ══════════"
   # كل الملفات idempotent (IF NOT EXISTS / OR REPLACE) — آمنة لإعادة التشغيل
-  for f in supabase/migrations/2026_08_19_*.sql supabase/migrations/2026_08_20_*.sql supabase/migrations/2026_08_27_*.sql; do
+  for f in supabase/migrations/2026_08_19_*.sql supabase/migrations/2026_08_20_*.sql supabase/migrations/2026_08_27_*.sql supabase/migrations/2026_08_28_*.sql; do
     [ -f "$f" ] || continue
     echo "▶ $f"
     run_sql "$(basename "$f")" "$(cat "$f")"

@@ -1,9 +1,13 @@
-// Shared Meta publisher used by publish-to-social and admin-offers.
+// Shared social publisher used by publish-to-social and admin-offers.
 //
 // 🔄 2026-08-27 — تعدد الحسابات: مصدر الحسابات أصبح جدول social_accounts
 // (يُدار من داخل التطبيق عبر Edge Function: social-accounts). الناشر يقرأ كل
 // الحسابات المفعّلة وينشر عليها واحدة تلو الأخرى، مع سجل مستقل لكل حساب في
 // social_publications (عبر claim_social_publication_v2).
+//
+// 🔄 2026-08-28 — منصة تليجرام: حساب = معرف القناة (‎-100xxx أو ‎@username)
+// + توكن بوت (من BotFather). بلا تسجيل مطورين ولا عقوبات — خيار مفتوح
+// قابل للتفعيل متى شُيء من شاشة «حسابات النشر».
 //
 // التوافق الخلفي: إن لم يوجد أي حساب في القاعدة، يُستخدم المسار القديم
 // بمفاتيح البيئة (claim_social_publication) — أي أن النشر يبقى فاقداً فقط
@@ -18,11 +22,12 @@ export type SocialPublishResult = {
   alreadyPublished?: boolean;
   facebook?: PlatformResult;
   instagram?: PlatformResult;
+  telegram?: PlatformResult;
   accounts?: AccountPublishResult[];
   error?: string;
 };
 
-type Platform = "facebook" | "instagram";
+type Platform = "facebook" | "instagram" | "telegram";
 type PlatformResult = {
   success: boolean;
   skipped?: boolean;
@@ -130,7 +135,7 @@ async function loadAccounts(supabase: SupabaseAdmin): Promise<Account[]> {
     .select("id,platform,name,account_external_id,access_token")
     .eq("i_del", 0)
     .eq("is_active", true)
-    .in("platform", ["facebook", "instagram"])
+    .in("platform", ["facebook", "instagram", "telegram"])
     .order("ts_crt", { ascending: true });
   // خطأ القراءة لا يُجهض النشر كلياً: نجرب المسار البيئي قبل الاستسلام.
   if (!error && Array.isArray(data) && data.length > 0) {
@@ -138,7 +143,11 @@ async function loadAccounts(supabase: SupabaseAdmin): Promise<Account[]> {
       .map((row) => ({
         id: String(row.id ?? ""),
         isDb: true,
-        platform: row.platform === "instagram" ? ("instagram" as Platform) : ("facebook" as Platform),
+        platform: row.platform === "instagram"
+          ? ("instagram" as Platform)
+          : row.platform === "telegram"
+          ? ("telegram" as Platform)
+          : ("facebook" as Platform),
         name: String(row.name ?? row.platform).trim() || String(row.platform),
         externalId: String(row.account_external_id ?? "").trim(),
         accessToken: String(row.access_token ?? "").trim(),
@@ -308,6 +317,71 @@ async function publishInstagram(
   return id;
 }
 
+// ─── تليجرام (2026-08-28): بوت + قناة، بلا تسجيل مطورين ───
+
+async function telegramPost(
+  url: string,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok || data?.ok !== true) {
+    throw new Error(String(data?.description ?? `TELEGRAM_HTTP_${response.status}`));
+  }
+  return data.result;
+}
+
+async function publishTelegram(
+  chatId: string,
+  token: string,
+  caption: string,
+  images: string[],
+): Promise<string> {
+  const base = `https://api.telegram.org/bot${token}`;
+  let messageId = "";
+
+  // حد التعليق على الوسائط 1024 محرف — النص الأطول يُرسل رسالة مستقلة
+  // (حدها 4096) ثم يتبعها الألبوم بلا تعليق، فلا يضيع أي نص.
+  const mediaCaption = caption.length <= 1024 ? caption : "";
+  if (caption.length > 1024) {
+    const sent = await telegramPost(`${base}/sendMessage`, {
+      chat_id: chatId,
+      text: caption.slice(0, 4096),
+    }) as Record<string, unknown> | undefined;
+    messageId = String(sent?.message_id ?? "");
+  }
+
+  if (images.length === 1) {
+    const sent = await telegramPost(`${base}/sendPhoto`, {
+      chat_id: chatId,
+      photo: images[0],
+      caption: mediaCaption,
+    }) as Record<string, unknown> | undefined;
+    messageId = String(sent?.message_id ?? messageId);
+  } else {
+    const media = images.map((url, index) => ({
+      type: "photo",
+      media: url,
+      ...(index === 0 && mediaCaption ? { caption: mediaCaption } : {}),
+    }));
+    const sent = await telegramPost(`${base}/sendMediaGroup`, {
+      chat_id: chatId,
+      media,
+    }) as unknown;
+    const first = Array.isArray(sent)
+      ? (sent[0] as Record<string, unknown> | undefined)
+      : (sent as Record<string, unknown> | undefined);
+    messageId = String(first?.message_id ?? messageId);
+  }
+
+  if (!messageId) throw new Error("TELEGRAM_MESSAGE_ID_MISSING");
+  return messageId;
+}
+
 // ─── تنفيذ حساب واحد مع الحجز والتسجيل (idempotent لكل حساب) ───
 
 async function runAccount(
@@ -378,7 +452,9 @@ export async function publishOfferToSocial(
   for (const account of accounts) {
     const publish = account.platform === "facebook"
       ? () => publishFacebook(account.externalId, account.accessToken, caption, images)
-      : () => publishInstagram(account.externalId, account.accessToken, caption, images);
+      : account.platform === "instagram"
+      ? () => publishInstagram(account.externalId, account.accessToken, caption, images)
+      : () => publishTelegram(account.externalId, account.accessToken, caption, images);
     accountResults.push(await runAccount(supabase, offerId, account, publish));
   }
 
@@ -395,6 +471,7 @@ export async function publishOfferToSocial(
   };
   const facebook = platformResult("facebook");
   const instagram = platformResult("instagram");
+  const telegram = platformResult("telegram");
 
   const success = accountResults.every((r) => r.success);
   if (success) {
@@ -407,6 +484,7 @@ export async function publishOfferToSocial(
     success,
     facebook,
     instagram,
+    telegram,
     accounts: accountResults,
     error: success ? undefined : failures.join(" | ") || "PARTIAL_OR_TOTAL_FAILURE",
   };

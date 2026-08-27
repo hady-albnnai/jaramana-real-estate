@@ -28,7 +28,7 @@ const ACT_SAVE = 130;
 const ACT_VERIFY = 131;
 const ACT_DELETE = 132;
 
-const PLATFORMS = new Set(["facebook", "instagram"]);
+const PLATFORMS = new Set(["facebook", "instagram", "telegram"]);
 
 function env(name: string, fallback?: string): string {
   return Deno.env.get(name) ?? (fallback ? Deno.env.get(fallback) ?? "" : "");
@@ -115,13 +115,26 @@ async function graphGet(path: string, token: string): Promise<Record<string, unk
   return payload;
 }
 
-/// التحقق من صحة (المعرف + التوكن) لدى Meta وإرجاع الاسم الحقيقي.
+/// التحقق من صحة (المعرف + التوكن) لدى المنصة وإرجاع الاسم الحقيقي.
 async function verifyAccount(
   platform: string,
   externalId: string,
   token: string,
 ): Promise<{ ok: true; displayName: string } | { ok: false; error: string }> {
   try {
+    if (platform === "telegram") {
+      // تليجرام: getChat بالبوت — ينجح فقط إذا كان البوت مشرفاً على القناة.
+      const response = await fetch(
+        `https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(externalId)}`,
+      );
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (payload?.ok !== true) {
+        return { ok: false, error: String(payload?.description ?? `TELEGRAM_HTTP_${response.status}`) };
+      }
+      const chat = (payload.result ?? {}) as Record<string, unknown>;
+      const displayName = String(chat.title ?? chat.username ?? "");
+      return { ok: true, displayName: displayName || externalId };
+    }
     const fields = platform === "instagram" ? "id,username" : "id,name";
     const payload = await graphGet(
       `${encodeURIComponent(externalId)}?fields=${fields}`,
@@ -204,7 +217,8 @@ serve(async (req) => {
       if (name.length < 1) {
         return json({ success: false, error: "ACCOUNT_NAME_REQUIRED" }, 400);
       }
-      if (!/^[A-Za-z0-9._-]{3,64}$/.test(accountExternalId)) {
+      // معرف القناة عند تليجرام يبدأ بـ ‎-100xxx أو ‎@username
+      if (!/^@?[A-Za-z0-9._-]{3,64}$/.test(accountExternalId)) {
         return json({ success: false, error: "INVALID_ACCOUNT_EXTERNAL_ID" }, 400);
       }
 

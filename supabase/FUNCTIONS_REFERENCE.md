@@ -2393,3 +2393,11 @@ get_resource_usage_internal(p_admin_uid uuid)
 - رسائل عربية جديدة في `ErrorUtils` لكل رموز الأخطاء أعلاه.
 
 **المرجع الكامل (خطوات النشر والتشغيل):** `docs/SOCIAL_ACCOUNTS_MANAGEMENT_2026_08_27.md`
+
+## 🆕 2026-08-28 — منصة تليجرام + زر نسخ المنشور
+
+- **Migration:** `2026_08_28_telegram_platform.sql` — توسيع قيود `platform` في `social_accounts` و`social_publications` لتشمل `telegram` + تحديث حاجز المنصة في دالتي `claim_social_publication` و`claim_social_publication_v2` (idempotent).
+- **`social-accounts`:** `PLATFORMS` تشمل تليجرام · التحقق عبر `getChat` (Bot API — ينجح فقط لو البوت مشرف على القناة ويرجع اسمها) · معرف القناة يقبل ‎`-100...` أو `@username`.
+- **`_shared/social_publisher.ts`:** `publishTelegram` — `sendPhoto` (صورة+تعليق ≤1024) أو `sendMediaGroup` (ألبوم حتى 10) أو `sendMessage` كامل (≤4096) ثم الألبوم للنصوص الطويلة · النتيجة `telegram` في ملخص المنصات.
+- **الواجهة:** خيار «تليجرام — قناة (بوت)» بقائمة إضافة الحسابات مع تلميحات المعرف/التوكن · زر 📋 لنسخ نص المنشور الجاهز (`soc_txt`) بشاشة مراجعة العروض (وضع النشر اليدوي).
+- **السبب:** توكنات Meta محجوبة على الحسابات السورية — تليجرام بديل جاهز بلا تسجيل مطورين، والزر يسهّل النشر اليدوي حتى انفتاح الباب.

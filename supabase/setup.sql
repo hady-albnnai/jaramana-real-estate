@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS app_config (
 -- (social_accounts) — الصفوف القديمة (المسار البيئي) تبقى NULL.
 CREATE TABLE IF NOT EXISTS social_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram')),
+  platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'telegram')),
   name TEXT NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 100),
   account_external_id TEXT NOT NULL CHECK (char_length(btrim(account_external_id)) BETWEEN 3 AND 64),
   access_token TEXT NOT NULL CHECK (char_length(access_token) BETWEEN 10 AND 4096),
@@ -198,7 +198,7 @@ GRANT ALL ON social_accounts TO service_role;
 CREATE TABLE IF NOT EXISTS social_publications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-  platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram')),
+  platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram', 'telegram')),
   account_id UUID REFERENCES social_accounts(id) ON DELETE SET NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','publishing','published','failed')),
   post_id TEXT NOT NULL DEFAULT '', attempt_token UUID,
@@ -4254,7 +4254,7 @@ SET search_path = public
 AS $$
 DECLARE v_row public.social_publications%ROWTYPE;
 BEGIN
-  IF p_platform NOT IN ('facebook', 'instagram') THEN
+  IF p_platform NOT IN ('facebook', 'instagram', 'telegram') THEN
     RAISE EXCEPTION 'INVALID_SOCIAL_PLATFORM';
   END IF;
   INSERT INTO public.social_publications
@@ -4298,7 +4298,7 @@ SET search_path = public
 AS $$
 DECLARE v_row public.social_publications%ROWTYPE;
 BEGIN
-  IF p_platform NOT IN ('facebook', 'instagram') THEN
+  IF p_platform NOT IN ('facebook', 'instagram', 'telegram') THEN
     RAISE EXCEPTION 'INVALID_SOCIAL_PLATFORM';
   END IF;
   IF p_account_id IS NULL THEN

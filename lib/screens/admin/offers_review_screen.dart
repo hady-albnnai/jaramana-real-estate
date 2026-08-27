@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/admin_provider.dart';
@@ -12,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/utils/error_utils.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/e2e.dart';
 import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة مراجعة العروض الجديدة للإدارة
@@ -163,6 +165,20 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     } else {
       _snack(ErrorUtils.arabicMessage(result['error'] ?? admin.error ?? 'PUBLISH_FAILED'));
     }
+  }
+
+  /// 📋 نسخ نص المنشور الاجتماعي الجاهز — وضع النشر اليدوي (2026-08-28):
+  /// توكن Meta محجوب على الحسابات السورية، فيُنسخ النص المولَّد تلقائياً
+  /// (`soc_txt`) بضغطة ويلصق يدوياً على صفحة/قناة المكتب. الصور تُرفع من
+  /// شاشة معاينة العرض (/offer/:id).
+  Future<void> _copySocialText(OfferModel o) async {
+    final text = o.socTxt.trim();
+    if (text.length <= 10) {
+      _snack('لا يوجد نص منشور جاهز لهذا العرض');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: text));
+    _snack('📋 تم نسخ نص المنشور (${text.length} محرف) — الصقه على صفحة المكتب');
   }
 
   Future<void> _publishToSocial(OfferModel o) async {
@@ -647,11 +663,29 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                         Expanded(
                           child: Text(
                             socialOnly
-                                ? '📣 العرض معتمد وجاهز للنشر الفعلي على فيسبوك + إنستغرام'
-                                : '📣 سيُنشر تلقائياً على فيسبوك + إنستغرام بعد الموافقة',
+                                ? '📣 العرض معتمد وجاهز للنشر على حسابات التواصل'
+                                : '📣 سيُنشر تلقائياً على حسابات التواصل بعد الموافقة',
                             style: const TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeSmall, fontWeight: FontWeight.w600),
                           ),
                         ),
+                        // 📋 2026-08-28: نسخ النص الجاهز بضغطة (وضع النشر اليدوي)
+                        if (o.socTxt.trim().length > 10)
+                          E2E(
+                            id: 'copySocialTextBtn',
+                            button: true,
+                            child: Tooltip(
+                              message: 'نسخ نص المنشور الجاهز',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => _copySocialText(o),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.copy,
+                                      color: AppTheme.infoBlue, size: 18),
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
