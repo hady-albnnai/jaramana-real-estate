@@ -245,7 +245,7 @@ async function publishFacebook(
   images: string[],
 ): Promise<string> {
   // Upload photos as unpublished, then attach them to one feed post.
-  // فيسبوك يقبل النشر النصي فقط (بلا صور) — الإنستغرام هو من يشترط الصور.
+  // الصور إلزامية (بوابة PUBLIC_IMAGE_REQUIRED قبل الوصول هنا) — دائماً ألبوم.
   const mediaIds: string[] = [];
   for (const image of images) {
     const uploaded = await graphPost(`${pageId}/photos`, token, {
@@ -367,22 +367,15 @@ export async function publishOfferToSocial(
   if (offer.soc_pub === 2) return { success: true, alreadyPublished: true };
 
   const images = cleanImages(offer.imgs);
+  // 🖼️ قرار المالك (متوافق مع بوابة IMG-001): لا نشر بدون صورة عامة واحدة
+  // على الأقل — لكل المنصات، فيسبوك وإنستغرام. العرض يبقى في قائمة الجاهزة
+  // حتى تُضاف له صورة (شاشة تعديل العرض) ثم يُعاد النشر.
+  if (images.length === 0) return { success: false, error: "PUBLIC_IMAGE_REQUIRED" };
   const caption = String(offer.soc_txt ?? "").trim().slice(0, 2200);
 
   // Run sequentially to reduce Meta throttling. Per-account records make retries idempotent.
-  // فيسبوك: النشر النصي مسموح بدون صور. إنستغرام: يشترط صورة عامة واحدة على الأقل.
   const accountResults: AccountPublishResult[] = [];
   for (const account of accounts) {
-    if (account.platform === "instagram" && images.length === 0) {
-      accountResults.push({
-        accountId: account.id,
-        accountName: account.name,
-        platform: "instagram",
-        success: false,
-        error: "INSTAGRAM_IMAGE_REQUIRED",
-      });
-      continue;
-    }
     const publish = account.platform === "facebook"
       ? () => publishFacebook(account.externalId, account.accessToken, caption, images)
       : () => publishInstagram(account.externalId, account.accessToken, caption, images);
