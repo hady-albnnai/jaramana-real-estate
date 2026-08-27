@@ -7,16 +7,24 @@
 -- (Edge Function: social-accounts)، والناشر publishOfferToSocial ينشر على
 -- كل الحسابات المفعّلة.
 --
+-- ⚠️ اكتشاف حي (2026-08-27 أثناء النشر الأول): migration المرحلة الثانية
+-- (2026_07_13_social_publishing_phase2.sql) لم يُطبَّق قط على السيرفر الحي —
+-- جدول social_publications غير موجود أساساً (النشر ما اشتغل يوماً لأن
+-- META_SECRETS_NOT_CONFIGURED كان يوقف المسار قبل الوصول للجدول). لذلك هذا
+-- الملف **ذاتي الاكتفاء**: ينشئ social_publications بنفسه إن لم توجد،
+-- بالمخطط النهائي الكامل (مع account_id من البداية)، ويبقى idempotent
+-- تماماً إن كانت موجودة من Phase 2.
+--
 -- التوافق الخلفي:
 --   1) مسار مفاتيح البيئة يبقى يعمل: إن لم يوجد أي حساب في social_accounts
 --      يستخدم الناشر مفاتيح البيئة كما كان (claim_social_publication القديمة).
 --   2) صفوف social_publications القديمة (account_id = NULL) تبقى كما هي —
---      تحميها فهارس جزئية fريدة تحافظ على حصرية (offer_id, platform) للمسار القديم
---      وتضيف حصرية (offer_id, account_id) للمسار الجديد.
+--      تحميها فهارس جزئية فريدة تحافظ على حصرية (offer_id, platform) للمسار
+--      القديم وتضيف حصرية (offer_id, account_id) للمسار الجديد.
 --
--- الأمان: الجدول يخزّن توكنات وصول حساسة:
+-- الأمان: الجدولان يخزنان بيانات حساسة (توكنات وصول):
 --   • RLS مفعّل بلا أي سياسة للعملاء (anon/authenticated لا يصلون لشيء).
---   • REVOKE صريح من anon/authenticated (دفاع مضاعف لو عُطّلت RLS بالخطأ).
+--   • REVOKE صريح من anon/authenticated على social_accounts (دفاع مضاعف).
 --   • التوكن لا يعود للعميل أبداً — دالة social-accounts تعيد آخر 4 محارف فقط.
 --
 -- الترتيب: شغّل هذا الملف أولاً ثم انشر الدوال:
@@ -62,8 +70,36 @@ REVOKE ALL ON public.social_accounts FROM anon, authenticated;
 GRANT ALL ON public.social_accounts TO service_role;
 
 -- ─────────────────────────────────────────────
--- 2) ربط سجلات النشر بالحسابات
+-- 2) جدول سجلات النشر — إنشاؤه إن لم يوجد
+--    (على السيرفر الحي لم تُطبَّق Phase 2 قط — انظر الاكتشاف أعلاه؛
+--     وعلى أي قاعدة أُنشئت من setup.sql الحديث يكون موجوداً بالفعل)
 -- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.social_publications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  offer_id UUID NOT NULL REFERENCES public.offers(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL CHECK (platform IN ('facebook', 'instagram')),
+  -- 2026-08-27: ربط كل منشور بحساب النشر الذي نُشر عبره (المسار متعدد
+  -- الحسابات). الصفوف القديمة (المسار البيئي) تبقى NULL.
+  account_id UUID REFERENCES public.social_accounts(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'publishing', 'published', 'failed')),
+  post_id TEXT NOT NULL DEFAULT '',
+  attempt_token UUID,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT NOT NULL DEFAULT '',
+  published_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.social_publications ENABLE ROW LEVEL SECURITY;
+-- لا سياسات للعملاء: service_role حصراً (كما في Phase 2).
+
+CREATE INDEX IF NOT EXISTS idx_social_publications_status
+  ON public.social_publications(status, updated_at);
+
+-- الحالة التي أُنشئ فيها الجدول من Phase 2 (بلا العمود): أضِفه الآن.
+-- (لا-op إذا كان الجدول منشأً للتو بالمخطط أعلاه)
 ALTER TABLE public.social_publications
   ADD COLUMN IF NOT EXISTS account_id UUID
   REFERENCES public.social_accounts(id) ON DELETE SET NULL;
@@ -99,7 +135,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_social_pub_offer_platform_legacy
   WHERE account_id IS NULL;
 
 -- ─────────────────────────────────────────────
--- 4) claim_social_publication (القديمة — إعادة إنشاء بنفس التوقيع)
+-- 4) claim_social_publication (القديمة — إنشاء/إعادة إنشاء بنفس التوقيع)
 --    التغيير الوحيد: ON CONFLICT يستهدف الفهرس الجزئي الجديد بدل القيد المُسقط.
 --    تستخدمها آلية fallback بمفاتيح البيئة فقط.
 -- ─────────────────────────────────────────────

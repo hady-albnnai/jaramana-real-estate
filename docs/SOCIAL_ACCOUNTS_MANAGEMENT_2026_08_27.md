@@ -151,12 +151,20 @@
 
 ## 🚀 خطوات النشر (على عاتق صاحب المشروع)
 
+> ⚠️ **اكتشاف حي أثناء النشر الأول (2026-08-27):** migration المرحلة الثانية
+> (`2026_07_13_social_publishing_phase2.sql`) **لم يُطبَّق قط على السيرفر الحي** —
+> جدول `social_publications` لم يكن موجوداً أصلاً (خطأ `42P01`). السبب الخفي:
+> النشر ما اشتغل يوماً (`META_SECRETS_NOT_CONFIGURED` كان يوقف المسار قبل
+> الوصول للجدول). عولج بجعل migration 2026_08_27 **ذاتي الاكتفاء**: ينشئ
+> الجدول بنفسه بالمخطط النهائي إن لم يوجد، ويبقى idempotent إن وُجد.
+
 **الترتيب إلزامي:**
 
 1. **قاعدة البيانات** — نفّذ في SQL Editor (Supabase Dashboard) محتوى:
    ```txt
    supabase/migrations/2026_08_27_social_accounts_management.sql
    ```
+   (أو عبر سكربتات `scripts/deploy_supabase.*` — يشمله ضمن القائمة)
 2. **الدوال** (الثلاث — الناشر المشترك تغيّر فيجب إعادة نشر مستهلكيه):
    ```bash
    supabase functions deploy social-accounts --no-verify-jwt --project-ref vsgkgnjtebjxyqwpuopz
