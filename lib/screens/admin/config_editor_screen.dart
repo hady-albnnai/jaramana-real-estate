@@ -317,7 +317,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                             'إضافة/تعديل صفحات فيسبوك وحسابات إنستغرام مع توكناتها — النشر التلقائي يوزّع عليها كلها.',
                             style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
                           ),
-                          trailing: const Icon(Icons.chevron_forward, color: AppTheme.primaryGold),
+                          trailing: const Icon(Icons.chevron_left, color: AppTheme.primaryGold),
                           onTap: () => context.push('/admin/social-accounts'),
                         ),
                       ),
