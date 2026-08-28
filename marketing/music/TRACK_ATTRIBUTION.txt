@@ -1,27 +1,43 @@
 SELECTED TRACK
 ==============
 
-Title: Tranquil Fields (Eastern)
-Artist: Alexander Nakarada (CreatorChords)
-Artist website: https://creatorchords.com
-Source page: https://www.free-stock-music.com/alexander-nakarada-tranquil-fields-eastern.html
-License: Creative Commons Attribution 4.0 International (CC BY 4.0)
-License URL: https://creativecommons.org/licenses/by/4.0/
+Title: Cinematic Dubstep
+Artist: Tony Vodnik / Kulakovka
+Pixabay media ID: 304342
+Source page: https://pixabay.com/music/dubstep-cinematic-dubstep-304342/
+License: Pixabay Content License
+License URL: https://pixabay.com/service/license-summary/
+Content ID status on source page: Registered
 
-REQUIRED POST DESCRIPTION
-=========================
+The Pixabay Content License permits free use and adaptation and does not require
+attribution. The project still includes the following credit voluntarily.
 
-Music: Tranquil Fields (Eastern) by Alexander Nakarada (CreatorChords)
-https://creatorchords.com
-Licensed under CC BY 4.0
-https://creativecommons.org/licenses/by/4.0/
+POST DESCRIPTION
+================
 
-EXPECTED SOURCE FILE
-====================
+Music: “Cinematic Dubstep” by Tony Vodnik (Kulakovka)
+Music provided by Pixabay — Track ID: 304342
+https://pixabay.com/music/dubstep-cinematic-dubstep-304342/
 
-Save the licensed 320 kbps MP3 as:
-marketing/music/tranquil-fields-eastern.mp3
+SOURCE FILE
+===========
 
-The renderer automatically detects this file and uses it for the final output.
-Without it, the renderer explicitly creates why_choose_reel_60s_temp_music.mp4
-using the office's original temporary soundtrack; it never labels that proof as final.
+marketing/music/cinematic-dubstep-304342.mp3
+
+Verified source properties:
+- MP3 / MPEG audio
+- Stereo, 44.1 kHz
+- 256 kbps
+- Duration: 02:38.59
+- Size: 5,074,860 bytes
+
+FINAL EDIT
+==========
+
+The 60-second soundtrack combines:
+- 00:00–00:53 from the source opening
+- 02:29–02:38.59 from the source outro
+- 2.5-second equal-power-style crossfade
+- final loudness target: -14 LUFS, true peak ceiling -1.5 dB
+
+This gives the reel a real musical ending without cutting the source mid-phrase.

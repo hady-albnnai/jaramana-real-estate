@@ -2,8 +2,8 @@
 """Build the complete voice-free 60-second 'Why choose us?' marketing reel.
 
 The approved 18-second opening is reused byte-for-byte visually. This renderer
-creates scenes 05-14, then muxes either the licensed CC BY music (when present)
-or the office's original temporary score for visual approval.
+creates scenes 05-14, then muxes either the selected Pixabay-licensed music
+(when present) or the office's original temporary score for visual approval.
 
 Dependencies:
   python3 -m pip install --target /tmp/reeldeps \
@@ -397,21 +397,39 @@ if process.wait():
     print(stderr, file=sys.stderr)
     raise SystemExit(1)
 
-licensed_music = ROOT / 'music' / 'tranquil-fields-eastern.mp3'
+licensed_music = ROOT / 'music' / 'cinematic-dubstep-304342.mp3'
 if licensed_music.exists():
     audio_input = licensed_music
     output_name = OUT
+    audio_edit = (
+        '[1:a]atrim=start=0:end=53,asetpts=PTS-STARTPTS[first];'
+        '[1:a]atrim=start=149:end=158.59,asetpts=PTS-STARTPTS[outro];'
+        '[first][outro]acrossfade=d=2.5:c1=tri:c2=tri,'
+        'atrim=start=0:end=60,afade=t=in:st=0:d=0.6,'
+        'afade=t=out:st=59.25:d=0.75,'
+        'loudnorm=I=-14:TP=-1.5:LRA=8,volume=-1.1dB[audio]'
+    )
+    mux_command = [
+        ffmpeg, '-y', '-hide_banner', '-loglevel', 'error',
+        '-i', str(TEMP), '-i', str(audio_input),
+        '-filter_complex', audio_edit,
+        '-map', '0:v:0', '-map', '[audio]',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+        '-t', str(DURATION), '-movflags', '+faststart', str(output_name),
+    ]
 else:
     audio_input = ROOT / 'reels_promo_60s.mp4'
     output_name = ROOT / 'why_choose_reel_60s_temp_music.mp4'
+    mux_command = [
+        ffmpeg, '-y', '-hide_banner', '-loglevel', 'error',
+        '-i', str(TEMP), '-i', str(audio_input),
+        '-map', '0:v:0', '-map', '1:a:0',
+        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+        '-af', 'afade=t=in:st=0:d=1.2,afade=t=out:st=58.5:d=1.5',
+        '-t', str(DURATION), '-movflags', '+faststart', str(output_name),
+    ]
 
-mux_command = [
-    ffmpeg, '-y', '-hide_banner', '-loglevel', 'error', '-i', str(TEMP), '-i', str(audio_input),
-    '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-    '-af', 'afade=t=in:st=0:d=1.2,afade=t=out:st=58.5:d=1.5',
-    '-t', str(DURATION), '-movflags', '+faststart', str(output_name),
-]
 subprocess.run(mux_command, check=True)
 print(output_name)
 if not licensed_music.exists():
-    print('NOTICE: rendered with temporary original office music; licensed CC BY track still required.')
+    print('NOTICE: rendered with temporary office music; Pixabay source track is missing.')
