@@ -155,12 +155,13 @@ class SupabaseService {
         headers: headers,
       );
     } on FunctionException catch (fe) {
-      final payload = fe.error;
+      // نفس النمط المجرّب في appointment_provider: جسم الرد يصل عبر details
+      final details = fe.details;
       String code = '';
-      if (payload is Map) {
-        code = (payload['error'] ?? payload['message'] ?? '').toString();
-      } else if (payload is String) {
-        code = payload;
+      if (details is Map) {
+        code = (details['error'] ?? details['message'] ?? '').toString();
+      } else if (details is String) {
+        code = details;
       }
       code = code.trim();
       if (code.isEmpty) rethrow;
