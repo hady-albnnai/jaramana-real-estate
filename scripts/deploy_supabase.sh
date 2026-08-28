@@ -169,6 +169,9 @@ if [ "$DEPLOY_FUNCTIONS" = "true" ]; then
   # admin-offers + publish-to-social تستوردان الناشر المشترك — تُرفعان مدمجتين.
   deploy_fn admin-offers "$(build_bundle admin-offers)"
   deploy_fn publish-to-social "$(build_bundle publish-to-social)"
+  # 🧹 2026-08-28: تنظيف ملفات التخزين التشغيلية عبر Storage API (محمية
+  # بمفتاح service_role — الحذف SQL ممنوع من المنصة: protect_delete).
+  deploy_fn storage-cleanup
 
   # تحقق حي بعد النشر: الجدول + الدالة الجديدان
   run_sql "تحقق social_accounts" "SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='social_accounts') AS accounts_table, (SELECT count(*) FROM information_schema.routines WHERE routine_schema='public' AND routine_name='claim_social_publication_v2') AS claim_v2, (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='social_publications' AND column_name='account_id') AS account_id_col;"

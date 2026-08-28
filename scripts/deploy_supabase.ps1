@@ -254,6 +254,9 @@ if (-not $SkipFunctions) {
     # admin-offers + publish-to-social import the shared publisher - deploy inlined bundles.
     Deploy-Fn 'admin-offers' -BundlePath (Build-Bundle 'admin-offers')
     Deploy-Fn 'publish-to-social' -BundlePath (Build-Bundle 'publish-to-social')
+    # 2026-08-28: storage cleanup helper (Storage API; SQL delete is blocked
+    # by the platform protect_delete trigger; key-protected by service_role).
+    Deploy-Fn 'storage-cleanup'
 
     # 2026-08-27: post-deploy live verification of the new table + RPC + column
     Invoke-Sql -Label 'verify social_accounts' -Sql "SELECT (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='social_accounts') AS accounts_table, (SELECT count(*) FROM information_schema.routines WHERE routine_schema='public' AND routine_name='claim_social_publication_v2') AS claim_v2, (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='social_publications' AND column_name='account_id') AS account_id_col;"
