@@ -68,6 +68,17 @@ class ErrorUtils {
       if (raw.contains(code)) return code;
     }
 
+    // 🩹 2026-08-28: أكواد تحقق ديناميكية من app_assert_text_len بالسيرفر —
+    // تُبنى وقت التشغيل مثل TITLE_TOO_LONG/TITLE_TOO_SHORT/TITLE_INVALID_CHARS
+    // فلا يمكن إدراجها بقائمة ثابتة. (بلاغ: إرسال عرض للمراجعة يفشل برسالة
+    // «خلل بالاتصال بالخادم» عامة — كان الرمز يضيع قبل الوصول للقاموس.)
+    final dynAssert =
+        RegExp(r'\b([A-Z][A-Z0-9]+?)_(TOO_SHORT|TOO_LONG|INVALID_CHARS)\b')
+            .firstMatch(raw);
+    if (dynAssert != null) {
+      return '${dynAssert.group(1)}_${dynAssert.group(2)}';
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // 🩹 APPT-001 (2026-08-16) — أخطاء قاعدة البيانات الخام (PostgrestException)
     // ═══════════════════════════════════════════════════════════════════
@@ -589,6 +600,14 @@ class ErrorUtils {
         return 'النشر قيد التنفيذ حالياً؛ انتظر قليلاً ثم حدّث القائمة.';
       case 'PARTIAL_OR_TOTAL_FAILURE':
         return 'تعذر النشر على منصة واحدة أو أكثر؛ أعد المحاولة بأمان.';
+      // 🩹 2026-08-28: أكواد app_assert_text_len الديناميكية (بلاغ العرض
+      // المرفوض برسالة عامة) — title هو الحقل الوحيد المُتحقَق حالياً.
+      case 'TITLE_TOO_SHORT':
+        return 'العنوان قصير جداً — حرفان على الأقل.';
+      case 'TITLE_TOO_LONG':
+        return 'العنوان طويل جداً — 120 حرفاً كحد أقصى.';
+      case 'TITLE_INVALID_CHARS':
+        return 'العنوان يحتوي محارف غير مسموحة (< >).';
       default:
         // 🗣️ I18N-ERR-001: كان يُعيد الرمز الإنجليزي الخام للمستخدم.
         // الآن: القاموس الشامل أولاً، ثم رسالة عربية عامة — ولا يظهر رمز

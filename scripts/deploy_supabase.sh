@@ -18,8 +18,18 @@ APPLY_MIGRATIONS="${APPLY_MIGRATIONS:-false}"
 CLEANUP="${CLEANUP:-false}"
 TEST_USER_NAME="${TEST_USER_NAME:-}"
 DEPLOY_FUNCTIONS="${DEPLOY_FUNCTIONS:-false}"
+# 2026-08-28: مسح شامل لبيانات التشغيل لمرة واحدة (طلب المالك) — إبقاء
+# users/staff/config/sessions/devices. ليس migration دائماً: يعمل فقط عند
+# WIPE_DATA=true صراحة.
+WIPE_DATA="${WIPE_DATA:-false}"
 
-echo "▶ المشروع: $REF | migrations=$APPLY_MIGRATIONS | cleanup=$CLEANUP | functions=$DEPLOY_FUNCTIONS"
+echo "▶ المشروع: $REF | migrations=$APPLY_MIGRATIONS | cleanup=$CLEANUP | functions=$DEPLOY_FUNCTIONS | wipeData=$WIPE_DATA"
+
+# ── 1-ب) مسح بيانات التشغيل (لمرة واحدة) ──
+if [ "$WIPE_DATA" = "true" ]; then
+  echo "══════════ مسح بيانات التشغيل (one-time) ══════════"
+  run_sql "wipe operational data" "$(cat scripts/wipe_operational_data.sql)"
+fi
 
 # ── تنفيذ استعلام SQL وإظهار النتيجة ──
 run_sql() {

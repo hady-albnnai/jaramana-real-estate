@@ -27,7 +27,11 @@ param(
     [string]$REF = $env:SUPABASE_PROJECT_REF,
     [switch]$SkipMigrations,
     [switch]$SkipCleanup,
-    [switch]$SkipFunctions
+    [switch]$SkipFunctions,
+    # 2026-08-28: one-time full operational-data wipe (owner request) - keeps
+    # users/staff/config/sessions/devices + ids_private & config_assets buckets.
+    # NEVER a permanent migration: runs ONLY when this switch is passed explicitly.
+    [switch]$WipeData
 )
 
 $ErrorActionPreference = 'Stop'
@@ -114,7 +118,19 @@ function Deploy-Fn {
     if ($code -ne '200' -and $code -ne '201') { throw "FAILED deploy $Slug (HTTP $code)" }
 }
 
-Write-Host "Project: $REF | migrations=$(-not $SkipMigrations) cleanup=$(-not $SkipCleanup) functions=$(-not $SkipFunctions)"
+Write-Host "Project: $REF | migrations=$(-not $SkipMigrations) cleanup=$(-not $SkipCleanup) functions=$(-not $SkipFunctions) wipeData=$WipeData"
+
+# --- 1.5) One-time operational data wipe (2026-08-28, owner request) ----------
+# Deletes ALL operational data (offers/requests/appointments/deals/payments/
+# notifications/consultations/storage files...) while KEEPING users+staff,
+# configs, staff sessions, devices, ids_private and config_assets buckets.
+if ($WipeData) {
+    Write-Host "===== WIPE OPERATIONAL DATA (one-time) ====="
+    $wipePath = Join-Path $Root 'scripts\wipe_operational_data.sql'
+    $sql = [System.IO.File]::ReadAllText($wipePath, [System.Text.Encoding]::UTF8)
+    Invoke-Sql -Label 'wipe operational data' -Sql $sql -Fatal
+}
+
 
 # --- 1) Live checks ----------------------------------------------------------
 Write-Host "===== Live checks ====="

@@ -152,8 +152,6 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
 
   final _storage = StorageService();
 
-  // ✅ Fix for Bug #2: Store time field controllers to prevent recreation on each build
-  final Map<String, TextEditingController> _timeControllers = {};
 
   @override
   void initState() {
@@ -179,22 +177,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     _carPlateCtrl.dispose(); _areaCtrl.dispose(); _floorCtrl.dispose(); _legalNotesCtrl.dispose();
     _carCustomCityCtrl.dispose();
     _stepScroll.dispose();
-    
-    // ✅ Dispose all time controllers
-    for (final controller in _timeControllers.values) {
-      controller.dispose();
-    }
-    
     super.dispose();
-  }
-
-  // ✅ Helper method to get or create a persistent time controller
-  TextEditingController _getTimeController(String dayKey, int slotIndex, String field) {
-    final controllerKey = '${dayKey}_${slotIndex}_$field';
-    if (!_timeControllers.containsKey(controllerKey)) {
-      _timeControllers[controllerKey] = TextEditingController();
-    }
-    return _timeControllers[controllerKey]!;
   }
 
 
@@ -906,11 +889,11 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
                   child: Row(children: [
                     const Text('من', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
                     AppTheme.gapWidthXS,
-                    Expanded(child: _timeField(dayKey: key, slotIndex: i, field: 'from', hint: '09:00')),
+                    Expanded(child: _timeChip(dayKey: key, slotIndex: i, field: 'from')),
                     AppTheme.gapWidthSmall,
                     const Text('إلى', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
                     AppTheme.gapWidthXS,
-                    Expanded(child: _timeField(dayKey: key, slotIndex: i, field: 'to', hint: '12:00')),
+                    Expanded(child: _timeChip(dayKey: key, slotIndex: i, field: 'to')),
                     IconButton(icon: const Icon(Icons.remove_circle_outline, color: AppTheme.errorRed, size: 18), onPressed: () => setState(() => _avlSlots[key]!.removeAt(i))),
                   ]),
                 );
@@ -937,13 +920,6 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         '${(safe % 60).toString().padLeft(2, '0')}';
   }
 
-  void _adjustTime(
-      String dayKey, int slotIndex, String field, int deltaMinutes) {
-    final current = _avlSlots[dayKey]![slotIndex][field] ?? '09:00';
-    final next = _minutesToTime(_timeToMinutes(current) + deltaMinutes);
-    setState(() => _avlSlots[dayKey]![slotIndex][field] = next);
-  }
-
   Future<void> _pickSlotTime(
       String dayKey, int slotIndex, String field) async {
     final current = _avlSlots[dayKey]![slotIndex][field] ?? '09:00';
@@ -960,46 +936,46 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
         _minutesToTime(picked.hour * 60 + picked.minute));
   }
 
-  /// وقت فعلي لا hint: الضغط يفتح منتقي الوقت، و± تعدّل نصف ساعة.
-  Widget _timeField({
+  /// 🕐 2026-08-28: رقاقة وقت بارزة قابلة للنقر — الضغط يفتح منتقي الوقت.
+  /// (بلاغ المالك: كانت الأزرار ± تظهر وحدها على الشاشات الضيقة والوقت
+  /// نفسه يكاد لا يُرى. زرّا ± حُذفا والوقت أصبح العنصر البارز.)
+  Widget _timeChip({
     required String dayKey,
     required int slotIndex,
     required String field,
-    required String hint,
   }) {
-    final controller = _getTimeController(dayKey, slotIndex, field);
     final slot = _avlSlots[dayKey]?[slotIndex];
-    final currentValue = slot?[field] ?? hint;
-    if (controller.text != currentValue) {
-      controller.text = currentValue;
-      controller.selection = TextSelection.collapsed(offset: currentValue.length);
-    }
-    return TextField(
-      controller: controller,
-      readOnly: true,
-      textAlign: TextAlign.center,
+    final raw = (slot?[field] ?? '').toString().trim();
+    final value = raw.isEmpty ? (field == 'from' ? '09:00' : '12:00') : raw;
+    return InkWell(
       onTap: () => _pickSlotTime(dayKey, slotIndex, field),
-      style: const TextStyle(
-          color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody),
-      decoration: InputDecoration(
-        contentPadding: const EdgeInsets.symmetric(vertical: 5),
-        isDense: true,
-        border: const OutlineInputBorder(),
-        prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-        suffixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-        prefixIcon: IconButton(
-          padding: EdgeInsets.zero,
-          visualDensity: VisualDensity.compact,
-          tooltip: 'نقص نصف ساعة',
-          onPressed: () => _adjustTime(dayKey, slotIndex, field, -30),
-          icon: const Icon(Icons.remove, size: 16),
+      borderRadius: AppTheme.radiusSmall,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppTheme.inputBackground,
+          borderRadius: AppTheme.radiusSmall,
+          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.45)),
         ),
-        suffixIcon: IconButton(
-          padding: EdgeInsets.zero,
-          visualDensity: VisualDensity.compact,
-          tooltip: 'زد نصف ساعة',
-          onPressed: () => _adjustTime(dayKey, slotIndex, field, 30),
-          icon: const Icon(Icons.add, size: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.schedule, size: 15, color: AppTheme.primaryGold),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppTheme.textWhite,
+                  fontWeight: FontWeight.bold,
+                  fontSize: AppTheme.fontSizeMedium,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
