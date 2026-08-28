@@ -135,10 +135,37 @@ class SupabaseService {
       finalBody = mapBody;
     }
 
-    return await client.functions.invoke(
-      functionName,
-      body: finalBody,
-      headers: finalHeaders,
-    );
+    return await _invokeWithErrorCodeExtraction(functionName, finalBody, finalHeaders);
+  }
+
+  /// 🩹 2026-08-28: كان جسم رد الخطأ من دوال Edge يُفقد كلياً — أي فشل من أي
+  /// دالة (400/401/500 مع رمز خطأ عربي جاهز) يتحول إلى FunctionException عامة
+  /// تظهر للمستخدم «حدث خلل أثناء الاتصال بالخادم» بلا سبب حقيقي (بلاغ المالك:
+  /// إرسال عرض للمراجعة يفشل برسالة عامة). هنا نستخرج رمز الخطأ من جسم الرد
+  /// ونعيد رميه كاستثناء نظيف يلتقطه ErrorUtils ويترجمه.
+  Future<dynamic> _invokeWithErrorCodeExtraction(
+    String functionName,
+    dynamic body,
+    Map<String, String> headers,
+  ) async {
+    try {
+      return await client.functions.invoke(
+        functionName,
+        body: body,
+        headers: headers,
+      );
+    } on FunctionException catch (fe) {
+      // نفس النمط المجرّب في appointment_provider: جسم الرد يصل عبر details
+      final details = fe.details;
+      String code = '';
+      if (details is Map) {
+        code = (details['error'] ?? details['message'] ?? '').toString();
+      } else if (details is String) {
+        code = details;
+      }
+      code = code.trim();
+      if (code.isEmpty) rethrow;
+      throw Exception(code);
+    }
   }
 }

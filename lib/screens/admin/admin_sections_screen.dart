@@ -145,6 +145,8 @@ class _AdminSectionsScreenState extends State<AdminSectionsScreen> {
                     _tile(Icons.cloud_queue_outlined, 'استهلاك السيرفر والتخزين', '/admin/resource-usage'),
                   if (PermissionService.has(user, PermissionKeys.manageConfig))
                     _tile(Icons.tune_outlined, 'الإعدادات', '/admin/config'),
+                  if (PermissionService.has(user, PermissionKeys.manageConfig))
+                    _tile(Icons.campaign_outlined, 'حسابات النشر الاجتماعي', '/admin/social-accounts'),
                 ]),
               ],
               ),

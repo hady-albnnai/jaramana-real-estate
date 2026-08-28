@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/admin_provider.dart';
@@ -12,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/app_utils.dart';
 import '../../core/utils/error_utils.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/e2e.dart';
 import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة مراجعة العروض الجديدة للإدارة
@@ -99,7 +101,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
             autoEnabled && o.iSoc == 1
-                ? 'سيتم نشر العرض ليصبح مرئياً للجميع وسيتم نشره تلقائياً على فيسبوك وإنستغرام${o.imgs.isEmpty ? ' (يحتاج صورة للإنستغرام)' : ''}. هل أنت متأكد؟'
+                ? 'سيتم نشر العرض ليصبح مرئياً للجميع وسيتم نشره تلقائياً على حسابات التواصل المفعّلة${o.imgs.isEmpty ? ' (لا نشر اجتماعي بلا صورة)' : ''}. هل أنت متأكد؟'
                 : 'سيتم نشر العرض ليصبح مرئياً للجميع. هل أنت متأكد؟',
             style: const TextStyle(color: AppTheme.textGrey)),
         actions: [
@@ -140,13 +142,14 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
           final already = social['alreadyPublished'] == true;
           msg += already
               ? ' • 📣 كان منشوراً مسبقاً على السوشيال'
-              : ' • 📣 ✅ تم النشر تلقائياً على فيسبوك وإنستغرام';
+              : ' • 📣 ✅ تم النشر تلقائياً على حسابات التواصل';
         } else {
           final err = (social['error'] ?? '').toString();
-          if (err.contains('META_SECRETS_NOT_CONFIGURED')) {
-            msg += ' • ⚠️ التوكنات غير مضبوطة، بقي في قائمة الجاهزة';
+          if (err.contains('META_SECRETS_NOT_CONFIGURED') ||
+              err.contains('NO_SOCIAL_ACCOUNTS_CONFIGURED')) {
+            msg += ' • ⚠️ لا توجد حسابات نشر مضبوطة (أضفها من «حسابات النشر»)، بقي في قائمة الجاهزة';
           } else if (err.contains('PUBLIC_IMAGE_REQUIRED')) {
-            msg += ' • ⚠️ لا توجد صورة عامة للنشر، بقي في قائمة الجاهزة';
+            msg += ' • ⚠️ لا توجد صورة عامة صالحة للنشر — أضف صوراً للعرض، بقي في قائمة الجاهزة';
           } else {
             msg += ' • ⚠️ فشل النشر التلقائي (${err.isEmpty ? 'خطأ غير معروف' : err}). سيبقى في قائمة الجاهزة لإعادة المحاولة';
           }
@@ -164,10 +167,26 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     }
   }
 
+  /// 📋 نسخ نص المنشور الاجتماعي الجاهز — وضع النشر اليدوي (2026-08-28):
+  /// توكن Meta محجوب على الحسابات السورية، فيُنسخ النص المولَّد تلقائياً
+  /// (`soc_txt`) بضغطة ويلصق يدوياً على صفحة/قناة المكتب. الصور تُرفع من
+  /// شاشة معاينة العرض (/offer/:id).
+  Future<void> _copySocialText(OfferModel o) async {
+    final text = o.socTxt.trim();
+    if (text.length <= 10) {
+      _snack('لا يوجد نص منشور جاهز لهذا العرض');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: text));
+    _snack('📋 تم نسخ نص المنشور (${text.length} محرف) — الصقه على صفحة المكتب');
+  }
+
   Future<void> _publishToSocial(OfferModel o) async {
     if (_publishingIds.contains(o.id)) return;
+    // 🖼️ متوافق مع IMG-001 (قرار المالك): لا نشر بدون صورة — العرض يبقى
+    // بالقائمة حتى تُضاف له صورة من شاشة تعديل العرض.
     if (o.imgs.isEmpty) {
-      _snack('لا يمكن النشر على إنستغرام بدون صورة واحدة على الأقل');
+      _snack('لا يمكن النشر بدون صورة واحدة على الأقل — عدّل العرض وأضف صوراً');
       return;
     }
 
@@ -175,10 +194,10 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppTheme.surfaceBlack,
-        title: const Text('نشر على فيسبوك + إنستغرام',
+        title: const Text('نشر على حسابات التواصل',
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
-          'سيتم نشر ${o.imgs.length > 10 ? 10 : o.imgs.length} صورة كألبوم مع نص العرض. هل تريد المتابعة؟',
+          'سيتم نشر ${o.imgs.length > 10 ? 10 : o.imgs.length} صورة كألبوم مع نص العرض على كل الحسابات المفعّلة. هل تريد المتابعة؟',
           style: const TextStyle(color: AppTheme.textGrey),
         ),
         actions: [
@@ -203,7 +222,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     if (!mounted) return;
     setState(() => _publishingIds.remove(o.id));
     if (ok) {
-      _snack('✅ تم النشر فعلياً على فيسبوك وإنستغرام');
+      _snack('✅ تم النشر على حسابات التواصل المفعّلة');
       // ✅ Bug #33: تحديث فوري للقائمة والإشعارات بعد إتمام النشر
       await _load();
       // تحديث Provider لإشعار الشاشات الأخرى
@@ -224,7 +243,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
         title: const Text('نشر جميع العروض الجاهزة',
             style: TextStyle(color: AppTheme.textWhite)),
         content: Text(
-          'سيتم محاولة نشر ${_socialQueue.length} عرض تلقائياً على فيسبوك وإنستغرام. المتابعة؟',
+          'سيتم محاولة نشر ${_socialQueue.length} عرض تلقائياً على كل حسابات التواصل المفعّلة (العروض بلا صور تُتخطى). المتابعة؟',
           style: const TextStyle(color: AppTheme.textGrey),
         ),
         actions: [
@@ -248,6 +267,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     int failCount = 0;
 
     for (final offer in List<OfferModel>.from(_socialQueue)) {
+      // 🖼️ IMG-001: بدون صورة لا نشر — يتخطاه ويُعدَّل لاحقاً بإضافة صور.
       if (offer.imgs.isEmpty) {
         failCount++;
         continue;
@@ -437,7 +457,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                             Expanded(
                               child: Text(
                                 autoEnabled
-                                    ? 'الوضع التلقائي مفعّل: سيُنشر العرض تلقائياً على فيسبوك وإنستغرام بعد الموافقة'
+                                    ? 'الوضع التلقائي مفعّل: سيُنشر العرض تلقائياً على حسابات التواصل بعد الموافقة'
                                     : 'الوضع التلقائي معطل: العروض ستُجدول فقط وتحتاج نشر يدوي من قائمة الجاهزة',
                                 style: TextStyle(
                                     color: autoEnabled ? AppTheme.successGreen : AppTheme.warningOrange,
@@ -643,11 +663,29 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                         Expanded(
                           child: Text(
                             socialOnly
-                                ? '📣 العرض معتمد وجاهز للنشر الفعلي على فيسبوك + إنستغرام'
-                                : '📣 سيُنشر تلقائياً على فيسبوك + إنستغرام بعد الموافقة',
+                                ? '📣 العرض معتمد وجاهز للنشر على حسابات التواصل'
+                                : '📣 سيُنشر تلقائياً على حسابات التواصل بعد الموافقة',
                             style: const TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeSmall, fontWeight: FontWeight.w600),
                           ),
                         ),
+                        // 📋 2026-08-28: نسخ النص الجاهز بضغطة (وضع النشر اليدوي)
+                        if (o.socTxt.trim().length > 10)
+                          E2E(
+                            id: 'copySocialTextBtn',
+                            button: true,
+                            child: Tooltip(
+                              message: 'نسخ نص المنشور الجاهز',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => _copySocialText(o),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.copy,
+                                      color: AppTheme.infoBlue, size: 18),
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

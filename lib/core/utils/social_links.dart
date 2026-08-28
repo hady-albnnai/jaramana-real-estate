@@ -44,6 +44,14 @@ class SocialLinks {
       icon: Icons.facebook,
       hint: 'https://facebook.com/YourPage',
     ),
+    // 2026-08-28: صفحة فيسبوك ثانية للمكتب — تُخزَّن في txts.socialPages.facebook2
+    // وتُعرض بأيقونة فيسبوك واسم عربي بدل أيقونة رابط رمادية ومفتاح خام.
+    SocialNetwork(
+      key: 'facebook2',
+      label: 'فيسبوك — صفحة ثانية',
+      icon: Icons.facebook,
+      hint: 'https://facebook.com/YourSecondPage',
+    ),
     SocialNetwork(
       key: 'instagram',
       label: 'إنستغرام',
@@ -116,6 +124,7 @@ class SocialLinks {
     const synonyms = <String, String>{
       'twitter': 'x',
       'fb': 'facebook',
+      'fb2': 'facebook2',
       'insta': 'instagram',
       'ig': 'instagram',
       'wa': 'whatsapp',

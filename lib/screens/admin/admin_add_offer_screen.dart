@@ -89,6 +89,9 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
     ('thu', 'الخميس'),  ('fri', 'الجمعة'),    ('sat', 'السبت'),
     ('sun', 'الأحد'),
   ];
+  // 🩹 2026-08-28 (بلاغ المالك): الوقت كان يُكتب يدوياً بالكيبورد بلا منتقي —
+  // الآن نفس نمط شاشة المستخدم: منتقي وقت + أزرار ± نصف ساعة + قيم افتراضية.
+  bool _anytimeReady = false;
   final Map<String, bool> _avlDaysEnabled = {
     'mon': false, 'tue': false, 'wed': false, 'thu': false,
     'fri': false, 'sat': false, 'sun': false,
@@ -167,17 +170,97 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
   }
 
   Map<String, List<String>> _buildAvl() {
+    if (_anytimeReady) return {'any': ['00:00-23:59']};
     final result = <String, List<String>>{};
     for (final day in _weekDays) {
       final key = day.$1;
-      if (_avlDaysEnabled[key] == true && _avlSlots[key]!.isNotEmpty) {
-        result[key] = _avlSlots[key]!
-            .where((s) => s['from']!.isNotEmpty && s['to']!.isNotEmpty)
+      if (_avlDaysEnabled[key] == true) {
+        final slots = _avlSlots[key]!
+            .where((s) =>
+                (s['from'] ?? '').isNotEmpty &&
+                (s['to'] ?? '').isNotEmpty &&
+                _timeToMinutes(s['to']!) > _timeToMinutes(s['from']!))
             .map((s) => '${s['from']}-${s['to']}')
             .toList();
+        // يوم مفعّل بلا فترة مكتملة (من < إلى) يُهمل كلياً — نفس قاعدة شاشة
+        // المستخدم: كان يُحفظ {"mon":[]} فيصير الحجز متاحاً بلا فترة فعلية.
+        if (slots.isNotEmpty) result[key] = slots;
       }
     }
     return result;
+  }
+
+  int _timeToMinutes(String value) {
+    final parts = value.split(':');
+    if (parts.length != 2) return 0;
+    return (int.tryParse(parts[0]) ?? 0) * 60 +
+        (int.tryParse(parts[1]) ?? 0);
+  }
+
+  String _minutesToTime(int value) {
+    final safe = value.clamp(0, 23 * 60 + 59);
+    return '${(safe ~/ 60).toString().padLeft(2, '0')}:'
+        '${(safe % 60).toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _pickSlotTime(String dayKey, int slotIndex, String field) async {
+    final current = _avlSlots[dayKey]![slotIndex][field] ?? '09:00';
+    final mins = _timeToMinutes(current);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: mins ~/ 60, minute: mins % 60),
+      helpText: field == 'from' ? 'بداية الفترة' : 'نهاية الفترة',
+      cancelText: 'إلغاء',
+      confirmText: 'اعتماد',
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _avlSlots[dayKey]![slotIndex][field] =
+        _minutesToTime(picked.hour * 60 + picked.minute));
+  }
+
+  /// 🕐 2026-08-28: رقاقة وقت بارزة قابلة للنقر — الضغط يفتح منتقي الوقت.
+  /// (بلاغ المالك: الحقول السابقة كانت تُظهر أزرار ± فقط على الشاشات الضيقة
+  /// والوقت نفسه يكاد لا يُرى. زرّا ± حُذفا والوقت أصبح العنصر البارز.)
+  Widget _timeChip({
+    required String dayKey,
+    required int slotIndex,
+    required String field,
+  }) {
+    final slot = _avlSlots[dayKey]?[slotIndex];
+    final raw = (slot?[field] ?? '').toString().trim();
+    final value = raw.isEmpty ? (field == 'from' ? '09:00' : '12:00') : raw;
+    return InkWell(
+      onTap: () => _pickSlotTime(dayKey, slotIndex, field),
+      borderRadius: AppTheme.radiusSmall,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppTheme.inputBackground,
+          borderRadius: AppTheme.radiusSmall,
+          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.45)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.schedule, size: 15, color: AppTheme.primaryGold),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppTheme.textWhite,
+                  fontWeight: FontWeight.bold,
+                  fontSize: AppTheme.fontSizeMedium,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -188,10 +271,9 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
       _snack('غير مصرح لك بهذه العملية');
       return;
     }
-    if (_selectedOwner == null) {
-      _snack('يرجى اختيار صاحب العرض');
-      return;
-    }
+    // 2026-08-28 (قرار المالك): صاحب العرض اختياري — عند تركه فارغاً يُسند
+    // العرض للمدير نفسه (عرض المكتب) مع تسجيل added_by كالعادة.
+    final ownerUid = _selectedOwner?.uid ?? admin.uid;
     if (_selectedType == null || _selectedTrans == null ||
         _selectedMainCat == null ||
         _selectedCityArea == null ||
@@ -221,6 +303,14 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
       return;
     }
 
+    // 🕐 2026-08-28: مواعيد المعاينة إلزامية — إما «أي وقت» أو فترة مكتملة
+    // واحدة على الأقل (نفس قاعدة شاشة المستخدم؛ كان مسار الإدارة يحفظ
+    // avl فارغة أو فترات ناقصة بصمت فتتعطل حجوزات المعاينة للعرض).
+    if (_buildAvl().isEmpty) {
+      _snack('حدد مواعيد المعاينة: فعّل «جاهز للمعاينة في أي وقت» أو اختر يوماً واحداً على الأقل مع فترة مكتملة (من — إلى)');
+      return;
+    }
+
     setState(() { _submitting = true; _progressMsg = 'جارٍ رفع الصور...'; });
 
     // 📸 صور المصوّر مرفوعة مسبقاً على التخزين ⇒ تُستخدم كما هي بلا رفع ثانٍ،
@@ -229,7 +319,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
     if (_pickedImages.isNotEmpty) {
       final uploaded = await _storage.uploadOfferImages(
         files: _pickedImages,
-        userId: _selectedOwner!.uid,
+        userId: ownerUid,
         onProgress: (d, t) {
           if (mounted) setState(() => _progressMsg = 'الصور ($d/$t)...');
         },
@@ -242,7 +332,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
     if (_docImage != null) {
       docUrl = (await _storage.uploadOfferImage(
         xfile: _docImage!,
-        userId: _selectedOwner!.uid,
+        userId: ownerUid,
         offerId: null,
       )) ?? '';
     }
@@ -261,13 +351,11 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
         : autoTitle;
 
     // الوسيط يُحدَّد تلقائياً إذا كان صاحب العرض وسيطاً
-    final brkId = _selectedOwner!.role == UserRole.broker
-        ? _selectedOwner!.uid
-        : '';
+    final brkId = (_selectedOwner?.role == UserRole.broker) ? ownerUid : '';
 
     final offer = OfferModel(
       id: '',
-      usrId:     _selectedOwner!.uid,
+      usrId:     ownerUid,
       brkId:     brkId,
       ttl:       finalTitle,
       typ:       _selectedType!,
@@ -303,7 +391,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
     OfferModel? created;
     try {
       // نستخدم RPC مخصصة للإدارة لتمرير added_by
-      final res = await SupabaseService().invokeFunction('admin-offers', body: {'action': 'create_for_user', 'user_id': _selectedOwner!.uid, 'offer': {...offer.toMap(), 'added_by': admin.uid}, 'admin_uid': admin.uid}); final data = res.data as Map; final response = data['offer_id'];
+      final res = await SupabaseService().invokeFunction('admin-offers', body: {'action': 'create_for_user', 'user_id': ownerUid, 'offer': {...offer.toMap(), 'added_by': admin.uid}, 'admin_uid': admin.uid}); final data = res.data as Map; final response = data['offer_id'];
       if (response != null && (response is List) && response.isNotEmpty) {
         final row = Map<String, dynamic>.from(response.first as Map);
         created = OfferModel.fromSupabase(row, row['id'] as String);
@@ -424,7 +512,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
 
     return Step(
       title: Row(children: [
-        const Text('صاحب العرض',
+        const Text('صاحب العرض (اختياري)',
             style: TextStyle(color: AppTheme.primaryGold, fontWeight: FontWeight.bold)),
         if (_selectedOwner != null) ...[
           AppTheme.gapWidthSmall,
@@ -458,7 +546,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
               AppTheme.gapWidthSmall,
               Expanded(
                 child: Text(
-                  'العرض يُضاف من الإدارة — سيُسجَّل من أضافه داخلياً.',
+                  'اختياري: اتركه فارغاً ليُسند العرض للمكتب (باسمك كمدير)، أو اختر مستخدماً ليعرض باسمه.',
                   style: TextStyle(color: Colors.amber, fontSize: AppTheme.fontSizeSmall),
                 ),
               ),
@@ -812,10 +900,42 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('حدد الأيام والفترات الزمنية المتاحة للمعاينة.',
-                style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
-            AppTheme.gapHeightLarge,
-            ..._weekDays.map((day) {
+            // 🩹 2026-08-28: نفس مسار المستخدم — خيار «أي وقت» يوفر تعبئة
+            // الفترات كلياً، وأزرار الفترات صارت بمنتقي وقت.
+            Container(
+              padding: AppTheme.paddingAllMedium,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryGold.withOpacity(0.1),
+                borderRadius: AppTheme.radiusMedium,
+                border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
+              ),
+              child: SwitchListTile(
+                value: _anytimeReady,
+                onChanged: (v) => setState(() => _anytimeReady = v),
+                title: const Text('جاهز للمعاينة في أي وقت',
+                    style: TextStyle(
+                        color: AppTheme.textWhite,
+                        fontSize: AppTheme.fontSizeMedium,
+                        fontWeight: FontWeight.bold)),
+                subtitle: const Text(
+                    'سيتمكن الزبائن من طلب موعد في أي وقت تراه الإدارة مناسباً',
+                    style: TextStyle(
+                        color: AppTheme.textGrey,
+                        fontSize: AppTheme.fontSizeCaption)),
+                activeColor: AppTheme.primaryGold,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            if (!_anytimeReady) ...[
+              const Text('أو حدد أياماً وفترات زمنية محددة:',
+                  style: TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeBody)),
+              AppTheme.gapHeightMedium,
+            ],
+            if (!_anytimeReady)
+              ..._weekDays.map((day) {
               final key     = day.$1;
               final label   = day.$2;
               final enabled = _avlDaysEnabled[key] ?? false;
@@ -838,7 +958,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
                       onTap: () => setState(() {
                         _avlDaysEnabled[key] = !enabled;
                         if (!enabled && slots.isEmpty) {
-                          _avlSlots[key]!.add({'from': '', 'to': ''});
+                          _avlSlots[key]!.add({'from': '09:00', 'to': '12:00'});
                         }
                       }),
                       borderRadius: AppTheme.radiusMedium,
@@ -867,7 +987,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
                           if (enabled)
                             TextButton.icon(
                               onPressed: () => setState(() {
-                                _avlSlots[key]!.add({'from': '', 'to': ''});
+                                _avlSlots[key]!.add({'from': '09:00', 'to': '12:00'});
                               }),
                               icon: const Icon(Icons.add,
                                   size: 16, color: AppTheme.primaryGold),
@@ -884,34 +1004,31 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
                     if (enabled)
                       ...slots.asMap().entries.map((e) {
                         final i    = e.key;
-                        final slot = e.value;
                         return Padding(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 4),
                           child: Row(children: [
                             const Text('من',
                                 style: TextStyle(
-                                    color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
-                            const SizedBox(width: 6),
+                                    color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+                            AppTheme.gapWidthXS,
                             Expanded(
-                              child: _timeField(
-                                value: slot['from'] ?? '',
-                                hint: '09:00',
-                                onChanged: (v) => setState(
-                                    () => _avlSlots[key]![i]['from'] = v),
+                              child: _timeChip(
+                                dayKey: key,
+                                slotIndex: i,
+                                field: 'from',
                               ),
                             ),
                             AppTheme.gapWidthSmall,
                             const Text('إلى',
                                 style: TextStyle(
-                                    color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
-                            const SizedBox(width: 6),
+                                    color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption)),
+                            AppTheme.gapWidthXS,
                             Expanded(
-                              child: _timeField(
-                                value: slot['to'] ?? '',
-                                hint: '12:00',
-                                onChanged: (v) => setState(
-                                    () => _avlSlots[key]![i]['to'] = v),
+                              child: _timeChip(
+                                dayKey: key,
+                                slotIndex: i,
+                                field: 'to',
                               ),
                             ),
                             AppTheme.gapWidthXS,
@@ -920,6 +1037,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
                                   color: AppTheme.errorRed, size: 20),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
+                              tooltip: 'حذف الفترة',
                               onPressed: () => setState(() {
                                 _avlSlots[key]!.removeAt(i);
                                 if (_avlSlots[key]!.isEmpty) {
@@ -1055,25 +1173,6 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
   }
 
   // ── مساعدات ──
-
-  Widget _timeField({required String value, required String hint, required void Function(String) onChanged}) {
-    final ctrl = TextEditingController(text: value)
-      ..selection = TextSelection.collapsed(offset: value.length);
-    return TextField(
-      controller: ctrl,
-      keyboardType: TextInputType.datetime,
-      textAlign: TextAlign.center,
-      style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeMedium),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        isDense: true,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-      ),
-      onChanged: onChanged,
-    );
-  }
 
   Future<void> _pickImages() async {
     final remaining = StorageService.maxImages - _pickedImages.length;

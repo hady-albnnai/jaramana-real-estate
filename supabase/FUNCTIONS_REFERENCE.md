@@ -264,6 +264,7 @@ SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
 | 12 | `update-user-permissions` 🆕 | تحديث صلاحيات مستخدم عبر جلسة موظف | `{ admin_uid, staff_session_token?, user_id, permissions }` | `{ success }` | ✅ منشور |
 | 13 | `upload-offer-images` 🆕🔒 | رفع صور العروض بأمان عبر service_role (يتحقق من staff_session_token أو JWT) | `multipart/form-data: files, user_id, offer_id?, folder?, admin_uid?` | `{ success, urls, count }` | ⚠️ يُنشر **حصراً** بـ `--no-verify-jwt` (راجع بروتوكول النشر بالدستور — بدونه البوابة ترد 401 `UNAUTHORIZED_NO_AUTH_HEADER` قبل الدالة)؛ الرفع عبر `.upload()` القياسية (`uploadBinary` غير موجودة في عميل JS للـ Deno — 2026-07-26) |
 | 14 | `legal-actions` ⚖️🔒 | عمليات المحامي والمعقب: ملف المحامي، إرسال مهمة، تحديث checklist، إتمام مهمة، اعتمادها | `{ action, user_uid, staff_session_token?, ... }` | `{ success, ... }` | ✅ منشور — يحتاج إعادة نشر بعد آخر تعديل |
+| 15 | `social-accounts` 🆕 (2026-08-27) | إدارة حسابات النشر الاجتماعي (فيسبوك/إنستغرام) مع توكناتها من داخل التطبيق: list / save (بتحقق تلقائي من Meta) / verify / delete | `{ action, admin_uid, staff_session_token?, id?, platform, name, account_external_id, access_token?, is_active? }` | `{ success, accounts? / account?, verified?, verifiedName?, verifyError? }` | ⚠️ مكتوب — يُنشر بعد تنفيذ migration `2026_08_27_social_accounts_management.sql` — دور ≥5، التوكن يعود مقنّعاً (آخر 4 محارف) |
 
 > ⚠️ **`generate_otp` / `verify_otp` القديمة** ما زالت موجودة للتوافق الخلفي فقط — استخدم النسخة V2 في الكود الجديد.
 > 📖 لخطوات تفعيل WhatsApp + Email Magic Link: راجع `docs/AUTH_SETUP.md`
@@ -2353,3 +2354,50 @@ get_resource_usage_internal(p_admin_uid uuid)
 `p_action/p_details/p_target_id/p_target_table` → PostgREST لا يطابق أسماء المعاملات
 والأخطاء تُبتلع داخل try/catch → سجلات تدقيق ضائعة بصمت. صُححت الأسماء في الثلاثة.
 (نداءات `p_action` في `admin-reports` و`user-appointments` صحيحة — تعود لدوال أخرى، لم تُمس.)
+
+---
+
+## 🆕 2026-08-27 — إدارة حسابات النشر الاجتماعي (multi-account publishing)
+
+### الهدف
+استبدال مفاتيح البيئة الثابتة (`META_*`) بنظام حسابات يُدار **من داخل التطبيق**:
+أي عدد من صفحات فيسبوك وحسابات إنستغرام مع توكناتها، والناشر يوزّع كل عرض مقبول
+على الحسابات المفعّلة كلها.
+
+### القاعدة/RPC (migration: `2026_08_27_social_accounts_management.sql`)
+
+| العنصر | الوصف |
+|---|---|
+| `social_accounts` (جدول) | platform (facebook/instagram) + name + account_external_id (Page ID / IG ID) + access_token + verified_name + is_active/is_verified + last_error — RLS بلا سياسات عملاء + REVOKE من anon/authenticated (service_role حصراً) |
+| `social_publications.account_id` | عمود جديد يربط كل منشور بحسابه (الصفوف القديمة تبقى NULL) |
+| فهرسان جزئيان فريدان | `(offer_id, account_id) WHERE account_id IS NOT NULL` + `(offer_id, platform) WHERE account_id IS NULL` — حلّا محل القيد القديم `UNIQUE(offer_id, platform)` وأتاحا تعدد الحسابات |
+| `claim_social_publication` (مُعاد إنشاؤها) | نفس التوقيع `(p_offer_id, p_platform, p_attempt_token)` — لكن `ON CONFLICT` يستهدف الفهرس الجزئي للمسار البيئي (account_id IS NULL) |
+| `claim_social_publication_v2` 🆕 | `(p_offer_id, p_account_id, p_platform, p_attempt_token)` — حجز ذرّي لكل (عرض، حساب) |
+
+### Edge Function: `social-accounts`
+- **الأفعال:** `list` / `save` (إضافة+تعديل، توكن فارغ عند التعديل = إبقاء الحالي) / `verify` / `delete` (ناعم i_del=1).
+- **الأمان:** `validateActor` دور ≥5 (نمط admin-config) · `save` يتحقق تلقائياً لدى Meta (Graph API) ويرجع اسم الصفحة الحقيقي · **التوكن لا يعود للعميل أبداً** — `tokenMasked` (آخر 4 محارف) + `tokenLength`.
+- **التدقيق:** `log_admin_action` أكواد `130` (حفظ) / `131` (تحقق) / `132` (حذف) — بدون قيم توكن.
+- **الأخطاء:** `ADMIN_SESSION_REQUIRED`, `INVALID_ADMIN_SESSION`, `INVALID_PLATFORM`, `ACCOUNT_NAME_REQUIRED`, `INVALID_ACCOUNT_EXTERNAL_ID`, `ACCESS_TOKEN_REQUIRED`, `INVALID_ACCESS_TOKEN`, `ACCOUNT_NOT_FOUND`, `ACCOUNT_ID_REQUIRED`, `META_VERIFY_EMPTY_RESPONSE`.
+
+### `_shared/social_publisher.ts` — الناشر متعدد الحسابات
+- `loadAccounts`: يقرأ الحسابات المفعّلة من `social_accounts`؛ **إن لم يوجد أي حساب يعود للمسار البيئي القديم** (توافق خلفي كامل).
+- لكل حساب: `runAccount` → حجز (v2 للحسابات القاعدية، القديمة للبيئية) → نشر → تسجيل في `social_publications`.
+- **لا نشر بدون صورة عامة واحدة على الأقل لكل المنصات** (`PUBLIC_IMAGE_REQUIRED` قبل أي حساب) — متوافق مع بوابة IMG-001 (قرار المالك 2026-08-15: «لا اعتماد لعرض بلا صورة»); عملياً كل عرض معتمد يحمل صوراً لأن بوابة الاعتماد ترفض غير ذلك.
+- `soc_pub=2` عند نجاح كل الحسابات فقط؛ نتيجة كل منصة تبقى في `facebook`/`instagram` (توافق شكلي مع العميل) + تفصيل `accounts[]`.
+
+### أثر على الواجهة (Flutter)
+- شاشة جديدة `social_accounts_screen.dart` بمسار `/admin/social-accounts` (صلاحية `manage_config`): إضافة/تعديل/حذف/تحقق + عرض الاسم الحقيقي والتوكن المقنّع.
+- بلاطة جديدة في أقسام الإدارة + مدخل من محرر الإعدادات (قسم صفحات التواصل).
+- `offers_review_screen`: الحفاظ على منع «بلا صور» (متوافق مع IMG-001 — قرار المالك) · نصوص محدّثة · معالجة `NO_SOCIAL_ACCOUNTS_CONFIGURED`.
+- رسائل عربية جديدة في `ErrorUtils` لكل رموز الأخطاء أعلاه.
+
+**المرجع الكامل (خطوات النشر والتشغيل):** `docs/SOCIAL_ACCOUNTS_MANAGEMENT_2026_08_27.md`
+
+## 🆕 2026-08-28 — منصة تليجرام + زر نسخ المنشور
+
+- **Migration:** `2026_08_28_telegram_platform.sql` — توسيع قيود `platform` في `social_accounts` و`social_publications` لتشمل `telegram` + تحديث حاجز المنصة في دالتي `claim_social_publication` و`claim_social_publication_v2` (idempotent).
+- **`social-accounts`:** `PLATFORMS` تشمل تليجرام · التحقق عبر `getChat` (Bot API — ينجح فقط لو البوت مشرف على القناة ويرجع اسمها) · معرف القناة يقبل ‎`-100...` أو `@username`.
+- **`_shared/social_publisher.ts`:** `publishTelegram` — `sendPhoto` (صورة+تعليق ≤1024) أو `sendMediaGroup` (ألبوم حتى 10) أو `sendMessage` كامل (≤4096) ثم الألبوم للنصوص الطويلة · النتيجة `telegram` في ملخص المنصات.
+- **الواجهة:** خيار «تليجرام — قناة (بوت)» بقائمة إضافة الحسابات مع تلميحات المعرف/التوكن · زر 📋 لنسخ نص المنشور الجاهز (`soc_txt`) بشاشة مراجعة العروض (وضع النشر اليدوي).
+- **السبب:** توكنات Meta محجوبة على الحسابات السورية — تليجرام بديل جاهز بلا تسجيل مطورين، والزر يسهّل النشر اليدوي حتى انفتاح الباب.

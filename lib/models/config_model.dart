@@ -81,6 +81,10 @@ class ConfigModel {
   /// رابط تحميل التطبيق — يُدرج أسفل منشورات السوشيال عند تعبئته من الإعدادات (فارغ بانتظار نشر المتجر)
   String get appDownloadLink => _getNested('txts.appDownloadLink', '');
 
+  /// 🔄 أحدث إصدار منشور من التطبيق (فاحص التحديث) — المدير يحدّثه مع كل إصدار
+  /// جديد من محرر الإعدادات، ويقارَن بإصدار الجهاز عند الإقلاع.
+  String get appLatestVersion => _getNested('txts.appLatestVersion', '');
+
   /// رابط مجموعة الواتساب الاحتياطي (في حال حظر الرقم الخاص)
   String get videoRequestGroupLink => _getNested('txts.videoRequestGroupLink', '');
 

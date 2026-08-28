@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_utils.dart';
 import '../../core/utils/social_links.dart';
 import 'payment_channels_editor_screen.dart';
 
@@ -33,6 +35,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _videoWaNumber = TextEditingController();
   /// رابط تحميل التطبيق — يظهر أسفل منشورات السوشيال (فارغ بانتظار نشر المتجر)
   final _appLinkCtrl = TextEditingController();
+  final _appVerCtrl = TextEditingController();
   final _videoGroupLink = TextEditingController();
 
   // ── صفحات التواصل الاجتماعي (قابلة للتوسعة) ──
@@ -88,6 +91,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         final txts = c.texts;
         _videoWaNumber.text = (txts['videoRequestWhatsApp'] ?? '').toString();
         _appLinkCtrl.text = (txts['appDownloadLink'] ?? '').toString();
+        _appVerCtrl.text = (txts['appLatestVersion'] ?? '').toString();
         _videoGroupLink.text = (txts['videoRequestGroupLink'] ?? '').toString();
 
         // Social pages
@@ -137,6 +141,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _videoWaNumber,
       _videoGroupLink,
       _appLinkCtrl,
+      _appVerCtrl,
       _facebookCtrl,
       _instagramCtrl,
       _contactPhone1Ctrl,
@@ -241,10 +246,25 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
                           labelText: 'رابط تحميل التطبيق (يُدرج بمنشورات التواصل عند تعبئته)',
-                          hintText: 'يُترك فارغاً الآن — يُعبّأ برابط المتجر بعد النشر',
+                          hintText: 'https://github.com/hady-albnnai/sweeda-app/releases/latest/download/app-release.apk',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.download, color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      // 🔄 فاحص التحديث: يُملأ مع كل إصدار جديد (نفس رقم pubspec بدون +code)
+                      TextFormField(
+                        controller: _appVerCtrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'أحدث إصدار منشور (فاحص التحديث)',
+                          hintText: 'مثال: 1.1.0 — اتركه فارغاً لتعطيل الفاحص',
+                          helperText: 'عند إصدار نسخة جديدة: حدّث هذا الرقم فيظهر زر التحديث لجميع الأجهزة',
+                          helperMaxLines: 2,
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.system_update, color: AppTheme.primaryGold),
                         ),
                       ),
                       AppTheme.gapHeightMedium,
@@ -296,6 +316,28 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                             'عند تعطيله يبقى العرض في قائمة «جاهز للنشر» ويُنشر من الزر اليدوي.',
                             style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
                           ),
+                        ),
+                      ),
+                      // 2026-08-27: مدخل إدارة حسابات النشر (توكنات فيسبوك/إنستغرام)
+                      // من داخل التطبيق — قبل هذا التاريخ كانت التوكنات مفاتيح
+                      // بيئة ثابتة على السيرفر فقط.
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceBlack,
+                          borderRadius: AppTheme.radiusMedium,
+                          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
+                        ),
+                        child: ListTile(
+                          leading: const Icon(Icons.campaign_outlined, color: AppTheme.primaryGold),
+                          title: const Text('حسابات النشر (التوكنات)',
+                              style: TextStyle(color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+                          subtitle: const Text(
+                            'إضافة/تعديل صفحات فيسبوك وحسابات إنستغرام مع توكناتها — النشر التلقائي يوزّع عليها كلها.',
+                            style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
+                          ),
+                          trailing: const Icon(Icons.chevron_left, color: AppTheme.primaryGold),
+                          onTap: () => context.push('/admin/social-accounts'),
                         ),
                       ),
                       TextFormField(
@@ -793,6 +835,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'videoRequestWhatsApp': _videoWaNumber.text.trim(),
           'videoRequestGroupLink': _videoGroupLink.text.trim(),
           'appDownloadLink': _appLinkCtrl.text.trim(),
+          // 🔄 فاحص التحديث: آخر إصدار منشور — يُقارن بإصدار الجهاز عند الإقلاع
+          'appLatestVersion': _appVerCtrl.text.trim(),
         },
       });
       final d = res.data;
@@ -904,6 +948,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     // UPDATE — فكان زر الحفظ معطّلاً فعلياً رغم رسالة النجاح. (أُصلح 2026-07-29)
     // نرسل الأقسام المسموحة فقط، والسيرفر يدمجها مع الموجود بلا فقدان مفاتيح.
     bool ok = false;
+    // 🩹 2026-08-28: كان الفشل يُبلَع برسالة عامة «فشل الحفظ» (مخالفة §13
+    // No-Silent-Probes) — بلاغ المالك: أدخل عنوان المكتب وحفظ ففشل بلا سبب
+    // واضح. الآن يُعرض رمز الخطأ الفعلي من السيرفر مترجماً.
+    String saveError = '';
     try {
       final res = await SupabaseService().invokeFunction('admin-config', body: {
         'action': 'update_sections',
@@ -918,18 +966,26 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'legalPrice': legalPrice,
         },
       });
-      ok = (res is Map && res['success'] == true);
-      // تحديث الحالة محلياً من القيمة التي أعادها السيرفر (المصدر الموثوق)
-      if (ok && res['value'] is Map) {
-        prov.applyServerConfig(Map<String, dynamic>.from(res['value'] as Map));
+      if (res is Map && res['success'] == true) {
+        ok = true;
+        // تحديث الحالة محلياً من القيمة التي أعادها السيرفر (المصدر الموثوق)
+        if (res['value'] is Map) {
+          prov.applyServerConfig(Map<String, dynamic>.from(res['value'] as Map));
+        }
+      } else if (res is Map) {
+        saveError = (res['error'] ?? 'UNKNOWN_ERROR').toString();
       }
-    } catch (_) {
+    } catch (e) {
       ok = false;
+      saveError = ErrorUtils.normalize(e);
     }
     if (mounted) {
       setState(() => _saving = false);
-      AppTheme.showSnackBar(context,
-        SnackBar(content: Text(ok ? 'تم حفظ الإعدادات ✅' : 'فشل الحفظ ❌')),
+      AppTheme.showSnackBar(
+        context,
+        SnackBar(content: Text(ok
+            ? 'تم حفظ الإعدادات ✅'
+            : 'فشل الحفظ: ${ErrorUtils.arabicMessage(saveError.isEmpty ? 'UNKNOWN_ERROR' : saveError)}')),
       );
     }
   }

@@ -44,6 +44,17 @@ class ErrorUtils {
       'EMPTY_RESPONSE',
       'METHOD_NOT_ALLOWED',
       'META_SECRETS_NOT_CONFIGURED',
+      'NO_SOCIAL_ACCOUNTS_CONFIGURED',
+      'INSTAGRAM_IMAGE_REQUIRED',
+      'INVALID_PLATFORM',
+      'ACCOUNT_NAME_REQUIRED',
+      'INVALID_ACCOUNT_EXTERNAL_ID',
+      'ACCESS_TOKEN_REQUIRED',
+      'INVALID_ACCESS_TOKEN',
+      'ACCOUNT_NOT_FOUND',
+      'ACCOUNT_ID_REQUIRED',
+      'ACCOUNT_SAVE_FAILED',
+      'META_VERIFY_EMPTY_RESPONSE',
       'OFFER_NOT_APPROVED',
       'OPEN_CONSULTATION_EXISTS',
       'PENDING_CONSULTATION_PAYMENT_EXISTS',
@@ -55,6 +66,17 @@ class ErrorUtils {
 
     for (final code in knownCodes) {
       if (raw.contains(code)) return code;
+    }
+
+    // 🩹 2026-08-28: أكواد تحقق ديناميكية من app_assert_text_len بالسيرفر —
+    // تُبنى وقت التشغيل مثل TITLE_TOO_LONG/TITLE_TOO_SHORT/TITLE_INVALID_CHARS
+    // فلا يمكن إدراجها بقائمة ثابتة. (بلاغ: إرسال عرض للمراجعة يفشل برسالة
+    // «خلل بالاتصال بالخادم» عامة — كان الرمز يضيع قبل الوصول للقاموس.)
+    final dynAssert =
+        RegExp(r'\b([A-Z][A-Z0-9]+?)_(TOO_SHORT|TOO_LONG|INVALID_CHARS)\b')
+            .firstMatch(raw);
+    if (dynAssert != null) {
+      return '${dynAssert.group(1)}_${dynAssert.group(2)}';
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -546,6 +568,28 @@ class ErrorUtils {
         return 'طريقة الطلب غير مسموحة.';
       case 'META_SECRETS_NOT_CONFIGURED':
         return 'بيانات ربط Meta غير مضبوطة على السيرفر بعد.';
+      case 'NO_SOCIAL_ACCOUNTS_CONFIGURED':
+        return 'لا توجد حسابات نشر مفعّلة — أضفها من «حسابات النشر» في الإدارة.';
+      case 'INSTAGRAM_IMAGE_REQUIRED':
+        return 'يحتاج إنستغرام إلى صورة عامة صالحة واحدة على الأقل.';
+      case 'INVALID_PLATFORM':
+        return 'منصة النشر غير مدعومة.';
+      case 'ACCOUNT_NAME_REQUIRED':
+        return 'اكتب اسماً للحساب.';
+      case 'INVALID_ACCOUNT_EXTERNAL_ID':
+        return 'رقم الحساب/الصفحة غير صالح.';
+      case 'ACCESS_TOKEN_REQUIRED':
+        return 'الصق توكن الوصول.';
+      case 'INVALID_ACCESS_TOKEN':
+        return 'توكن الوصول غير صالح.';
+      case 'ACCOUNT_NOT_FOUND':
+        return 'الحساب غير موجود.';
+      case 'ACCOUNT_ID_REQUIRED':
+        return 'معرّف الحساب مطلوب.';
+      case 'ACCOUNT_SAVE_FAILED':
+        return 'تعذر حفظ الحساب.';
+      case 'META_VERIFY_EMPTY_RESPONSE':
+        return 'لم يصل رد صالح من Meta أثناء التحقق.';
       case 'OFFER_NOT_APPROVED':
         return 'يجب اعتماد العرض ونشره داخل التطبيق أولاً.';
       case 'SOCIAL_PUBLISH_NOT_ENABLED':
@@ -556,6 +600,14 @@ class ErrorUtils {
         return 'النشر قيد التنفيذ حالياً؛ انتظر قليلاً ثم حدّث القائمة.';
       case 'PARTIAL_OR_TOTAL_FAILURE':
         return 'تعذر النشر على منصة واحدة أو أكثر؛ أعد المحاولة بأمان.';
+      // 🩹 2026-08-28: أكواد app_assert_text_len الديناميكية (بلاغ العرض
+      // المرفوض برسالة عامة) — title هو الحقل الوحيد المُتحقَق حالياً.
+      case 'TITLE_TOO_SHORT':
+        return 'العنوان قصير جداً — حرفان على الأقل.';
+      case 'TITLE_TOO_LONG':
+        return 'العنوان طويل جداً — 120 حرفاً كحد أقصى.';
+      case 'TITLE_INVALID_CHARS':
+        return 'العنوان يحتوي محارف غير مسموحة (< >).';
       default:
         // 🗣️ I18N-ERR-001: كان يُعيد الرمز الإنجليزي الخام للمستخدم.
         // الآن: القاموس الشامل أولاً، ثم رسالة عربية عامة — ولا يظهر رمز

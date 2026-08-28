@@ -30,6 +30,7 @@ const ALLOWED_TEXT_KEYS = new Set([
   "videoRequestWhatsApp",
   "videoRequestGroupLink",
   "appDownloadLink",
+  "appLatestVersion",
   // نصوص الحالة المعروضة للمستخدم
   "plg",
   "bnRsn",
