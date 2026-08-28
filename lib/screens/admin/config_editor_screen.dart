@@ -5,6 +5,7 @@ import '../../providers/config_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/error_utils.dart';
 import '../../core/utils/social_links.dart';
 import 'payment_channels_editor_screen.dart';
 
@@ -927,6 +928,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     // UPDATE — فكان زر الحفظ معطّلاً فعلياً رغم رسالة النجاح. (أُصلح 2026-07-29)
     // نرسل الأقسام المسموحة فقط، والسيرفر يدمجها مع الموجود بلا فقدان مفاتيح.
     bool ok = false;
+    // 🩹 2026-08-28: كان الفشل يُبلَع برسالة عامة «فشل الحفظ» (مخالفة §13
+    // No-Silent-Probes) — بلاغ المالك: أدخل عنوان المكتب وحفظ ففشل بلا سبب
+    // واضح. الآن يُعرض رمز الخطأ الفعلي من السيرفر مترجماً.
+    String saveError = '';
     try {
       final res = await SupabaseService().invokeFunction('admin-config', body: {
         'action': 'update_sections',
@@ -941,18 +946,26 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'legalPrice': legalPrice,
         },
       });
-      ok = (res is Map && res['success'] == true);
-      // تحديث الحالة محلياً من القيمة التي أعادها السيرفر (المصدر الموثوق)
-      if (ok && res['value'] is Map) {
-        prov.applyServerConfig(Map<String, dynamic>.from(res['value'] as Map));
+      if (res is Map && res['success'] == true) {
+        ok = true;
+        // تحديث الحالة محلياً من القيمة التي أعادها السيرفر (المصدر الموثوق)
+        if (res['value'] is Map) {
+          prov.applyServerConfig(Map<String, dynamic>.from(res['value'] as Map));
+        }
+      } else if (res is Map) {
+        saveError = (res['error'] ?? 'UNKNOWN_ERROR').toString();
       }
-    } catch (_) {
+    } catch (e) {
       ok = false;
+      saveError = ErrorUtils.normalize(e);
     }
     if (mounted) {
       setState(() => _saving = false);
-      AppTheme.showSnackBar(context,
-        SnackBar(content: Text(ok ? 'تم حفظ الإعدادات ✅' : 'فشل الحفظ ❌')),
+      AppTheme.showSnackBar(
+        context,
+        SnackBar(content: Text(ok
+            ? 'تم حفظ الإعدادات ✅'
+            : 'فشل الحفظ: ${ErrorUtils.arabicMessage(saveError.isEmpty ? 'UNKNOWN_ERROR' : saveError)}')),
       );
     }
   }
