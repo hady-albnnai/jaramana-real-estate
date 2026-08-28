@@ -47,9 +47,11 @@ BEGIN
   END LOOP;
 END $$;
 
--- ── 2) ملفات التخزين التشغيلية (تبقى ids_private + config_assets) ──
-DELETE FROM storage.objects
-WHERE bucket_id IN ('offer_images', 'consultation_files', 'expediting_docs', 'payment_proofs');
+-- ── 2) ملفات التخزين: تُحذف عبر Storage API من سكربت النشر (ليس هنا!) ──
+-- (Supabase يمنع DELETE المباشر من storage.objects عبر تريغر protect_delete
+--  — خطأ 42501 «Use the Storage API instead». عُرِض حياً 2026-08-28.)
+-- الباكيتات المستهدفة بالحذف: offer_images, consultation_files,
+-- expediting_docs, payment_proofs — وتبقى ids_private و config_assets.
 
 -- ── 3) تصفير الحقول التشغيلية للمستخدمين (الهوية والأدوار كما هي) ──
 UPDATE public.users SET

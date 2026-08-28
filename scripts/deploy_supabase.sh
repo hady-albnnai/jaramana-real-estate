@@ -29,6 +29,53 @@ echo "▶ المشروع: $REF | migrations=$APPLY_MIGRATIONS | cleanup=$CLEANUP
 if [ "$WIPE_DATA" = "true" ]; then
   echo "══════════ مسح بيانات التشغيل (one-time) ══════════"
   run_sql "wipe operational data" "$(cat scripts/wipe_operational_data.sql)"
+
+  # المرحلة 2: ملفات التخزين عبر Storage API (الحذف SQL ممنوع بتريغر
+  # protect_delete — خطأ 42501 مؤكد حياً). تحتاج SUPABASE_SERVICE_KEY.
+  SERVICE_KEY="${SUPABASE_SERVICE_KEY:-}"
+  if [ -z "$SERVICE_KEY" ]; then
+    echo "  [WIPE-STORAGE] WARNING: SUPABASE_SERVICE_KEY غير مضبوط — الملفات لم تُحذف (صفوف القاعدة محذوفة والملفات تيتمت)."
+  else
+    python3 - "$REF" "$SERVICE_KEY" <<'PY'
+import json, sys, urllib.request
+
+ref, key = sys.argv[1], sys.argv[2]
+base = f"https://{ref}.supabase.co"
+buckets = ['offer_images', 'consultation_files', 'expediting_docs', 'payment_proofs']
+
+def http_call(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(base + path, data=data, method=method)
+    req.add_header('Authorization', f'Bearer {key}')
+    if data:
+        req.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        raw = resp.read().decode() or '[]'
+        return resp.status, json.loads(raw)
+
+for bucket in buckets:
+    deleted = failed = 0
+    while True:
+        try:
+            _, items = http_call('POST', f'/storage/v1/object/list/{bucket}',
+                                 {"prefix": "", "limit": 100, "offset": 0})
+            names = [i.get('name') for i in (items or []) if i.get('name')]
+            if not names:
+                break
+            status, _ = http_call('DELETE', f'/storage/v1/object/{bucket}',
+                                  {"prefixes": names})
+            if status < 300:
+                deleted += len(names)
+            else:
+                failed = len(names)
+                break
+        except Exception as e:
+            print(f"  [WIPE-STORAGE] {bucket} error: {e}")
+            failed = 1
+            break
+    print(f"  [WIPE-STORAGE] {bucket}: deleted={deleted} failed={failed}")
+PY
+  fi
 fi
 
 # ── تنفيذ استعلام SQL وإظهار النتيجة ──

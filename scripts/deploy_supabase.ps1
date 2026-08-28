@@ -31,7 +31,10 @@ param(
     # 2026-08-28: one-time full operational-data wipe (owner request) - keeps
     # users/staff/config/sessions/devices + ids_private & config_assets buckets.
     # NEVER a permanent migration: runs ONLY when this switch is passed explicitly.
-    [switch]$WipeData
+    [switch]$WipeData,
+    # Service role key - needed ONLY for the storage-file cleanup phase of
+    # -WipeData (Storage API rejects SQL deletes: protect_delete trigger).
+    [string]$ServiceKey = $env:SUPABASE_SERVICE_KEY
 )
 
 $ErrorActionPreference = 'Stop'
@@ -126,9 +129,57 @@ Write-Host "Project: $REF | migrations=$(-not $SkipMigrations) cleanup=$(-not $S
 # configs, staff sessions, devices, ids_private and config_assets buckets.
 if ($WipeData) {
     Write-Host "===== WIPE OPERATIONAL DATA (one-time) ====="
+    # Phase 1: database rows (SQL via Management API)
     $wipePath = Join-Path $Root 'scripts\wipe_operational_data.sql'
     $sql = [System.IO.File]::ReadAllText($wipePath, [System.Text.Encoding]::UTF8)
     Invoke-Sql -Label 'wipe operational data' -Sql $sql -Fatal
+
+    # Phase 2: storage files via Storage API (SQL DELETE is blocked by the
+    # platform trigger storage.protect_delete -> error 42501, confirmed live).
+    if ([string]::IsNullOrWhiteSpace($ServiceKey)) {
+        Write-Host "  [WIPE-STORAGE] WARNING: -ServiceKey not provided - storage files were NOT deleted (DB rows are gone; files become orphans). Re-run with -ServiceKey to clean them." 
+    } else {
+        $BASE = "https://$REF.supabase.co"
+        foreach ($bucket in @('offer_images','consultation_files','expediting_docs','payment_proofs')) {
+            $deletedCount = 0
+            $failCount = 0
+            while ($true) {
+                $tmpList  = Join-Path $env:TEMP ("wl_" + [guid]::NewGuid().ToString('N') + ".json")
+                $outList  = Join-Path $env:TEMP ("wlout_" + [guid]::NewGuid().ToString('N') + ".json")
+                [System.IO.File]::WriteAllText($tmpList, '{"prefix":"","limit":100,"offset":0}', (New-Object System.Text.UTF8Encoding($false)))
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                $null = & curl.exe -sS --max-time 60 -X POST "$BASE/storage/v1/object/list/$bucket" `
+                    -H "Authorization: Bearer $ServiceKey" -H "Content-Type: application/json" `
+                    --data-binary "@$tmpList" -o $outList 2>$null
+                $ErrorActionPreference = $prevEAP
+                $names = @()
+                if (Test-Path $outList) {
+                    try { $names = @((Get-Content $outList -Raw -Encoding UTF8 | ConvertFrom-Json) | ForEach-Object { $_.name }) } catch {}
+                }
+                Remove-Item $tmpList,$outList -ErrorAction SilentlyContinue
+                if ($names.Count -eq 0) { break }
+                $tmpDel = Join-Path $env:TEMP ("wd_" + [guid]::NewGuid().ToString('N') + ".json")
+                $outDel = Join-Path $env:TEMP ("wdout_" + [guid]::NewGuid().ToString('N') + ".json")
+                [System.IO.File]::WriteAllText($tmpDel, (@{ prefixes = $names } | ConvertTo-Json -Compress), (New-Object System.Text.UTF8Encoding($false)))
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                $code = & curl.exe -sS --max-time 120 -X DELETE "$BASE/storage/v1/object/$bucket" `
+                    -H "Authorization: Bearer $ServiceKey" -H "Content-Type: application/json" `
+                    --data-binary "@$tmpDel" -o $outDel -w "%{http_code}" 2>$null
+                $ErrorActionPreference = $prevEAP
+                Remove-Item $tmpDel,$outDel -ErrorAction SilentlyContinue
+                if ($code -eq '200' -or $code -eq '201' -or $code -eq '204') {
+                    $deletedCount += $names.Count
+                } else {
+                    # فشل دفعة الحذف: توقف عن هذا الباكيت (تقرير واضح بدل حلقة
+                    # لا نهائية — القائمة ستعيد نفس الأسماء ما دامت موجودة)
+                    $failCount += $names.Count
+                    Write-Host "  [WIPE-STORAGE] $bucket delete batch HTTP $code - stopping this bucket (files remain as orphans)"
+                    break
+                }
+            }
+            Write-Host "  [WIPE-STORAGE] ${bucket}: deleted=$deletedCount failed=$failCount"
+        }
+    }
 }
 
 
