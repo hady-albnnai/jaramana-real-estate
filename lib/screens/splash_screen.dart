@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../core/services/app_update_service.dart';
 import '../core/theme/app_theme.dart';
 import '../core/network/supabase_service.dart';
 import '../providers/config_provider.dart';
@@ -67,6 +68,20 @@ class _SplashScreenState extends State<SplashScreen>
       Future.delayed(const Duration(milliseconds: 1800)),
     ]);
     if (!mounted) return;
+
+    // 🔄 فاحص التحديث (2026-08-28 — وضع التوزيع المباشر بلا متجر): إن كان
+    // إصدار الجهاز أقدم من txts.appLatestVersion تظهر نافذة تحديث مرة واحدة
+    // بالجلسة مع زر تحميل مباشر (txts.appDownloadLink). تُعرض قبل التوجيه حتى
+    // يراها الجميع (زائر/مستخدم/موظف) مهما كانت وجهتهم.
+    final cfg = config.config;
+    if (cfg != null) {
+      await AppUpdateService.showIfAvailable(
+        context,
+        cfg.appLatestVersion,
+        cfg.appDownloadLink,
+      );
+      if (!mounted) return;
+    }
 
     // ✅ فحص جلسة إيميل نشطة غير معالجة (cold start من deep link)
     // عندما يفتح التطبيق من رابط الماجيك لينك، قد تكون جلسة Supabase

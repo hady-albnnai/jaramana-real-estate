@@ -35,6 +35,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _videoWaNumber = TextEditingController();
   /// رابط تحميل التطبيق — يظهر أسفل منشورات السوشيال (فارغ بانتظار نشر المتجر)
   final _appLinkCtrl = TextEditingController();
+  final _appVerCtrl = TextEditingController();
   final _videoGroupLink = TextEditingController();
 
   // ── صفحات التواصل الاجتماعي (قابلة للتوسعة) ──
@@ -90,6 +91,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         final txts = c.texts;
         _videoWaNumber.text = (txts['videoRequestWhatsApp'] ?? '').toString();
         _appLinkCtrl.text = (txts['appDownloadLink'] ?? '').toString();
+        _appVerCtrl.text = (txts['appLatestVersion'] ?? '').toString();
         _videoGroupLink.text = (txts['videoRequestGroupLink'] ?? '').toString();
 
         // Social pages
@@ -139,6 +141,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _videoWaNumber,
       _videoGroupLink,
       _appLinkCtrl,
+      _appVerCtrl,
       _facebookCtrl,
       _instagramCtrl,
       _contactPhone1Ctrl,
@@ -243,10 +246,25 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
                           labelText: 'رابط تحميل التطبيق (يُدرج بمنشورات التواصل عند تعبئته)',
-                          hintText: 'يُترك فارغاً الآن — يُعبّأ برابط المتجر بعد النشر',
+                          hintText: 'https://github.com/hady-albnnai/sweeda-app/releases/latest/download/app-release.apk',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.download, color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      // 🔄 فاحص التحديث: يُملأ مع كل إصدار جديد (نفس رقم pubspec بدون +code)
+                      TextFormField(
+                        controller: _appVerCtrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'أحدث إصدار منشور (فاحص التحديث)',
+                          hintText: 'مثال: 1.1.0 — اتركه فارغاً لتعطيل الفاحص',
+                          helperText: 'عند إصدار نسخة جديدة: حدّث هذا الرقم فيظهر زر التحديث لجميع الأجهزة',
+                          helperMaxLines: 2,
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.system_update, color: AppTheme.primaryGold),
                         ),
                       ),
                       AppTheme.gapHeightMedium,
@@ -817,6 +835,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'videoRequestWhatsApp': _videoWaNumber.text.trim(),
           'videoRequestGroupLink': _videoGroupLink.text.trim(),
           'appDownloadLink': _appLinkCtrl.text.trim(),
+          // 🔄 فاحص التحديث: آخر إصدار منشور — يُقارن بإصدار الجهاز عند الإقلاع
+          'appLatestVersion': _appVerCtrl.text.trim(),
         },
       });
       final d = res.data;
