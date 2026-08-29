@@ -6,7 +6,7 @@ contain-style scaling. Arabic shaping dependencies are installed outside the
 repository:
 
   python3 -m pip install --target /tmp/posterdeps \
-    pillow numpy arabic-reshaper python-bidi qrcode
+    pillow numpy qrcode uharfbuzz freetype-py
   PYTHONPATH=/tmp/posterdeps python3 marketing/thanks_loraneem/build_thanks_post.py
 """
 from __future__ import annotations
@@ -16,10 +16,10 @@ import random
 from functools import lru_cache
 from pathlib import Path
 
-import arabic_reshaper
+import freetype
 import numpy as np
 import qrcode
-from bidi.algorithm import get_display
+import uharfbuzz as hb
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,10 +56,89 @@ def font(size: int, family: str = "cairo", weight: str = "Regular") -> ImageFont
     return f
 
 
+WEIGHT_VALUES = {
+    "ExtraLight": 200,
+    "Light": 300,
+    "Regular": 400,
+    "Medium": 500,
+    "SemiBold": 600,
+    "Bold": 700,
+    "ExtraBold": 800,
+    "Black": 900,
+}
+
+
+@lru_cache(maxsize=4)
+def _font_bytes(family: str) -> bytes:
+    return (CAIRO if family == "cairo" else KUFI).read_bytes()
+
+
 @lru_cache(maxsize=256)
-def shape_ar(text: str) -> str:
-    """Return display-order Arabic glyphs for Pillow builds without libraqm."""
-    return get_display(arabic_reshaper.reshape(text))
+def render_arabic_mask(text: str, size: int, family: str,
+                       weight: str) -> Image.Image:
+    """Shape and rasterize Arabic with HarfBuzz + FreeType.
+
+    Pillow in the production sandbox has no libraqm. The former fallback used
+    Unicode Presentation Forms, but Cairo intentionally omits several of those
+    legacy code points; isolated alifs, waws and hamzas therefore appeared as
+    narrow tofu rectangles. HarfBuzz shapes the original logical Arabic into
+    actual font glyph IDs, preserving every letter, ligature and diacritic.
+    """
+    path = CAIRO if family == "cairo" else KUFI
+    weight_value = WEIGHT_VALUES.get(weight, 400)
+
+    hb_face = hb.Face(_font_bytes(family))
+    hb_font = hb.Font(hb_face)
+    hb_font.scale = (size * 64, size * 64)
+    hb_font.set_variations({"wght": weight_value})
+
+    buffer = hb.Buffer()
+    buffer.add_str(text)
+    buffer.guess_segment_properties()
+    hb.shape(hb_font, buffer, {"kern": True, "liga": True, "calt": True})
+
+    ft_face = freetype.Face(str(path))
+    ft_face.set_pixel_sizes(0, size)
+    try:
+        coords = [weight_value, 0] if family == "cairo" else [weight_value]
+        ft_face.set_var_design_coords(coords)
+    except (AttributeError, freetype.FT_Exception):
+        pass
+
+    glyphs: list[tuple[int, int, np.ndarray]] = []
+    pen_x = 0
+    pen_y = 0
+    load_flags = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_NORMAL
+    for info, pos in zip(buffer.glyph_infos, buffer.glyph_positions):
+        ft_face.load_glyph(info.codepoint, load_flags)
+        bitmap = ft_face.glyph.bitmap
+        raw = np.asarray(bitmap.buffer, dtype=np.uint8)
+        if bitmap.rows and bitmap.pitch:
+            pixels = raw.reshape((bitmap.rows, abs(bitmap.pitch)))[:, :bitmap.width]
+        else:
+            pixels = np.zeros((0, 0), dtype=np.uint8)
+        gx = round((pen_x + pos.x_offset) / 64) + ft_face.glyph.bitmap_left
+        gy = -round((pen_y + pos.y_offset) / 64) - ft_face.glyph.bitmap_top
+        glyphs.append((gx, gy, pixels))
+        pen_x += pos.x_advance
+        pen_y += pos.y_advance
+
+    visible = [(gx, gy, pixels) for gx, gy, pixels in glyphs if pixels.size]
+    if not visible:
+        return Image.new("L", (1, 1), 0)
+    min_x = min(gx for gx, _, _ in visible)
+    max_x = max(gx + pixels.shape[1] for gx, _, pixels in visible)
+    min_y = min(gy for _, gy, _ in visible)
+    max_y = max(gy + pixels.shape[0] for _, gy, pixels in visible)
+    pad = 3
+    result = np.zeros((max_y - min_y + pad * 2,
+                       max_x - min_x + pad * 2), dtype=np.uint8)
+    for gx, gy, pixels in visible:
+        x0 = gx - min_x + pad
+        y0 = gy - min_y + pad
+        roi = result[y0:y0 + pixels.shape[0], x0:x0 + pixels.shape[1]]
+        np.maximum(roi, pixels, out=roi)
+    return Image.fromarray(result, "L")
 
 
 def rgba_layer(size: tuple[int, int]) -> Image.Image:
@@ -78,6 +157,20 @@ def centered_x(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.FreeTypeFont
     return int((width - (box[2] - box[0])) / 2 - box[0])
 
 
+def _place_mask(mask: Image.Image, canvas_size: tuple[int, int],
+                x: int, y: int) -> Image.Image:
+    placed = Image.new("L", canvas_size, 0)
+    placed.paste(mask, (x, y))
+    return placed
+
+
+def _color_mask(mask: Image.Image, color: tuple[int, int, int],
+                opacity: float = 1.0) -> Image.Image:
+    layer = Image.new("RGBA", mask.size, (*color, 0))
+    layer.putalpha(mask.point(lambda p: round(p * opacity)))
+    return layer
+
+
 def draw_centered(
     canvas: Image.Image,
     text: str,
@@ -92,19 +185,35 @@ def draw_centered(
     stroke: int = 0,
     stroke_fill: tuple[int, int, int] = (0, 0, 0),
 ) -> tuple[int, int, int, int]:
+    if arabic:
+        glyph_mask = render_arabic_mask(text, size, family, weight)
+        x = (canvas.width - glyph_mask.width) // 2
+        # Match Pillow's former top bearing so the approved composition keeps
+        # its exact rhythm while HarfBuzz preserves marks above the letters.
+        actual_y = y + round(size * .50)
+        mask = _place_mask(glyph_mask, canvas.size, x, actual_y)
+        if shadow:
+            shadow_mask = mask.filter(ImageFilter.GaussianBlur(max(2, size / 24)))
+            shadow_layer = _color_mask(shadow_mask, (0, 0, 0), .78)
+            canvas.alpha_composite(shadow_layer, (0, max(2, size // 32)))
+        if stroke:
+            outline = mask.filter(ImageFilter.MaxFilter(stroke * 2 + 1))
+            canvas.alpha_composite(_color_mask(outline, stroke_fill))
+        canvas.alpha_composite(_color_mask(mask, color))
+        return (x, actual_y, x + glyph_mask.width, actual_y + glyph_mask.height)
+
     layer = rgba_layer(canvas.size)
     d = ImageDraw.Draw(layer)
-    visual = shape_ar(text) if arabic else text
     fnt = font(size, family, weight)
-    x = centered_x(d, visual, fnt, canvas.width)
-    box = d.textbbox((x, y), visual, font=fnt, stroke_width=stroke)
+    x = centered_x(d, text, fnt, canvas.width)
+    box = d.textbbox((x, y), text, font=fnt, stroke_width=stroke)
     if shadow:
         glow = rgba_layer(canvas.size)
         gd = ImageDraw.Draw(glow)
-        gd.text((x, y + max(2, size // 32)), visual, font=fnt, fill=(0, 0, 0, 210),
+        gd.text((x, y + max(2, size // 32)), text, font=fnt, fill=(0, 0, 0, 210),
                 stroke_width=stroke + max(1, size // 45), stroke_fill=(0, 0, 0, 180))
         canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(max(2, size / 24))))
-    d.text((x, y), visual, font=fnt, fill=(*color, 255), stroke_width=stroke,
+    d.text((x, y), text, font=fnt, fill=(*color, 255), stroke_width=stroke,
            stroke_fill=(*stroke_fill, 255))
     canvas.alpha_composite(layer)
     return box
@@ -123,21 +232,24 @@ def draw_gradient_text(
     arabic: bool = True,
     glow_color: tuple[int, int, int] | None = None,
 ) -> tuple[int, int, int, int]:
-    visual = shape_ar(text) if arabic else text
-    fnt = font(size, family, weight)
-    mask = Image.new("L", canvas.size, 0)
-    md = ImageDraw.Draw(mask)
-    x = centered_x(md, visual, fnt, canvas.width)
-    box = md.textbbox((x, y), visual, font=fnt)
-    md.text((x, y), visual, font=fnt, fill=255)
+    if arabic:
+        glyph_mask = render_arabic_mask(text, size, family, weight)
+        x = (canvas.width - glyph_mask.width) // 2
+        actual_y = y + round(size * .50)
+        mask = _place_mask(glyph_mask, canvas.size, x, actual_y)
+        box = (x, actual_y, x + glyph_mask.width, actual_y + glyph_mask.height)
+    else:
+        fnt = font(size, family, weight)
+        mask = Image.new("L", canvas.size, 0)
+        md = ImageDraw.Draw(mask)
+        x = centered_x(md, text, fnt, canvas.width)
+        box = md.textbbox((x, y), text, font=fnt)
+        md.text((x, y), text, font=fnt, fill=255)
 
     if glow_color:
         blur = mask.filter(ImageFilter.GaussianBlur(max(5, size / 12)))
-        glow = Image.new("RGBA", canvas.size, (*glow_color, 0))
-        glow.putalpha(blur.point(lambda p: int(p * 0.22)))
-        canvas.alpha_composite(glow)
+        canvas.alpha_composite(_color_mask(blur, glow_color, .22))
 
-    yy = np.linspace(0, 1, canvas.height, dtype=np.float32)[:, None]
     # Normalize gradient to the actual text vertical extent, not the full image.
     top_y, bottom_y = max(0, box[1]), min(canvas.height - 1, box[3])
     rel = np.clip((np.arange(canvas.height)[:, None] - top_y) /
@@ -305,16 +417,17 @@ def draw_sender(canvas: Image.Image, box: tuple[int, int, int, int], logo_size: 
                 x1-24, y0+(y1-y0-logo_size)//2+logo_size)
     paste_contained(canvas, OFFICE_LOGO, logo_box)
 
-    layer = rgba_layer(canvas.size)
-    d = ImageDraw.Draw(layer)
-    title = shape_ar("المكتب العقاري الإلكتروني")
-    subtitle = shape_ar("السويداء  •  أمان — دقة — مصداقية")
-    tf = font(title_size, "cairo", "Bold")
-    sf = font(sub_size, "cairo", "SemiBold")
+    title_mask = render_arabic_mask(
+        "المكتب العقاري الإلكتروني", title_size, "cairo", "Bold")
+    subtitle_mask = render_arabic_mask(
+        "السويداء  •  أمان — دقة — مصداقية", sub_size, "cairo", "SemiBold")
     tx = logo_box[0] - 25
-    d.text((tx, y0 + int((y1-y0)*.19)), title, font=tf, fill=(*WHITE, 255), anchor="ra")
-    d.text((tx, y0 + int((y1-y0)*.58)), subtitle, font=sf, fill=(*GOLD, 238), anchor="ra")
-    canvas.alpha_composite(layer)
+    title_y = y0 + int((y1-y0)*.23)
+    subtitle_y = y0 + int((y1-y0)*.61)
+    canvas.alpha_composite(_color_mask(title_mask, WHITE),
+                           (tx-title_mask.width, title_y))
+    canvas.alpha_composite(_color_mask(subtitle_mask, GOLD, .94),
+                           (tx-subtitle_mask.width, subtitle_y))
 
 
 def draw_divider(canvas: Image.Image, y: int, width: int) -> None:
@@ -333,14 +446,12 @@ def draw_badge(canvas: Image.Image, box: tuple[int, int, int, int], size: int) -
     rounded_panel(canvas, box, radius=(box[3]-box[1])//2,
                   fill=(11, 17, 29, 225), border_a=GOLD,
                   border_b=CYAN, border_width=2, glow=(26, 223, 215))
-    text = shape_ar("شركاء النجاح التقني")
-    layer = rgba_layer(canvas.size)
-    d = ImageDraw.Draw(layer)
-    fnt = font(size, "kufi", "Bold")
+    text_mask = render_arabic_mask(
+        "شركاء النجاح التقني", size, "kufi", "Bold")
     cx = (box[0] + box[2]) // 2
     cy = (box[1] + box[3]) // 2
-    d.text((cx, cy), text, font=fnt, fill=(*GOLD_LIGHT, 255), anchor="mm")
-    canvas.alpha_composite(layer)
+    canvas.alpha_composite(_color_mask(text_mask, GOLD_LIGHT),
+                           (cx-text_mask.width//2, cy-text_mask.height//2))
 
 
 def draw_phone_icon(draw: ImageDraw.ImageDraw, cx: int, cy: int, scale: float,

@@ -26,6 +26,7 @@
   - `0933713023`
   - `0938862469`
 - رابط الصفحة المختصر داخل التصميم، والرابط الكامل القابل للنقر في الكابشن.
+- النص العربي يُشكّل عبر HarfBuzz ويُرسم عبر FreeType، لضمان ظهور الحروف المتصلة والهمزات والتشكيل كاملاً من دون محارف بديلة.
 
 ## توثيق الأرقام
 
@@ -40,7 +41,7 @@
 
 ```bash
 python3 -m pip install --target /tmp/posterdeps \
-  pillow numpy arabic-reshaper python-bidi qrcode
+  pillow numpy qrcode uharfbuzz freetype-py
 PYTHONPATH=/tmp/posterdeps \
   python3 marketing/thanks_loraneem/build_thanks_post.py
 ```
