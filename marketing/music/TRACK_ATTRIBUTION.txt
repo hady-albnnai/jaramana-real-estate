@@ -1,0 +1,43 @@
+SELECTED TRACK
+==============
+
+Title: Cinematic Dubstep
+Artist: Tony Vodnik / Kulakovka
+Pixabay media ID: 304342
+Source page: https://pixabay.com/music/dubstep-cinematic-dubstep-304342/
+License: Pixabay Content License
+License URL: https://pixabay.com/service/license-summary/
+Content ID status on source page: Registered
+
+The Pixabay Content License permits free use and adaptation and does not require
+attribution. The project still includes the following credit voluntarily.
+
+POST DESCRIPTION
+================
+
+Music: “Cinematic Dubstep” by Tony Vodnik (Kulakovka)
+Music provided by Pixabay — Track ID: 304342
+https://pixabay.com/music/dubstep-cinematic-dubstep-304342/
+
+SOURCE FILE
+===========
+
+marketing/music/cinematic-dubstep-304342.mp3
+
+Verified source properties:
+- MP3 / MPEG audio
+- Stereo, 44.1 kHz
+- 256 kbps
+- Duration: 02:38.59
+- Size: 5,074,860 bytes
+
+FINAL EDIT
+==========
+
+The 60-second soundtrack combines:
+- 00:00–00:53 from the source opening
+- 02:29–02:38.59 from the source outro
+- 2.5-second equal-power-style crossfade
+- final loudness target: -14 LUFS, true peak ceiling -1.5 dB
+
+This gives the reel a real musical ending without cutting the source mid-phrase.
