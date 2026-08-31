@@ -1,6 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../core/utils/social_post_builder.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/admin_provider.dart';
 import '../../providers/auth_provider.dart';
@@ -167,18 +173,86 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
     }
   }
 
-  /// 📋 نسخ نص المنشور الاجتماعي الجاهز — وضع النشر اليدوي (2026-08-28):
-  /// توكن Meta محجوب على الحسابات السورية، فيُنسخ النص المولَّد تلقائياً
-  /// (`soc_txt`) بضغطة ويلصق يدوياً على صفحة/قناة المكتب. الصور تُرفع من
-  /// شاشة معاينة العرض (/offer/:id).
+  /// 📋 2026-08-31: قالبان مصممان لكل منصة (فيسبوك/إنستغرام) — يتولَّدان
+  /// وقت النسخ من بيانات العرض مباشرة عبر SocialPostBuilder.
   Future<void> _copySocialText(OfferModel o) async {
-    final text = o.socTxt.trim();
-    if (text.length <= 10) {
-      _snack('لا يوجد نص منشور جاهز لهذا العرض');
+    final config = context.read<ConfigProvider>().config;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppTheme.surfaceBlack,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.facebook, color: AppTheme.infoBlue),
+              title: const Text('نسخ نص فيسبوك',
+                  style: TextStyle(
+                      color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+              subtitle: const Text('روابط قابلة للنقر — مناسب لصفحة المكتب',
+                  style: TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeCaption)),
+              onTap: () => Navigator.pop(sheetContext, 'fb'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined,
+                  color: AppTheme.primaryGold),
+              title: const Text('نسخ نص إنستغرام',
+                  style: TextStyle(
+                      color: AppTheme.textWhite, fontWeight: FontWeight.bold)),
+              subtitle: const Text('مختصر — كامل الإعلان يظهر قبل «المزيد»',
+                  style: TextStyle(
+                      color: AppTheme.textGrey,
+                      fontSize: AppTheme.fontSizeCaption)),
+              onTap: () => Navigator.pop(sheetContext, 'ig'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    final text = choice == 'fb'
+        ? SocialPostBuilder.facebook(o, config)
+        : SocialPostBuilder.instagram(o, config);
+    await Clipboard.setData(ClipboardData(text: text));
+    _snack('📋 تم نسخ نص ${choice == 'fb' ? 'فيسبوك' : 'إنستغرام'}'
+        ' (${text.length} محرف) — الصقه في المنشور');
+  }
+
+  /// 📤 2026-08-31: مشاركة صور العرض عبر نافذة المشاركة مع نسخ النص
+  /// للحافظة — تطبيق فيسبوك يتجاهل النص المرفق مع الصور فيُلصق يدوياً.
+  Future<void> _shareOfferPost(OfferModel o) async {
+    final config = context.read<ConfigProvider>().config;
+    final images = o.imgs.where((u) => u.startsWith('https://')).take(10).toList();
+    if (images.isEmpty) {
+      _snack('لا توجد صور عامة للمشاركة');
       return;
     }
+    final text = SocialPostBuilder.facebook(o, config);
     await Clipboard.setData(ClipboardData(text: text));
-    _snack('📋 تم نسخ نص المنشور (${text.length} محرف) — الصقه على صفحة المكتب');
+    try {
+      final dir = await getTemporaryDirectory();
+      final files = <XFile>[];
+      for (var i = 0; i < images.length; i++) {
+        final res = await http.get(Uri.parse(images[i]));
+        if (res.statusCode == 200) {
+          final f = File('${dir.path}/offer_share_$i.jpg');
+          await f.writeAsBytes(res.bodyBytes);
+          files.add(XFile(f.path));
+        }
+      }
+      if (files.isEmpty) {
+        _snack('تعذر تنزيل الصور — تحقق من الاتصال');
+        return;
+      }
+      await SharePlus.instance.share(ShareParams(files: files, text: text));
+      _snack('📤 اختر التطبيق — النص محفوظ بالحافظة للصقه كتعليق');
+    } catch (e) {
+      _snack('تعذرت المشاركة: ${ErrorUtils.arabicMessage(e)}');
+    }
   }
 
   Future<void> _publishToSocial(OfferModel o) async {
@@ -668,13 +742,14 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                             style: const TextStyle(color: AppTheme.infoBlue, fontSize: AppTheme.fontSizeSmall, fontWeight: FontWeight.w600),
                           ),
                         ),
-                        // 📋 2026-08-28: نسخ النص الجاهز بضغطة (وضع النشر اليدوي)
-                        if (o.socTxt.trim().length > 10)
+                        // 📋📤 2026-08-31: نسخ قالب المنشور (فيسبوك/إنستغرام)
+                        // + مشاركة صور العرض عبر نافذة المشاركة.
+                        if (o.socTxt.trim().length > 10) ...[
                           E2E(
                             id: 'copySocialTextBtn',
                             button: true,
                             child: Tooltip(
-                              message: 'نسخ نص المنشور الجاهز',
+                              message: 'نسخ نص المنشور (فيسبوك/إنستغرام)',
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(14),
                                 onTap: () => _copySocialText(o),
@@ -686,6 +761,24 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                               ),
                             ),
                           ),
+                          const SizedBox(width: 4),
+                          E2E(
+                            id: 'shareSocialPostBtn',
+                            button: true,
+                            child: Tooltip(
+                              message: 'مشاركة صور العرض',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => _shareOfferPost(o),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: Icon(Icons.ios_share,
+                                      color: AppTheme.successGreen, size: 18),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
