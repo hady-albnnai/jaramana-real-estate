@@ -4,6 +4,7 @@ import '../../providers/broker_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/deal_model.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/bottom_nav_bar.dart';
 
 /// 🤝 صفقات الوسيط — النشطة والمكتملة + ملخّص العمولات
 class BrokerDealsScreen extends StatefulWidget {
@@ -53,6 +54,7 @@ class _BrokerDealsScreenState extends State<BrokerDealsScreen> {
         .fold<double>(0, (s, d) => s + d.comVal);
 
     return Scaffold(
+      bottomNavigationBar: const CustomBottomNavBar(currentIndex: 3),
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('الصفقات'),

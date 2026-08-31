@@ -7,6 +7,7 @@ import '../../models/offer_model.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/office_logo_placeholder.dart';
+import '../../widgets/bottom_nav_bar.dart';
 
 /// 🏠 عروض الوسيط — العروض الخاصة به + المُسندة إليه
 class BrokerOffersScreen extends StatefulWidget {
@@ -52,6 +53,7 @@ class _BrokerOffersScreenState extends State<BrokerOffersScreen> {
     final offers = _apply(broker.offers);
 
     return Scaffold(
+      bottomNavigationBar: const CustomBottomNavBar(currentIndex: 1),
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('عروضي'),

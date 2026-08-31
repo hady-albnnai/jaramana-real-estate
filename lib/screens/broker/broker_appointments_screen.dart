@@ -10,6 +10,7 @@ import '../../core/network/supabase_service.dart';
 import '../../core/constants/db_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/office_logo_placeholder.dart';
+import '../../widgets/bottom_nav_bar.dart';
 
 /// شاشة طلبات المعاينة للسمسار — مع فلترة بالحالة + تفاصيل العميل
 /// + إجراءات: قبول / رفض / إكمال المعاينة + اتصال/واتساب
@@ -233,6 +234,7 @@ class _BrokerAppointmentsScreenState extends State<BrokerAppointmentsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: const CustomBottomNavBar(currentIndex: 2),
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('طلبات المعاينة'),
