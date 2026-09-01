@@ -54,6 +54,19 @@ class _BrokerOffersScreenState extends State<BrokerOffersScreen> {
 
     return Scaffold(
       bottomNavigationBar: const CustomBottomNavBar(currentIndex: 1),
+      // ➕ 2026-08-31 (طلب المالك): زر إضافة عرض للوسيط من شاشته مباشرة —
+      // نفس مسار المستخدم مع إعادة تحميل القائمة عند العودة. حصة العروض
+      // يفرضها السيرفر (create_offer_internal) برسالة عربية واضحة.
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: AppTheme.primaryGold,
+        foregroundColor: Colors.black,
+        icon: const Icon(Icons.add),
+        label: const Text('عرض جديد'),
+        onPressed: () async {
+          await context.push('/user/add-offer');
+          if (mounted) _load();
+        },
+      ),
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
         title: const Text('عروضي'),
