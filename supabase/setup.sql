@@ -1485,25 +1485,38 @@ CREATE OR REPLACE FUNCTION public.check_offer_duplicate(p_ttl text, p_prc numeri
  RETURNS boolean
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public', 'extensions', 'pg_temp'
+ SET search_path = 'public', 'extensions', 'pg_temp'
 AS $function$
-DECLARE v_dup BOOLEAN;
+DECLARE
+  v_dup BOOLEAN;
+  v_norm_ttl TEXT;
 BEGIN
-  -- تطبيع النص: lowercase + إزالة المسافات المتعددة
+  -- 🩹 2026-09-02 (بلاغ «سقف الوسيط 3»):
+  -- (1) من ينشر بلا عنوان (فارغ أو الافتراضي «عرض جديد») لا يُفحص ضد التكرار —
+  --     الحصة ومراجعة الإدارة قبل النشر هما صماما الأمان.
+  -- (2) التطابق محصور بعروض المستخدم نفسه بدل المطابقة الشاملة التي كانت
+  --     تمنع مستخدمين مختلفين بنفس العنوان والسعر.
+  v_norm_ttl := LOWER(REGEXP_REPLACE(BTRIM(COALESCE(p_ttl, '')), '[[:space:]]+', ' ', 'g'));
+
+  IF v_norm_ttl = '' OR v_norm_ttl = 'عرض جديد' THEN
+    RETURN FALSE; -- لا عنوان حقيقي → لا منع
+  END IF;
+
   SELECT EXISTS(
     SELECT 1 FROM offers
-    WHERE LOWER(REGEXP_REPLACE(ttl, '\s+', ' ', 'g')) =
-          LOWER(REGEXP_REPLACE(p_ttl, '\s+', ' ', 'g'))
+    WHERE usr_id = p_usr_id
+      AND LOWER(REGEXP_REPLACE(BTRIM(ttl), '[[:space:]]+', ' ', 'g')) = v_norm_ttl
       AND prc = p_prc
       AND i_del = 0
-      -- نكشف التكرار حتى من نفس المستخدم (لمنع نشر متعدد بنفس الحساب)
+      AND COALESCE(photo_req, 0) = 0
   ) INTO v_dup;
   RETURN v_dup;
 END;
 $function$
 
-REVOKE ALL ON FUNCTION check_offer_duplicate(p_ttl text, p_prc numeric, p_loc jsonb, p_usr_id uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION check_offer_duplicate(p_ttl text, p_prc numeric, p_loc jsonb, p_usr_id uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.check_offer_duplicate(text, numeric, jsonb, uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.check_offer_duplicate(text, numeric, jsonb, uuid) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_offer_duplicate(text, numeric, jsonb, uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.complete_deal_internal(p_admin_uid uuid, p_deal_id uuid, p_commission numeric DEFAULT NULL::numeric, p_note text DEFAULT NULL::text)
  RETURNS boolean
