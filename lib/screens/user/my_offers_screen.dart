@@ -173,6 +173,11 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   /// (المحذوفة خلال 24 ساعة لا يعرفها العميل — يحسمها السيرفر عند النشر)
   Future<void> _tryAddOffer() async {
     final auth = context.read<AuthProvider>();
+    // 🩹 2026-08-31 (بلاغ المالك): تحديث بيانات المستخدم قبل فحص الحصة —
+    // تفعيل الباقة يتم من جهاز الإدارة فور اعتماد الدفعة، وبقاء النموذج
+    // القديم بالذاكرة كان يمنع فتح شاشة الإضافة رغم التفعيل الفعلي.
+    await auth.refreshUser();
+    if (!mounted) return;
     final config = context.read<ConfigProvider>().config;
     final user = auth.userModel;
 

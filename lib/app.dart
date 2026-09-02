@@ -28,10 +28,12 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _initialized = false;
   String? _initError;
   StreamSubscription<AuthState>? _authSub;
+  // 🩹 2026-08-31: خنق تحديث الملف عند الاستئناف (لا استدعاء مع كل تبديل)
+  DateTime? _lastProfileRefresh;
 
   // ✅ إنشاء AuthProvider كمتغير عضو للوصول المباشر من المستمع
   // بدون الحاجة لـ BuildContext (السياق فوق MultiProvider لا يرى الـ Provider)
@@ -40,13 +42,32 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
+    // 🩹 2026-08-31 (بلاغا المالك — الحصة والصلاحيات): مستمع دورة الحياة —
+    // عند عودة التطبيق من الخلفية يُحدَّث الملف الشخصي فيصل تغيير الإدارة
+    // (تفعيل باقة/تعديل صلاحيات) لجهاز المستخدم دون إعادة تشغيل التطبيق.
+    WidgetsBinding.instance.addObserver(this);
     _initializeApp();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     super.dispose();
+  }
+
+  /// 🔄 تحديث الملف الشخصي عند العودة من الخلفية — بخنق 30 ثانية.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final last = _lastProfileRefresh;
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < const Duration(seconds: 30)) {
+      return;
+    }
+    if (!_authProvider.isLoggedIn) return;
+    _lastProfileRefresh = now;
+    _authProvider.refreshUser();
   }
 
   /// يستمع لتغيرات auth — ينفّذ تلقائياً تسجيل دخول الإيميل
