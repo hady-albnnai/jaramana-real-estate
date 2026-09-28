@@ -86,6 +86,18 @@ serve(async (req) => {
     const adminUid = actor.adminUid;
     const userId = body.user_id ?? body.userId;
     const permissions = Array.isArray(body.permissions) ? body.permissions : [];
+    // 🔓 فتح السقف المؤقت (2026-09-02): action=boost_offers → فتح سقف العروض
+    if (body.action === "boost_offers") {
+      const boostHours = Number(body.hours ?? 48);
+      const { data, error } = await supabaseAdmin.rpc("admin_boost_user_offers", {
+        p_admin_uid: adminUid,
+        p_target_uid: userId,
+        p_hours: Number.isFinite(boostHours) && boostHours > 0 ? Math.floor(boostHours) : 48,
+      });
+      if (error) return json({ success: false, error: error.message }, 400);
+      const result = data && typeof data === "object" ? data : null;
+      return json({ success: result?.success === true, result });
+    }
 
     const { data, error } = await supabaseAdmin.rpc("admin_update_user_permissions_by_admin", {
       p_admin_uid: adminUid,

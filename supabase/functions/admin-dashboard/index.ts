@@ -241,7 +241,7 @@ serve(async (req) => {
       const search = (body.search ?? "").toString().trim();
       let query = supabaseAdmin
         .from("users")
-        .select("id, nm, ph, eml, role, sts, pt, brk, vrf, img, usr, sid, ad, bg, strk, strk_dt, ts_crt, ts_upd")
+        .select("id, nm, ph, eml, role, sts, pt, brk, vrf, img, usr, sid, ad, bg, strk, strk_dt, ts_crt, ts_upd, perm, perm_boost_until")
         .eq("i_del", 0)
         .in("role", [0, 1]);
 

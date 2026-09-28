@@ -153,13 +153,25 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
   }
 
   /// تكلفة التجديد الفعلية — قاعدة المالك (مطابقة لـ purchase_offer_boost):
+  /// 🔁 2026-09-22: مدة صلاحية العرض من الإعدادات (qta.offerLife) — افتراضياً 90
+  int get _offerLifeDays {
+    final qta = context.read<ConfigProvider>().config?.data['qta'];
+    if (qta is Map) {
+      final v = qta['offerLife'];
+      if (v is num && v >= 1) return v.toInt();
+    }
+    return 90;
+  }
+
+  DateTime _offerExpiry(OfferModel o) =>
+      o.tsEnd ?? (o.tsPub ?? o.tsCrt).add(Duration(days: _offerLifeDays));
   /// باقة فعالة ⇒ 0 | بلا باقة + عرض وحيد + آخر يومين (غير منتهٍ) ⇒ 0 | غير ذلك ⇒ spd.ren
   int _renCost(Map<String, dynamic> spd) {
     final base = (spd['ren'] ?? 500) as int;
     if (_hasActivePkg) return 0;
-    final expired =
-        _offer?.expirationDate.isBefore(DateTime.now()) ?? false;
-    final daysLeft = _offer?.daysUntilExpiration ?? 30;
+    final expDate = _offer == null ? null : _offerExpiry(_offer!);
+    final expired = expDate != null && expDate.isBefore(DateTime.now());
+    final daysLeft = expDate?.difference(DateTime.now()).inDays ?? _offerLifeDays;
     if (_othersCount == 0 && !expired && daysLeft <= 2) return 0;
     return base;
   }
@@ -418,9 +430,9 @@ class _BoostOfferScreenState extends State<BoostOfferScreen> {
     // أصحاب العروض الزائدة/المنتهية يجددون بالنقاط في أي وقت (السيرفر يحسم التكلفة)
     bool isEnabled = true;
     if (boostType == 'ren' && !_hasActivePkg) {
-      final expired =
-          _offer?.expirationDate.isBefore(DateTime.now()) ?? false;
-      final daysLeft = _offer?.daysUntilExpiration ?? 30;
+      final expDate = _offer == null ? null : _offerExpiry(_offer!);
+      final expired = expDate != null && expDate.isBefore(DateTime.now());
+      final daysLeft = expDate?.difference(DateTime.now()).inDays ?? _offerLifeDays;
       if (_othersCount == 0 && !expired && daysLeft > 2) {
         isEnabled = false;
       }

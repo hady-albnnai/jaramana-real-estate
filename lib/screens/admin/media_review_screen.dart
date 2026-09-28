@@ -20,6 +20,13 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
   List<OfferModel> _offers = [];
   bool _loading = true;
   String _filter = 'all';
+  final _searchCtrl = TextEditingController(); // 🔍 بحث برقم العرض
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -39,6 +46,20 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
   }
 
   List<OfferModel> get _filtered {
+    // 🔍 2026-09-25: بحث برقم العرض أو العنوان — لطلبات الزبائن الهاتفية
+    final q = _searchCtrl.text.trim();
+    List<OfferModel> applySearch(List<OfferModel> list) {
+      if (q.isEmpty) return list;
+      final qNum = int.tryParse(q);
+      return list
+          .where((o) => (qNum != null && o.offerNumber == qNum) || o.ttl.contains(q))
+          .toList();
+    }
+
+    return applySearch(_byFilter);
+  }
+
+  List<OfferModel> get _byFilter {
     switch (_filter) {
       case 'missing_images':
         return _offers.where((offer) => offer.imgs.isEmpty).toList();
@@ -83,6 +104,21 @@ class _MediaReviewScreenState extends State<MediaReviewScreen> {
                 children: [
                   _summaryCard(),
                   AppTheme.gapHeightMedium,
+                  TextField(
+                    controller: _searchCtrl,
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(color: AppTheme.textWhite),
+                    decoration: InputDecoration(
+                      hintText: '🔍 ابحث برقم العرض أو العنوان...',
+                      prefixIcon: const Icon(Icons.search, color: AppTheme.primaryGold),
+                      filled: true,
+                      fillColor: AppTheme.surfaceBlack,
+                      border: OutlineInputBorder(
+                          borderRadius: AppTheme.radiusMedium,
+                          borderSide: BorderSide.none),
+                    ),
+                  ),
+                  AppTheme.gapHeightSmall,
                   _filters(),
                   AppTheme.gapHeightMedium,
                   if (_filtered.isEmpty)

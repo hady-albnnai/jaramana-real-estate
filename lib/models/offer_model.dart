@@ -80,8 +80,9 @@ class OfferModel {
   /// تاريخ انتهاء العرض الفعلي
   DateTime get expirationDate {
     if (tsEnd != null) return tsEnd!;
-    if (tsPub != null) return tsPub!.add(const Duration(days: 30));
-    return tsCrt.add(const Duration(days: 30));
+    // 🔁 2026-09-22 (قرار المالك): العمر الافتراضي 90 يوماً — مرحلة بناء المحتوى
+    if (tsPub != null) return tsPub!.add(const Duration(days: 90));
+    return tsCrt.add(const Duration(days: 90));
   }
 
   /// عدد الأيام المتبقية حتى انتهاء العرض

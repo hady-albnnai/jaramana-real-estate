@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/office_contact_buttons.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'package:share_plus/share_plus.dart';
@@ -651,6 +652,9 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
               ],
             ),
             AppTheme.gapHeightSmall,
+            // ☎💬 التواصل مع المكتب (2026-09-22)
+            const SizedBox(height: 10),
+            OfficeContactButtons(offerNumber: offer.offerNumber),
             SizedBox(
               width: double.infinity,
               child: TextButton.icon(

@@ -213,6 +213,9 @@ class _PermissionsManagementScreenState extends State<PermissionsManagementScree
             ],
           ),
         ),
+        _boostCard(user),
+        AppTheme.gapHeightXS,
+
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Wrap(
@@ -263,6 +266,111 @@ class _PermissionsManagementScreenState extends State<PermissionsManagementScree
         ),
       ],
     );
+  }
+
+  Widget _boostCard(UserModel user) {
+    final boostActive = user.hasActiveOfferBoost;
+    final untilTxt = boostActive
+        ? user.permBoostUntil!.toLocal().toString().substring(0, 16)
+        : '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: AppTheme.paddingAllMedium,
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceBlack,
+        borderRadius: AppTheme.radiusLarge,
+        border: Border.all(
+            color: boostActive
+                ? AppTheme.primaryGold
+                : AppTheme.primaryGold.withOpacity(0.14)),
+      ),
+      child: Row(
+        children: [
+          Icon(boostActive ? Icons.lock_open : Icons.lock_outline,
+              color: AppTheme.primaryGold, size: 20),
+          AppTheme.gapWidthSmall,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('سقف العروض المؤقت',
+                    style: TextStyle(
+                        color: AppTheme.textWhite,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold)),
+                AppTheme.gapHeightXS,
+                Text(
+                  boostActive
+                      ? 'مفتوح حتى $untilTxt — رفع بلا حدود'
+                      : 'مغلق — حسب حصة العروض الاعتيادية',
+                  style: const TextStyle(
+                      color: AppTheme.textGrey, fontSize: AppTheme.fontSizeCaption),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: _saving ? null : _boostOffers,
+            icon: const Icon(Icons.lock_open, size: 16),
+            label: Text(boostActive ? 'تمديد 48 ساعة' : 'فتح 48 ساعة'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _boostOffers() async {
+    final user = _selectedUser;
+    if (user == null || _saving) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceBlack,
+        shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusLarge),
+        title: const Text('فتح سقف العروض مؤقتاً',
+            style: TextStyle(color: AppTheme.textWhite)),
+        content: Text(
+          'يتمكن ${user.nm.isEmpty ? "المستخدم" : user.nm} من رفع العروض بلا حدود لمدة 48 ساعة، '
+          'ويصله إشعار فوري على جهازه.\n\n'
+          'إذا كان الفتح شغّالاً حالياً تتمدد المدة 48 ساعة إضافية.',
+          style: const TextStyle(color: AppTheme.textGrey, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء', style: TextStyle(color: AppTheme.textGrey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('فتح الآن'),
+          ),
+        ],
+      ),
+    );
+    if (go != true) return;
+    setState(() => _saving = true);
+    final res = await context.read<AdminProvider>().boostUserOffers(
+          context.read<AuthProvider>().userModel?.uid ?? '',
+          user.uid,
+        );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    final ok = res != null && res['success'] == true;
+    String until = '';
+    final result = res?['result'];
+    if (result is Map) {
+      final dt = DateTime.tryParse(result['until']?.toString() ?? '');
+      if (dt != null) until = dt.toLocal().toString().substring(0, 16);
+    }
+    final suffix = until.isEmpty ? '' : ' حتى $until';
+    AppTheme.showSnackBar(
+      context,
+      SnackBar(
+          content: Text(ok
+              ? 'تم فتح السقف$suffix — وصل إشعار للمستخدم'
+              : 'فشل فتح السقف — حاول مجدداً')),
+    );
+    if (ok) await _load();
   }
 
   Widget _groupCard(String group, List<AppPermission> permissions) {

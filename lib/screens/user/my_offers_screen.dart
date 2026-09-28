@@ -75,6 +75,10 @@ class _MyOffersScreenState extends State<MyOffersScreen>
     final config = context.read<ConfigProvider>().config;
     if (user == null) return (used: 0, limit: 0, exempt: true);
     if (user.role >= 4) return (used: 0, limit: 0, exempt: true);
+    // 🔓 فتح السقف المؤقت (2026-09-02): بلا حدود لحين انتهاء المدة
+    if (user.hasActiveOfferBoost) {
+      return (used: 0, limit: 0, exempt: true);
+    }
 
     const counted = {
       OfferStatus.draft,
@@ -109,6 +113,30 @@ class _MyOffersScreenState extends State<MyOffersScreen>
   /// شريط العدّاد أعلى القائمة.
   Widget _quotaBar() {
     final q = _quota;
+    // 🔓 فتح السقف المؤقت (2026-09-02): شارة بدل العدّاد
+    final boost = context.read<AuthProvider>().userModel?.permBoostUntil;
+    if (boost != null && boost.isAfter(DateTime.now())) {
+      final bTxt = boost.toLocal().toString().substring(0, 16);
+      return Container(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        padding: AppTheme.paddingAllMedium,
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceBlack,
+          borderRadius: AppTheme.radiusMedium,
+          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.35)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.lock_open, size: 18, color: AppTheme.primaryGold),
+          AppTheme.gapWidthSmall,
+          Expanded(
+            child: Text(
+              '🔓 السقف مفتوح مؤقتاً من الإدارة حتى $bTxt — ارفع ما تشاء',
+              style: const TextStyle(color: AppTheme.textWhite, fontSize: 12.5),
+            ),
+          ),
+        ]),
+      );
+    }
     if (q.exempt) return const SizedBox.shrink();
     final full = q.used >= q.limit;
     final ratio = q.limit == 0 ? 1.0 : (q.used / q.limit).clamp(0.0, 1.0);
@@ -196,7 +224,9 @@ class _MyOffersScreenState extends State<MyOffersScreen>
       final pkgMap = config?.data['pkg'];
       final pkgEntry = pkgMap is Map ? pkgMap['$effectivePkg'] : null;
       limit = (pkgEntry is Map ? (pkgEntry['o'] as num?)?.toInt() : null) ?? (user.role == 1 ? 5 : 1);
-      limited = used >= limit;
+      // 🔓 فتح السقف المؤقت (2026-09-02)
+      final boosted = user.permBoostUntil?.isAfter(DateTime.now()) ?? false;
+      limited = !boosted && used >= limit;
     }
 
     if (!limited) {

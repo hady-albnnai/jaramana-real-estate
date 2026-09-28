@@ -173,6 +173,13 @@ class AdminProvider with ChangeNotifier {
     if (ok) notifyListeners();
     return ok;
   }
+  /// 🔓 فتح سقف العروض مؤقتاً (2026-09-02)
+  Future<Map<String, dynamic>?> boostUserOffers(String adminUid, String uid, {int hours = 48}) async {
+    final res = await _staffAdmin.boostUserOffers(adminUid, uid, hours: hours);
+    _syncStaffError();
+    if (res != null && res['success'] == true) notifyListeners();
+    return res;
+  }
 
   // ═══════════════════════════════════════
   // 🆕 إدارة الموظفين (Employee Management)

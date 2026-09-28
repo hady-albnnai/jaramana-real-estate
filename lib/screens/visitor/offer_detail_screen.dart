@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/office_contact_buttons.dart';
 import 'package:hive_flutter/hive_flutter.dart' show Box;
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -1721,6 +1722,9 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                       ),
                     ),
                   ),
+                  // ☎💬 التواصل مع المكتب (2026-09-22)
+                  const SizedBox(height: 10),
+                  OfficeContactButtons(offerNumber: offer.offerNumber),
                   // ⭐ تم إزالة زر التقييم من صفحة العرض — التقييم متاح فقط
                   // من شاشة المواعيد/الصفقات المكتملة حيث يكون هناك تعامل فعلي
                   // بين الطرفين (check_rating_valid trigger يمنع التقييم بدون صفقة)

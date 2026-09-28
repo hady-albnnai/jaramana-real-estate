@@ -241,6 +241,9 @@ function Build-Bundle {
 if (-not $SkipFunctions) {
     Write-Host "===== Deploy Edge functions ====="
     Deploy-Fn 'admin-dashboard'
+    # 2026-09-02: فتح السقف المؤقت — كانت هاتان الدالتان تنشران يدوياً ولم تكونا بالقائمة
+    Deploy-Fn 'update-user-permissions'
+    Deploy-Fn 'user-offers'
     Deploy-Fn 'legal-actions'
     # 2026-08-20: payment badge needs mark_read_by_act in user-notifications
     Deploy-Fn 'user-notifications'

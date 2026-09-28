@@ -54,6 +54,7 @@ class UserModel {
   final int pkgXoff; // السقف الإضافي من الباقات المكدّسة (التجميع 2026-07-27)
   final DateTime? pkgEnd;
   final DateTime? pkgGrace; // نهاية فترة السماح (pkg_end + 3 أيام)
+  final DateTime? permBoostUntil; // 🔓 فتح سقف العروض المؤقت (2026-09-02)
   final int brk;
   final int brkCls;
   final String brkNm;
@@ -92,6 +93,7 @@ class UserModel {
     this.pkgXoff = 0,
     this.pkgEnd,
     this.pkgGrace,
+    this.permBoostUntil,
     this.brk = 0,
     this.brkCls = 0,
     this.brkNm = '',
@@ -143,6 +145,9 @@ class UserModel {
       pkgXoff: data['pkg_xoff'] ?? 0,
       pkgEnd:   data['pkg_end']   != null ? DateTime.parse(data['pkg_end'])   : null,
       pkgGrace: data['pkg_grace'] != null ? DateTime.parse(data['pkg_grace']) : null,
+      permBoostUntil: data['perm_boost_until'] != null
+          ? DateTime.parse(data['perm_boost_until'])
+          : null,
       brk: data['brk'] ?? 0,
       brkCls: data['brk_cls'] ?? 0,
       brkNm: data['brk_nm'] ?? '',
@@ -175,6 +180,7 @@ class UserModel {
       'bg_ts': bgTs?.toIso8601String(), 'b_pkg': bPkg, 'pkg_xoff': pkgXoff,
       'pkg_end':   pkgEnd?.toIso8601String(),
       'pkg_grace': pkgGrace?.toIso8601String(),
+      'perm_boost_until': permBoostUntil?.toIso8601String(),
       'brk': brk,
       'brk_cls': brkCls, 'brk_nm': brkNm, 'sts': sts,
       'ban_rsn': banRsn, 'ntf': ntf, 'stats': stats,
@@ -237,6 +243,9 @@ class UserModel {
     return 0;
   }
 
+  /// 🔓 هل سقف العروض مفتوح مؤقتاً من الإدارة (لم تنته المدة بعد)
+  bool get hasActiveOfferBoost =>
+      permBoostUntil != null && permBoostUntil!.isAfter(DateTime.now());
   /// هل الباقة نشطة (لم تنته pkg_end)
   bool get isPkgActive =>
       bPkg > 0 && pkgEnd != null && pkgEnd!.isAfter(DateTime.now());

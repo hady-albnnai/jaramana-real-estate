@@ -142,6 +142,23 @@ class StaffAdminService {
     });
     return data['success'] == true;
   }
+  /// 🔓 فتح سقف العروض مؤقتاً (2026-09-02) — إشعار فوري يصل المستخدم
+  Future<Map<String, dynamic>?> boostUserOffers(
+    String adminUid,
+    String uid, {
+    int hours = 48,
+  }) async {
+    try {
+      return await _invokeStaffFunction('update-user-permissions', {
+        'admin_uid': adminUid,
+        'user_id': uid,
+        'action': 'boost_offers',
+        'hours': hours,
+      });
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Map<String, dynamic>> resetStaffPassword({
     required String adminUid,

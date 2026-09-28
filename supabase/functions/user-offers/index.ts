@@ -152,10 +152,16 @@ serve(async (req) => {
         return json({ success: true, allowed: true, used: 0, limit: 0 });
       }
       const { data: user, error: userError } = await supabaseAdmin.from("users")
-        .select("role,b_pkg,pkg_end,pkg_grace,pkg_xoff")
+        .select("role,b_pkg,pkg_end,pkg_grace,pkg_xoff,perm_boost_until")
         .eq("id", uid).eq("sts", 0).eq("i_del", 0).maybeSingle();
       if (userError || !user) return json({ success: false, error: "USER_NOT_ACTIVE_OR_NOT_FOUND" }, 404);
       if (Number(user.role) >= 4) return json({ success: true, allowed: true, used: 0, limit: 999999 });
+      // 🔓 فتح السقف المؤقت (2026-09-02): طالما الفتح شغّال الحصة تتخطى
+      const boostUntilMs = user.perm_boost_until
+        ? new Date(String(user.perm_boost_until)).getTime() : 0;
+      if (boostUntilMs > Date.now()) {
+        return json({ success: true, allowed: true, used: 0, limit: 999999, boost_until: user.perm_boost_until });
+      }
       const { data: cfgRow } = await supabaseAdmin.from("app_config")
         .select("value").eq("key", "main").maybeSingle();
       const cfg = cfgRow?.value as Record<string, unknown> | undefined;

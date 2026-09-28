@@ -30,6 +30,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _sellCom = TextEditingController();
   final _userOffersQuota = TextEditingController();
   final _brokerOffersQuota = TextEditingController();
+  final _offerLifeCtrl = TextEditingController(); // 🔁 مدة صلاحية العرض
 
   // ── Video request WhatsApp (مدير + نائب المدير فقط) ──
   final _videoWaNumber = TextEditingController();
@@ -86,6 +87,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         _sellCom.text = '${c.sellCommission}';
         _userOffersQuota.text = '${c.userQuotas['o'] ?? 1}';
         _brokerOffersQuota.text = '${c.brokerQuotas['o'] ?? 5}';
+        _offerLifeCtrl.text = '${((c.data['qta'] as Map?)?['offerLife'] ?? 90)}';
 
         // Video WhatsApp dedicated + group link (for video requests)
         final txts = c.texts;
@@ -137,7 +139,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _dealDonePts,
       _sellCom,
       _userOffersQuota,
-      _brokerOffersQuota,
+      _brokerOffersQuota,      _offerLifeCtrl,
       _videoWaNumber,
       _videoGroupLink,
       _appLinkCtrl,
@@ -886,6 +888,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     final qtaB = Map<String, dynamic>.from(qta['b'] ?? {});
     qtaB['o'] = int.tryParse(_brokerOffersQuota.text.trim()) ?? qtaB['o'];
     qta['b'] = qtaB;
+    // 🔁 2026-09-22: مدة صلاحية العرض — محفوظة بالإعدادات (qta.offerLife)
+    qta['offerLife'] = int.tryParse(_offerLifeCtrl.text.trim()) ?? (qta['offerLife'] ?? 90);
     current['qta'] = qta;
 
     // ── حفظ حقول طلبات الفيديو (مدير + نائب) ──
@@ -966,14 +970,15 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'legalPrice': legalPrice,
         },
       });
-      if (res is Map && res['success'] == true) {
+      final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+      if (data != null && data['success'] == true) {
         ok = true;
         // تحديث الحالة محلياً من القيمة التي أعادها السيرفر (المصدر الموثوق)
-        if (res['value'] is Map) {
-          prov.applyServerConfig(Map<String, dynamic>.from(res['value'] as Map));
+        if (data['value'] is Map) {
+          prov.applyServerConfig(Map<String, dynamic>.from(data['value'] as Map));
         }
-      } else if (res is Map) {
-        saveError = (res['error'] ?? 'UNKNOWN_ERROR').toString();
+      } else if (data != null) {
+        saveError = (data['error'] ?? 'UNKNOWN_ERROR').toString();
       }
     } catch (e) {
       ok = false;

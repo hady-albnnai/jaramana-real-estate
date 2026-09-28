@@ -39,9 +39,26 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
   final Set<String> _videoBusyIds = {}; // 🎥 عروض جاري تقليب علامة الفيديو لها
   bool _loading = true;
   bool _bulkPublishing = false;
+  final _searchCtrl = TextEditingController(); // 🔍 بحث برقم العرض
 
   // كاش بيانات المرسلين: userId → UserModel
   final Map<String, UserModel> _ownersCache = {};
+
+  /// 🔍 2026-09-25: بحث برقم العرض أو العنوان — لطلبات الزبائن الهاتفية
+  List<OfferModel> get _visibleOffers {
+    final q = _searchCtrl.text.trim();
+    if (q.isEmpty) return _offers;
+    final qNum = int.tryParse(q);
+    return _offers
+        .where((o) => (qNum != null && o.offerNumber == qNum) || o.ttl.contains(q))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -569,7 +586,30 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                           '${_offers.length}',
                           AppTheme.primaryGold,
                         ),
-                        ..._offers.map(_offerCard),
+                        TextField(
+                          controller: _searchCtrl,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(color: AppTheme.textWhite),
+                          decoration: InputDecoration(
+                            hintText: '🔍 ابحث برقم العرض أو العنوان...',
+                            prefixIcon: const Icon(Icons.search, color: AppTheme.primaryGold),
+                            filled: true,
+                            fillColor: AppTheme.surfaceBlack,
+                            isDense: true,
+                            border: OutlineInputBorder(
+                                borderRadius: AppTheme.radiusMedium,
+                                borderSide: BorderSide.none),
+                          ),
+                        ),
+                        if (_searchCtrl.text.trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 4),
+                            child: Text(
+                                'نتائج البحث: ${_visibleOffers.length} من ${_offers.length}',
+                                style: const TextStyle(
+                                    color: AppTheme.primaryGold, fontSize: 12)),
+                          ),
+                        ..._visibleOffers.map(_offerCard),
                       ],
                     ],
                   ),
