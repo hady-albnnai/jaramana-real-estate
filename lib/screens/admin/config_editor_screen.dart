@@ -50,6 +50,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _contactPhone1Ctrl = TextEditingController();
   final _contactPhone2Ctrl = TextEditingController();
   final _contactWhatsAppCtrl = TextEditingController();
+  final _whatsapp2Ctrl = TextEditingController();
   final _aboutUsCtrl = TextEditingController();
   final _appDescCtrl = TextEditingController();
   final _privacyUrlCtrl = TextEditingController();
@@ -102,6 +103,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         _contactPhone1Ctrl.text = c.contactPhone1;
         _contactPhone2Ctrl.text = c.contactPhone2;
         _contactWhatsAppCtrl.text = c.contactWhatsApp;
+        _whatsapp2Ctrl.text = c.whatsapp2;
         _aboutUsCtrl.text = c.aboutUsText;
         _appDescCtrl.text = c.appDescriptionText;
         _privacyUrlCtrl.text = c.privacyPolicyUrl;
@@ -149,6 +151,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _contactPhone1Ctrl,
       _contactPhone2Ctrl,
       _contactWhatsAppCtrl,
+      _whatsapp2Ctrl,
       _aboutUsCtrl,
       _appDescCtrl,
       _privacyUrlCtrl,
@@ -604,6 +607,22 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                               color: AppTheme.successGreen),
                         ),
                       ),
+                      TextFormField(
+                        controller: _whatsapp2Ctrl,
+                        keyboardType: TextInputType.phone,
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalPhone,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'رقم واتساب ثاني (اختياري)',
+                          hintText: '0934222900 — يظهر بالمنشورات مع الرقم الأول',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.chat_bubble_outline,
+                              color: AppTheme.successGreen),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
                       AppTheme.gapHeightMedium,
 
                       // ⚖️ روابط قانونية — سياسة الخصوصية شرط نشر في Google Play
@@ -907,6 +926,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     txts['contactPhone1'] = _contactPhone1Ctrl.text.trim();
     txts['contactPhone2'] = _contactPhone2Ctrl.text.trim();
     txts['contactWhatsApp'] = _contactWhatsAppCtrl.text.trim();
+    txts['whatsapp2'] = _whatsapp2Ctrl.text.trim();
     txts['aboutUs'] = _aboutUsCtrl.text.trim();
     txts['appDescription'] = _appDescCtrl.text.trim();
     txts['privacyPolicyUrl'] = _privacyUrlCtrl.text.trim();

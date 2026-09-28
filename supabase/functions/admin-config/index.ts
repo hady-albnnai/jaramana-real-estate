@@ -45,6 +45,7 @@ const ALLOWED_TEXT_KEYS = new Set([
   "contactPhone1",
   "contactPhone2",
   "contactWhatsApp",
+  "whatsapp2",
   "aboutUs",
   "appDescription",
   "privacyPolicyUrl",
@@ -68,6 +69,7 @@ const TEXT_PHONE_KEYS = new Set([
   "contactPhone1",
   "contactPhone2",
   "contactWhatsApp",
+  "whatsapp2",
   "videoRequestWhatsApp",
 ]);
 
@@ -160,6 +162,10 @@ function env(name: string, fallback?: string): string {
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
+  // 🔍 2026-09-22: تسجيل كل رفض باللوجز — لا مزيد من الأخطاء الصامتة
+  if (body && body.success === false) {
+    console.log("[admin-config] REJECT:", JSON.stringify(body));
+  }
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -599,3 +605,4 @@ serve(async (req) => {
     return json({ success: false, error: (e as Error).message ?? "UNEXPECTED_ERROR" }, 500);
   }
 });
+

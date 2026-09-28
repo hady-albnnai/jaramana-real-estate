@@ -480,6 +480,16 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
   void _snack(String m) =>
       AppTheme.showSnackBar(context, SnackBar(content: Text(m), duration: const Duration(seconds: 4)));
 
+  // فلترة قسم «الجاهزة للنشر» حسب خانة البحث (رقم العرض أو العنوان)
+  List<OfferModel> get _visibleSocialQueue {
+    final q = _searchCtrl.text.trim();
+    if (q.isEmpty) return _socialQueue;
+    return _socialQueue.where((o) {
+      final n = o.offerNumber?.toString() ?? '';
+      return n.contains(q) || o.ttl.contains(q);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = context.watch<ConfigProvider>().config;
@@ -559,6 +569,23 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                           ],
                         ),
                       ),
+                      // بحث برقم العرض أو العنوان: دائماً بأعلى القائمة ويفلتر القسمين معاً (2026-09-28)
+                      TextField(
+                        controller: _searchCtrl,
+                        onChanged: (_) => setState(() {}),
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: InputDecoration(
+                          hintText: '🔍 ابحث برقم العرض أو العنوان...',
+                          prefixIcon: const Icon(Icons.search, color: AppTheme.primaryGold),
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          isDense: true,
+                          border: OutlineInputBorder(
+                              borderRadius: AppTheme.radiusMedium,
+                              borderSide: BorderSide.none),
+                        ),
+                      ),
+                      AppTheme.gapHeightSmall,
                       if (_socialQueue.isNotEmpty) ...[
                         _listHeader(
                           '📣 جاهزة للنشر على فيسبوك + إنستغرام',
@@ -577,7 +604,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                                 )
                               : null,
                         ),
-                        ..._socialQueue.map((o) => _offerCard(o, socialOnly: true)),
+                        ..._visibleSocialQueue.map((o) => _offerCard(o, socialOnly: true)),
                         AppTheme.gapHeightSmall,
                       ],
                       if (_offers.isNotEmpty) ...[
@@ -585,21 +612,6 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                           '📝 بانتظار المراجعة',
                           '${_offers.length}',
                           AppTheme.primaryGold,
-                        ),
-                        TextField(
-                          controller: _searchCtrl,
-                          onChanged: (_) => setState(() {}),
-                          style: const TextStyle(color: AppTheme.textWhite),
-                          decoration: InputDecoration(
-                            hintText: '🔍 ابحث برقم العرض أو العنوان...',
-                            prefixIcon: const Icon(Icons.search, color: AppTheme.primaryGold),
-                            filled: true,
-                            fillColor: AppTheme.surfaceBlack,
-                            isDense: true,
-                            border: OutlineInputBorder(
-                                borderRadius: AppTheme.radiusMedium,
-                                borderSide: BorderSide.none),
-                          ),
                         ),
                         if (_searchCtrl.text.trim().isNotEmpty)
                           Padding(

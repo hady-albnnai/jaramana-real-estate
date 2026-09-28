@@ -22,7 +22,11 @@ class SocialPostBuilder {
 
   /// 📘 نسخة فيسبوك — الروابط تعمل والنص مريح.
   static String facebook(OfferModel o, ConfigModel? config) {
-    final wa = (config?.contactWhatsApp ?? '').trim();
+    final wa1 = (config?.contactWhatsApp ?? '').trim();
+    final wa2 = (config?.whatsapp2 ?? '').trim();
+    final wa = wa1.isEmpty ? wa2 : (wa2.isEmpty ? wa1 : '$wa1 أو $wa2');
+    final fb = (config?.facebookPage ?? '').trim();
+    final tg = ((config?.socialPages ?? const {})['telegram'] ?? '').toString().trim();
     final link = (config?.appDownloadLink ?? '').trim();
     final sections = <List<String>>[
       [
@@ -35,8 +39,10 @@ class SocialPostBuilder {
         wa.isEmpty
             ? '📞 للمعاينة والتواصل حصراً عبر $_brand'
             : '📞 للمعاينة والتواصل حصراً عبر $_brand (واتساب): $wa',
+        if (fb.isNotEmpty) '📘 تابعنا على فيسبوك: $fb',
+        if (tg.isNotEmpty) '📢 قناتنا على تلغرام: $tg',
         if (link.isNotEmpty) ...[
-          '📲 لمتابعة كل العروض وحجز المواعيد والاستفادة من خدماتنا، حمّل تطبيق $_brand:',
+          '📲 حمّل تطبيق $_brand:',
           link,
         ],
       ],
@@ -47,7 +53,9 @@ class SocialPostBuilder {
 
   /// 📸 نسخة إنستغرام — مختصرة ومضبوطة على قاعدة الـ126 حرف.
   static String instagram(OfferModel o, ConfigModel? config) {
-    final wa = (config?.contactWhatsApp ?? '').trim();
+    final wa1 = (config?.contactWhatsApp ?? '').trim();
+    final wa2 = (config?.whatsapp2 ?? '').trim();
+    final wa = wa1.isEmpty ? wa2 : (wa2.isEmpty ? wa1 : '$wa1 أو $wa2');
     final priceLine = '💰 ${_price(o.prc, o.cur)}';
     final specs = _specs(o);
     final specsLine = specs.isEmpty ? '' : '${o.typ == 0 ? '📐' : '🔧'} ${specs.join(' • ')}';
@@ -72,7 +80,7 @@ class SocialPostBuilder {
         wa.isEmpty
             ? '📩 للمعاينة والتواصل: راسلنا على خاص الصفحة'
             : '📩 للمعاينة والتواصل: راسلنا على الخاص أو واتساب المكتب $wa',
-        '📲 حمّل تطبيق $_brand — الرابط في البايو',
+        '📲 حمّل تطبيق $_brand — كل روابطنا في البايو',
       ],
       [_hashtags(o, long: true)],
     ];

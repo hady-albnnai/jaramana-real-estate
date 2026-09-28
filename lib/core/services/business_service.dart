@@ -470,21 +470,27 @@ class BusinessService {
 
     // التواصل — حصراً واتساب المكتب (رقم من الإعدادات، قابل للتغيير من التطبيق)
     buffer.writeln('');
-    final wa = (config?.videoRequestWhatsApp ?? '').trim();
-    buffer.writeln('📱 التواصل والمعاينة حصراً عبر واتساب المكتب العقاري الإلكتروني:');
+    final wa1 = (config?.contactWhatsApp ?? '').trim();
+    final wa2 = (config?.whatsapp2 ?? '').trim();
+    final wa = wa1.isEmpty ? wa2 : (wa2.isEmpty ? wa1 : '$wa1 أو $wa2');
+    buffer.writeln('📱 التواصل والمعاينة حصراً عبر واتساب المكتب العقاري الالكتروني:');
     if (wa.isNotEmpty) buffer.writeln(wa);
+    final fbLink = (config?.facebookPage ?? '').trim();
+    if (fbLink.isNotEmpty) buffer.writeln('📘 تابعنا على فيسبوك: $fbLink');
+    final tgLink = ((config?.socialPages ?? const {})['telegram'] ?? '').toString().trim();
+    if (tgLink.isNotEmpty) buffer.writeln('📢 قناتنا على تلغرام: $tgLink');
 
     // 📲 رابط تحميل التطبيق — يُدرج فقط إذا ضُبط من الإعدادات (فارغ الآن بانتظار نشر المتجر)
     final appLink = (config?.appDownloadLink ?? '').trim();
     if (appLink.isNotEmpty) {
       buffer.writeln('');
-      buffer.writeln('📲 لمتابعة كل العروض حمّل تطبيق «عقارات السويداء»:');
+      buffer.writeln('📲 حمّل تطبيق «المكتب العقاري الالكتروني»:');
       buffer.writeln(appLink);
     }
 
     // هاشتاغات
     buffer.writeln('');
-    buffer.write('#عقارات_السويداء #السويداء ');
+    buffer.write('#المكتب_العقاري_الالكتروني #السويداء ');
     buffer.write(isProperty ? '#عقارات #${offer.trx == 0 ? 'بيع' : 'إيجار'}' : '#سيارات #مركبات');
 
     return buffer.toString();

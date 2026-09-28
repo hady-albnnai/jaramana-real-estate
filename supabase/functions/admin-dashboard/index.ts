@@ -83,7 +83,7 @@ serve(async (req) => {
     const body = await req.json() as Record<string, unknown>;
     const action = (body.action ?? "").toString();
 
-    // خاصية إبطال جلسة الموظف يمكن لأي موظف مسجل تنفيذها لنفسه 
+    // خاصية إبطال جلسة الموظف يمكن لأي موظف مسجل تنفيذها لنفسه
     if (action === "revoke_session") {
       const actor = await validateActor(req, supabaseAdmin, body, 1);
       if (!actor.ok) return actor.response;
@@ -102,7 +102,7 @@ serve(async (req) => {
     if (action === "staff_stats") {
       const actor = await validateActor(req, supabaseAdmin, body, 1);
       if (!actor.ok) return actor.response;
-      
+
       const { data, error } = await supabaseAdmin.rpc("get_staff_stats_internal", { p_user_uid: actor.uid });
       if (error) return json({ success: false, error: error.message }, 400);
       return json({ success: true, stats: data });
@@ -152,7 +152,7 @@ serve(async (req) => {
       if (ids.length === 0) return json({ success: true, users: [] });
       const { data, error } = await supabaseAdmin
         .from("users")
-        .select("id, nm, usr, ph, pt, role, sts, i_del")
+        .select("id, nm, usr, ph, pt, role, sts, i_del, ts_crt")
         .in("id", ids);
       if (error) return json({ success: false, error: error.message }, 400);
       return json({ success: true, users: data ?? [] });

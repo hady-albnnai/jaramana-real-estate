@@ -153,6 +153,7 @@ class ConfigModel {
 
   /// رقم واتساب التواصل — فارغ يخفي زر «راسلنا واتساب»
   String get contactWhatsApp => _getNested('txts.contactWhatsApp', '');
+  String get whatsapp2 => _getNested('txts.whatsapp2', '');
 
   /// فقرة «من نحن» — تُحرَّر من الإدارة بلا إعادة بناء
   String get aboutUsText => _getNested('txts.aboutUs', '');
