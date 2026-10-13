@@ -15,6 +15,7 @@ import '../../services/storage_service.dart';
 import '../../core/validation/input_validators.dart';
 import '../../widgets/location_picker.dart';
 import '../../core/utils/error_utils.dart';
+import '../../core/widgets/offer_currency_selector.dart';
 
 /// شاشة إضافة عرض من الإدارة
 /// - تختلف عن شاشة المستخدم في: اختيار صاحب العرض + حفظ added_by
@@ -61,7 +62,7 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
   int? _selectedMainCat;
   int? _selectedSubCat;
   String? _selectedCityArea;
-  int _cur = Currency.lbp;
+  int _cur = Currency.usd;
   final _priceCtrl     = TextEditingController();
   final _locCtrl       = TextEditingController();
   final _descCtrl      = TextEditingController();
@@ -788,16 +789,10 @@ class _AdminAddOfferScreenState extends State<AdminAddOfferScreen> {
             AppTheme.gapWidthSmall,
             Expanded(
               flex: 2,
-              child: DropdownButtonFormField<int>(
+              child: OfferCurrencySelector(
                 value: _cur,
-                dropdownColor: AppTheme.surfaceBlack,
-                style: const TextStyle(color: AppTheme.textWhite),
+                onChanged: (value) => setState(() => _cur = value),
                 decoration: const InputDecoration(border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: Currency.dollar, child: Text('دولار')),
-                  DropdownMenuItem(value: Currency.lbp, child: Text('ل.س')),
-                ],
-                onChanged: (v) => setState(() => _cur = v ?? Currency.lbp),
               ),
             ),
           ]),

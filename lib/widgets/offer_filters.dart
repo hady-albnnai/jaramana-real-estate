@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import '../models/offer_model.dart';
 import '../core/constants/jaramana_locations.dart';
+import '../core/constants/db_constants.dart';
+import '../providers/config_provider.dart';
 
 /// 🎛️ الفلاتر المتقدمة — ودجت مشترك بين شاشة الزائر وشاشة المستخدم (2026-07-27)
 /// نفس معايير مطابقة الطلبات حرفياً، بلا أي تكرار كود بين الشاشتين.
@@ -15,6 +17,8 @@ import '../core/constants/jaramana_locations.dart';
 /// والشاشة الأم تعيد البناء عبر onChanged (setState).
 class OfferFiltersData {
   String? city;
+  /// نطاق السعر والترتيب لا يُطبّقان إلا بعد اختيار عملة واحدة صراحةً.
+  int? currency;
   double minPrice = 0, maxPrice = 1000000;
   int? cat, docTp, floor, minRooms, year, maxKm;
   String? finishing, direction, brand, model, fuel, transmission;
@@ -26,7 +30,8 @@ class OfferFiltersData {
   int get activeCount {
     var n = 0;
     if (city != null) n++;
-    if (minPrice > 0 || maxPrice < 1000000) n++;
+    if (currency != null) n++;
+    if (currency != null && (minPrice > 0 || maxPrice < 1000000)) n++;
     for (final v in [cat, docTp, floor, minRooms, year, maxKm]) {
       if (v != null) n++;
     }
@@ -41,6 +46,7 @@ class OfferFiltersData {
 
   void reset() {
     city = null;
+    currency = null;
     minPrice = 0; maxPrice = 1000000;
     cat = docTp = floor = minRooms = year = maxKm = null;
     finishing = direction = brand = model = fuel = transmission = null;
@@ -63,10 +69,13 @@ class OfferFiltersData {
       }).toList();
     }
 
-    // السعر
-    filtered = filtered
-        .where((o) => o.prc >= minPrice && o.prc <= maxPrice)
-        .toList();
+    // العملة أولاً: لا توجد مقارنة أو فلترة سعر مختلطة بين USD وSYP.
+    if (currency != null) {
+      filtered = filtered.where((o) => o.cur == currency).toList();
+      filtered = filtered
+          .where((o) => o.prc >= minPrice && o.prc <= maxPrice)
+          .toList();
+    }
 
     // عقارات
     if (cat != null) {
@@ -140,9 +149,9 @@ class OfferFiltersData {
     }
 
     // الترتيب
-    if (sort == 'price_low') {
+    if (sort == 'price_low' && currency != null) {
       filtered.sort((a, b) => a.prc.compareTo(b.prc));
-    } else if (sort == 'price_high') {
+    } else if (sort == 'price_high' && currency != null) {
       filtered.sort((a, b) => b.prc.compareTo(a.prc));
     } else if (sort == 'newest') {
       filtered.sort((a, b) => b.tsCrt.compareTo(a.tsCrt));
@@ -283,6 +292,13 @@ class _OfferFiltersBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final allowedCurrencies =
+        context.watch<ConfigProvider>().config?.allowedOfferCurrencies ??
+            Currency.supported;
+    final selectedCurrency = allowedCurrencies.contains(f.currency)
+        ? f.currency
+        : null;
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -316,20 +332,46 @@ class _OfferFiltersBody extends StatelessWidget {
           ),
           AppTheme.gapHeightMedium,
 
-          // السعر
+          // السعر: تُختار العملة قبل النطاق حتى لا تختلط USD وSYP.
+          DropdownButtonFormField<int>(
+            value: selectedCurrency,
+            decoration: _fDeco('عملة السعر'),
+            items: [
+              const DropdownMenuItem<int>(value: null, child: Text('اختر العملة')),
+              ...allowedCurrencies.map((currency) => DropdownMenuItem<int>(
+                    value: currency,
+                    child: Text(Currency.labelOf(currency)),
+                  )),
+            ],
+            onChanged: (value) => sheetSet(() {
+              f.currency = value;
+              if (value == null &&
+                  (f.sort == 'price_low' || f.sort == 'price_high')) {
+                f.sort = 'none';
+              }
+            }),
+          ),
+          AppTheme.gapHeightSmall,
           RangeSlider(
             values: RangeValues(f.minPrice, f.maxPrice),
             min: 0, max: 1000000, divisions: 20,
             activeColor: AppTheme.primaryGold,
             labels: RangeLabels(
               '${f.minPrice.toInt()}', '${f.maxPrice.toInt()}'),
-            onChanged: (v) => sheetSet(() {
-              f.minPrice = v.start; f.maxPrice = v.end;
-            }),
+            onChanged: f.currency == null
+                ? null
+                : (v) => sheetSet(() {
+                      f.minPrice = v.start;
+                      f.maxPrice = v.end;
+                    }),
           ),
-          Text('السعر: ${f.minPrice.toInt()} — ${f.maxPrice.toInt()}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall)),
+          Text(
+            f.currency == null
+                ? 'اختر العملة لتفعيل نطاق السعر'
+                : 'السعر: ${f.minPrice.toInt()} — ${f.maxPrice.toInt()} ${Currency.labelOf(f.currency!)}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeSmall),
+          ),
           AppTheme.gapHeightSmall,
 
           if (showProp) ...[
@@ -474,11 +516,13 @@ class _OfferFiltersBody extends StatelessWidget {
           DropdownButtonFormField<String>(
             value: f.sort,
             decoration: _fDeco('الترتيب'),
-            items: const [
-              DropdownMenuItem(value: 'none', child: Text('الافتراضي (الأولوية)')),
-              DropdownMenuItem(value: 'newest', child: Text('الأحدث')),
-              DropdownMenuItem(value: 'price_low', child: Text('السعر: الأقل أولاً')),
-              DropdownMenuItem(value: 'price_high', child: Text('السعر: الأعلى أولاً')),
+            items: [
+              const DropdownMenuItem(value: 'none', child: Text('الافتراضي (الأولوية)')),
+              const DropdownMenuItem(value: 'newest', child: Text('الأحدث')),
+              if (f.currency != null) ...const [
+                DropdownMenuItem(value: 'price_low', child: Text('السعر: الأقل أولاً')),
+                DropdownMenuItem(value: 'price_high', child: Text('السعر: الأعلى أولاً')),
+              ],
             ],
             onChanged: (v) => sheetSet(() => f.sort = v ?? 'none'),
           ),

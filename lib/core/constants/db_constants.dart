@@ -153,8 +153,34 @@ class NotificationType {
   static const int rating = 5;
 }
 
-/// نوع العملة
+/// عملات عروض جرمانا. التخزين يبقى مبلغاً + رمز عملة منفصلين؛ لا يوجد تحويل
+/// تلقائي بينهما. القيم الرقمية هنا توافق الحقول الحالية إلى أن تنتقل الخلفية
+/// الجديدة إلى price_amount / price_currency صراحةً.
 class Currency {
-  static const int dollar = 0;
-  static const int lbp = 1;
+  static const int usd = 0;
+  static const int syp = 1;
+
+  // توافق مؤقت مع مواضع الكود القديمة.
+  static const int dollar = usd;
+  static const int lbp = syp;
+
+  static const List<int> supported = <int>[usd, syp];
+
+  static String codeOf(int value) => value == syp ? 'SYP' : 'USD';
+  static String labelOf(int value) => value == syp ? 'ل.س' : 'USD';
+
+  static int? fromConfigValue(dynamic value) {
+    if (value is num && supported.contains(value.toInt())) return value.toInt();
+    final code = value?.toString().trim().toUpperCase();
+    switch (code) {
+      case 'USD':
+      case '0':
+        return usd;
+      case 'SYP':
+      case '1':
+        return syp;
+      default:
+        return null;
+    }
+  }
 }

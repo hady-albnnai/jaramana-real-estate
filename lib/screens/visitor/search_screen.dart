@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/offer_provider.dart';
+import '../../providers/config_provider.dart';
+import '../../core/constants/db_constants.dart';
 import '../../models/offer_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/offer_card.dart';
@@ -36,6 +38,18 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _doSearch() async {
+    final hasPriceRange = _minPriceCtrl.text.trim().isNotEmpty ||
+        _maxPriceCtrl.text.trim().isNotEmpty;
+    if (hasPriceRange && _currency == null) {
+      AppTheme.showSnackBar(
+        context,
+        const SnackBar(
+          content: Text('اختر العملة أولاً قبل تحديد نطاق السعر'),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _loading = true;
       _searched = true;
@@ -58,6 +72,13 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final allowedCurrencies =
+        context.watch<ConfigProvider>().config?.allowedOfferCurrencies ??
+            Currency.supported;
+    final selectedCurrency = allowedCurrencies.contains(_currency)
+        ? _currency
+        : null;
+
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
@@ -136,14 +157,16 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Row(children: [
               // العملة
               DropdownButton<int?>(
-                value: _currency,
+                value: selectedCurrency,
                 dropdownColor: AppTheme.surfaceBlack,
                 style: const TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody),
                 hint: const Text('العملة', style: TextStyle(color: AppTheme.textGrey, fontSize: AppTheme.fontSizeBody)),
-                items: const [
-                  DropdownMenuItem(value: null, child: Text('الكل')),
-                  DropdownMenuItem(value: 0, child: Text('\$')),
-                  DropdownMenuItem(value: 1, child: Text('ل.س')),
+                items: [
+                  const DropdownMenuItem<int?>(value: null, child: Text('الكل')),
+                  ...allowedCurrencies.map((currency) => DropdownMenuItem<int?>(
+                        value: currency,
+                        child: Text(Currency.labelOf(currency)),
+                      )),
                 ],
                 onChanged: (v) => setState(() => _currency = v),
               ),

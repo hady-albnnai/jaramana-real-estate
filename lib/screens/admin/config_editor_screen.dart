@@ -7,6 +7,7 @@ import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/error_utils.dart';
 import '../../core/utils/social_links.dart';
+import '../../core/constants/db_constants.dart';
 import 'payment_channels_editor_screen.dart';
 
 /// ⚙️ محرّر إعدادات التطبيق الديناميكية (app_config / key=main)
@@ -31,6 +32,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _userOffersQuota = TextEditingController();
   final _brokerOffersQuota = TextEditingController();
   final _offerLifeCtrl = TextEditingController(); // 🔁 مدة صلاحية العرض
+
+  // ── عملات عروض جرمانا (لا تحويل تلقائي) ──
+  Set<int> _allowedOfferCurrencies = {Currency.usd, Currency.syp};
+  int _defaultOfferCurrency = Currency.usd;
 
   // ── Video request WhatsApp (مدير + نائب المدير فقط) ──
   final _videoWaNumber = TextEditingController();
@@ -91,6 +96,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         _userOffersQuota.text = '${c.userQuotas['o'] ?? 1}';
         _brokerOffersQuota.text = '${c.brokerQuotas['o'] ?? 5}';
         _offerLifeCtrl.text = '${((c.data['qta'] as Map?)?['offerLife'] ?? 90)}';
+        _allowedOfferCurrencies = c.allowedOfferCurrencies.toSet();
+        _defaultOfferCurrency = c.defaultOfferCurrency;
 
         // Video WhatsApp dedicated + group link (for video requests)
         final txts = c.texts;
@@ -219,6 +226,70 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                       _section('📊 الحصص (عدد العروض)'),
                       _numField('حصة المستخدم', _userOffersQuota),
                       _numField('حصة الوسيط', _brokerOffersQuota),
+                      AppTheme.gapHeightXL,
+
+                      // ── 💱 سياسة عملات عروض جرمانا ──
+                      _section('💱 عملات عروض جرمانا'),
+                      Container(
+                        padding: AppTheme.paddingAllMedium,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.infoBlue.withOpacity(0.08),
+                          borderRadius: AppTheme.radiusSmall,
+                          border: Border.all(color: AppTheme.infoBlue.withOpacity(0.3)),
+                        ),
+                        child: const Text(
+                          'تُحفظ الأسعار كمبلغ وعملة منفصلين. لا يوجد تحويل تلقائي، ولا فلترة أو ترتيب مختلط بين العملات.',
+                          style: TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeSmall, height: 1.45),
+                        ),
+                      ),
+                      for (final currency in Currency.supported)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: AppTheme.primaryGold,
+                          value: _allowedOfferCurrencies.contains(currency),
+                          title: Text(
+                            currency == Currency.usd
+                                ? 'USD — دولار أمريكي'
+                                : 'SYP — ليرة سورية',
+                            style: const TextStyle(color: AppTheme.textWhite),
+                          ),
+                          onChanged: (enabled) => setState(() {
+                            if (!enabled && _allowedOfferCurrencies.length == 1) {
+                              return;
+                            }
+                            if (enabled) {
+                              _allowedOfferCurrencies.add(currency);
+                            } else {
+                              _allowedOfferCurrencies.remove(currency);
+                              if (_defaultOfferCurrency == currency) {
+                                _defaultOfferCurrency =
+                                    _allowedOfferCurrencies.first;
+                              }
+                            }
+                          }),
+                        ),
+                      DropdownButtonFormField<int>(
+                        value: _defaultOfferCurrency,
+                        decoration: const InputDecoration(
+                          labelText: 'العملة الافتراضية للعروض الجديدة',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                        ),
+                        dropdownColor: AppTheme.surfaceBlack,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        items: _allowedOfferCurrencies
+                            .map((currency) => DropdownMenuItem<int>(
+                                  value: currency,
+                                  child: Text(Currency.labelOf(currency)),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _defaultOfferCurrency = value);
+                          }
+                        },
+                      ),
                       AppTheme.gapHeightXL,
 
                       // ── 🎥 طلبات الفيديو (مدير + نائب المدير فقط)
@@ -942,6 +1013,14 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     qta['offerLife'] = int.tryParse(_offerLifeCtrl.text.trim()) ?? (qta['offerLife'] ?? 90);
     current['qta'] = qta;
 
+    final offerCurrencies = <String, dynamic>{
+      'allowed': _allowedOfferCurrencies
+          .map(Currency.codeOf)
+          .toList(growable: false),
+      'default': Currency.codeOf(_defaultOfferCurrency),
+    };
+    current['offerCurrencies'] = offerCurrencies;
+
     // ── حفظ حقول طلبات الفيديو (مدير + نائب) ──
     final txts = Map<String, dynamic>.from(current['txts'] ?? {});
     txts['videoRequestWhatsApp'] = _videoWaNumber.text.trim();
@@ -1024,6 +1103,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'pts': pts,
           'com': com,
           'qta': qta,
+          'offerCurrencies': offerCurrencies,
           'txts': txts,
           'socialPublishing': socialPublishing,
           'office': office,

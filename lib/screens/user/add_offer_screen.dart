@@ -17,6 +17,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/utils/error_utils.dart';
 import '../../core/constants/jaramana_locations.dart';
+import '../../core/widgets/offer_currency_selector.dart';
 
 class AddOfferScreen extends StatefulWidget {
   /// 📸 وضع طلب التصوير: يفتح شاشة إضافة العرض الكاملة مع تعديلات:
@@ -75,7 +76,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
   int? _selectedMainCat;
   int? _selectedSubCat;
   String? _selectedCityArea;
-  int _cur = Currency.lbp;
+  int _cur = Currency.usd;
   final _priceCtrl = TextEditingController();
   final _locCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
@@ -682,7 +683,14 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
       Row(children: [
         Expanded(flex: 3, child: TextField(controller: _priceCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'السعر المتوقع (إلزامي)', border: OutlineInputBorder()))),
         AppTheme.gapWidthSmall,
-        Expanded(flex: 3, child: DropdownButtonFormField<int>(value: _cur, isExpanded: true, items: const [DropdownMenuItem(value: 0, child: Text('دولار أمريكي', overflow: TextOverflow.ellipsis)), DropdownMenuItem(value: 1, child: Text('ليرة سورية', overflow: TextOverflow.ellipsis))], onChanged: (v) => setState(() => _cur = v ?? 1), decoration: const InputDecoration(border: OutlineInputBorder()))),
+        Expanded(
+          flex: 3,
+          child: OfferCurrencySelector(
+            value: _cur,
+            onChanged: (value) => setState(() => _cur = value),
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+        ),
       ]),
       const SizedBox(height: 15),
       if (_selectedType == 0) ...[

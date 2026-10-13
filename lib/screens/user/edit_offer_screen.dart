@@ -12,6 +12,7 @@ import '../../core/constants/db_constants.dart';
 import '../../models/offer_model.dart';
 import '../../services/storage_service.dart';
 import '../../core/validation/input_validators.dart';
+import '../../core/widgets/offer_currency_selector.dart';
 
 /// شاشة تعديل عرض موجود
 class EditOfferScreen extends StatefulWidget {
@@ -340,16 +341,14 @@ class _EditOfferScreenState extends State<EditOfferScreen> {
                 decoration: const InputDecoration(border: OutlineInputBorder()),
               )),
               AppTheme.gapWidthSmall,
-              Expanded(flex: 2, child: DropdownButtonFormField<int>(
-                value: _cur,
-                dropdownColor: AppTheme.surfaceBlack,
-                style: const TextStyle(color: AppTheme.textWhite),
-                items: const [
-                  DropdownMenuItem(value: Currency.dollar, child: Text('دولار')),
-                  DropdownMenuItem(value: Currency.lbp,    child: Text('ل.س')),
-                ],
-                onChanged: (v) => setState(() => _cur = v ?? Currency.lbp),
-              )),
+              Expanded(
+                flex: 2,
+                child: OfferCurrencySelector(
+                  value: _cur,
+                  preserveExistingValue: true,
+                  onChanged: (value) => setState(() => _cur = value),
+                ),
+              ),
             ]),
             AppTheme.gapHeightLarge,
 

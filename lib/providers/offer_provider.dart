@@ -496,6 +496,11 @@ class OfferProvider with ChangeNotifier {
   }) async {
     _isSearching = true; // تفعيل حالة البحث
     try {
+      // نطاق السعر بلا عملة يخلط USD وSYP ويعطي نتائج مضللة؛ نرفضه صراحة.
+      if (currency == null && (minPrice != null || maxPrice != null)) {
+        _setError(Exception('PRICE_CURRENCY_REQUIRED'));
+        return [];
+      }
       var q = SupabaseService().client.from(DbTables.offers)
           .select(kOfferPublicColumns).eq('i_del', 0).eq('i_pub', 1);
       if (query != null && query.isNotEmpty) q = q.ilike('ttl', '%$query%');

@@ -194,6 +194,15 @@ class _OfferCardState extends State<OfferCard> {
     final offer = widget.offer;
     final priceLabel = AppUtils.formatPrice(offer.prc, currency: offer.cur);
     final isProperty = offer.typ == 0;
+    final location = (offer.loc['d'] ?? offer.loc['city'] ?? 'جرمانا')
+        .toString()
+        .trim();
+    final finishing = (offer.specs['finishing'] ?? '').toString().trim();
+    final docSource = context.watch<ConfigProvider>().config?.documentTypes;
+    final rawDoc = docSource?['${offer.docTp}'];
+    final ownership = rawDoc is Map
+        ? (rawDoc['nm'] ?? '').toString().trim()
+        : (rawDoc ?? '').toString().trim();
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -354,30 +363,33 @@ class _OfferCardState extends State<OfferCard> {
                   ),
                   AppTheme.gapHeightSmall,
 
-                  // 📊 المواصفات السريعة (أيقونات)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildSpecItem(Icons.location_on_outlined, offer.loc['city'] ?? 'جرمانا'),
-                        const SizedBox(width: 15),
-                        if (isProperty) ...[
-                          if (offer.specs['area'] != null)
-                            _buildSpecItem(Icons.straighten, '${offer.specs['area']} م²'),
-                          if (offer.specs['rooms'] != null) ...[
-                            const SizedBox(width: 15),
-                            _buildSpecItem(Icons.bed_outlined, '${offer.specs['rooms']} غرف'),
-                          ],
-                        ] else ...[
-                          if (offer.specs['brand'] != null)
-                            _buildSpecItem(Icons.directions_car_outlined, '${offer.specs['brand']}'),
-                          if (offer.specs['year'] != null) ...[
-                            const SizedBox(width: 15),
-                            _buildSpecItem(Icons.calendar_today_outlined, '${offer.specs['year']}'),
-                          ],
-                        ],
-                      ],
-                    ),
+                  // ترتيب معلومات العرض: السعر بالأعلى، ثم الموقع، الإكساء،
+                  // والملكية. لا تدخل مواصفات ثانوية بين هذه المعلومات الأساسية.
+                  Wrap(
+                    spacing: 15,
+                    runSpacing: 8,
+                    children: [
+                      if (location.isNotEmpty)
+                        _buildSpecItem(Icons.location_on_outlined, location),
+                      if (isProperty && finishing.isNotEmpty)
+                        _buildSpecItem(Icons.format_paint_outlined,
+                            'إكساء: $finishing'),
+                      if (isProperty && ownership.isNotEmpty)
+                        _buildSpecItem(Icons.description_outlined,
+                            'الملكية: $ownership'),
+                      if (isProperty && offer.specs['area'] != null)
+                        _buildSpecItem(Icons.straighten,
+                            '${offer.specs['area']} م²'),
+                      if (isProperty && offer.specs['rooms'] != null)
+                        _buildSpecItem(Icons.bed_outlined,
+                            '${offer.specs['rooms']} غرف'),
+                      if (!isProperty && offer.specs['brand'] != null)
+                        _buildSpecItem(Icons.directions_car_outlined,
+                            '${offer.specs['brand']}'),
+                      if (!isProperty && offer.specs['year'] != null)
+                        _buildSpecItem(Icons.calendar_today_outlined,
+                            '${offer.specs['year']}'),
+                    ],
                   ),
 
                   AppTheme.gapHeightLarge,

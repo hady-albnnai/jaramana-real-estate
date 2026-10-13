@@ -99,6 +99,7 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
     await _ensureOwnIds();
 
     final List<OfferModel> newMatches = [];
+    final int? reqCurrency = widget.requestData['cur'] as int?;
 
     for (final offer in offerProvider.offers) {
       // فلتر العروض المحذوفة/الملغاة
@@ -106,6 +107,9 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
 
       // 🔒 (2026-08-20): عروض المستخدم نفسه مستبعدة كلياً من المطابقة
       if (_ownOfferIds.contains(offer.id)) continue;
+
+      // المطابقة السعرية داخل عملة الطلب نفسها فقط.
+      if (reqCurrency != null && offer.cur != reqCurrency) continue;
 
       final scoreData = BusinessService().calculateMatchScore(
         request: widget.requestData,
@@ -151,6 +155,7 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
     final List<OfferModel> matches = [];
 
     final int? reqTrx = widget.requestData['trx'] as int?;
+    final int? reqCurrency = widget.requestData['cur'] as int?;
 
     for (final offer in offerProvider.offers) {
       // فلتر العروض المحذوفة/الملغاة
@@ -161,6 +166,9 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
 
       // فلتر نوع المعاملة (شراء / إيجار)
       if (reqTrx != null && offer.trx != reqTrx) continue;
+
+      // لا نقارن أو نطابق الميزانيات بين عملتين مختلفتين.
+      if (reqCurrency != null && offer.cur != reqCurrency) continue;
 
       final scoreData = BusinessService().calculateMatchScore(
         request: widget.requestData,

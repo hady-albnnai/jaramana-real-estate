@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../core/constants/db_constants.dart';
+
 class ConfigModel {
   final Map<String, dynamic> data;
   final DateTime? loadedAt;
@@ -40,6 +42,33 @@ class ConfigModel {
 
   Map<String, dynamic> get features => _getNestedMap('features', {});
   bool get consultationFlowV2 => features['consultationFlowV2'] == true;
+
+  /// سياسة عملات عروض جرمانا. تُدار من الإدارة وتصل للتطبيق مع app_config.
+  /// قيم الإعداد تقبل الرموز USD/SYP لتظل قاعدة البيانات واضحة وقابلة للتوسعة.
+  Map<String, dynamic> get offerCurrencySettings =>
+      _getNestedMap('offerCurrencies', {});
+
+  List<int> get allowedOfferCurrencies {
+    final raw = offerCurrencySettings['allowed'];
+    final values = raw is List ? raw : const <dynamic>['USD', 'SYP'];
+    final parsed = <int>[];
+    for (final value in values) {
+      final currency = Currency.fromConfigValue(value);
+      if (currency != null && !parsed.contains(currency)) parsed.add(currency);
+    }
+    // لا نسمح بحالة بلا عملة في الواجهة حتى لا يظهر مبلغ بلا وحدة.
+    return parsed.isEmpty ? const <int>[Currency.usd] : parsed;
+  }
+
+  int get defaultOfferCurrency {
+    final preferred = Currency.fromConfigValue(offerCurrencySettings['default']);
+    if (preferred != null && allowedOfferCurrencies.contains(preferred)) {
+      return preferred;
+    }
+    return allowedOfferCurrencies.contains(Currency.usd)
+        ? Currency.usd
+        : allowedOfferCurrencies.first;
+  }
 
   Map<String, dynamic> get texts => _getNestedMap('txts', {});
   /// 💱 PRICE-UNIT-001 (2026-08-15): سعر صرف الدولار مقابل الليرة.

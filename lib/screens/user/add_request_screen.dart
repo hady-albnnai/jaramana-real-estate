@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/constants/db_constants.dart';
 import '../../core/validation/input_validators.dart';
 import '../../models/request_model.dart';
+import '../../core/widgets/offer_currency_selector.dart';
 
 /// شاشة إضافة طلب (شراء / إيجار)
 class AddRequestScreen extends StatefulWidget {
@@ -29,7 +30,7 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
   final _priceCtrl       = TextEditingController();
   final _notesCtrl       = TextEditingController();
   final _specsCtrl       = TextEditingController(); // المواصفات المطلوبة
-  int _cur = Currency.lbp; // العملة — دولار أو ل.س
+  int _cur = Currency.usd; // العملة تضبط مركزياً من إعدادات جرمانا
 
   bool _submitting = false;
 
@@ -461,20 +462,14 @@ class _AddRequestScreenState extends State<AddRequestScreen> {
             AppTheme.gapWidthSmall,
             Expanded(
               flex: 2,
-              child: DropdownButtonFormField<int>(
+              child: OfferCurrencySelector(
                 value: _cur,
-                dropdownColor: AppTheme.surfaceBlack,
-                style: const TextStyle(color: AppTheme.textWhite),
+                onChanged: (value) => setState(() => _cur = value),
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   filled: true,
                   fillColor: AppTheme.surfaceBlack,
                 ),
-                items: const [
-                  DropdownMenuItem(value: Currency.dollar, child: Text('دولار')),
-                  DropdownMenuItem(value: Currency.lbp,    child: Text('ل.س')),
-                ],
-                onChanged: (v) => setState(() => _cur = v ?? Currency.lbp),
               ),
             ),
           ]),
