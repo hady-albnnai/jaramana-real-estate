@@ -46,7 +46,7 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
   }
 
   /// ✅ Fix for Bug #4: تطبيع رقم الهاتف إلى الصيغة المحلية (09xxxxxxxx)
-  /// يتعامل مع الصيغ المختلفة: +963938123456, 963938123456, 0938123456, 938123456
+  /// يتعامل مع الصيغ المختلفة: +9639xxxxxxxx, 9639xxxxxxxx, 09xxxxxxxx, 9xxxxxxxx
   String _normalizePhoneToLocalFormat(String phone) {
     // إزالة جميع الأحرف غير الرقمية
     var cleaned = phone.replaceAll(RegExp(r'[^\d]'), '');

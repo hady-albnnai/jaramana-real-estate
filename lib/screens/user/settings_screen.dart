@@ -417,6 +417,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     addSocial('facebook', config?.facebookPage);
     addSocial('instagram', config?.instagramPage);
+    addSocial('telegram', config?.telegramChannelUrl);
     (config?.socialPages ?? {}).forEach((k, v) => addSocial(k, v?.toString()));
 
     // ترتيب العرض: الشبكات المعروفة بترتيب SocialLinks.known ثم الباقي أبجدياً
@@ -433,6 +434,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final waNumber = SocialLinks.toWhatsAppNumber(waRaw);
     final hasContact =
         phone1.isNotEmpty || phone2.isNotEmpty || waNumber.isNotEmpty;
+    final officeAddress = (config?.officeAddress ?? '').trim();
+    final officeHours = (config?.officeHours ?? '').trim();
 
     // ── النصوص التحريرية ──
     final aboutUs = (config?.aboutUsText ?? '').trim();
@@ -485,6 +488,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   AppTheme.gapHeightLarge,
                 ],
 
+                // ── موقع ودوام المكتب — يظهران فقط عند إدخالهما من الإدارة ──
+                if (officeAddress.isNotEmpty || officeHours.isNotEmpty) ...[
+                  _aboutHeading('المكتب'),
+                  AppTheme.gapHeightSmall,
+                  if (officeAddress.isNotEmpty)
+                    _officeInfoTile('العنوان', Icons.location_on_outlined,
+                        officeAddress),
+                  if (officeHours.isNotEmpty)
+                    _officeInfoTile('ساعات الدوام', Icons.schedule_outlined,
+                        officeHours),
+                  AppTheme.gapHeightLarge,
+                ],
+
                 // ── للتواصل معنا ──
                 if (hasContact) ...[
                   _aboutHeading('للتواصل معنا'),
@@ -497,7 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   AppTheme.gapHeightSmall,
                   if (phone1.isNotEmpty)
-                    _contactPhoneTile('رقم التواصل الأول', phone1),
+                    _contactPhoneTile('رقم المكتب', phone1),
                   if (phone2.isNotEmpty)
                     _contactPhoneTile('رقم التواصل الثاني', phone2),
                   if (waNumber.isNotEmpty)
@@ -742,6 +758,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 🩹 (2026-08-20): الخلفية كانت `deepBlack` من التصميم الغامق القديم
   /// فيصير نص أسود على أسود بعد اعتماد التصميم الفاتح — الآن خلفية فاتحة
   /// بإطار ذهبي، والرابط يُعرض نصاً صغيراً تحت العنوان (قرار المالك).
+  Widget _officeInfoTile(String label, IconData icon, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.inputBackground,
+          borderRadius: AppTheme.radiusSmall,
+          border: Border.all(color: AppTheme.primaryGold.withOpacity(0.4)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.primaryGold, size: 20),
+            AppTheme.gapWidthSmall,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          color: AppTheme.textWhite,
+                          fontSize: AppTheme.fontSizeMedium,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text(value,
+                      style: const TextStyle(
+                          color: AppTheme.textGrey,
+                          fontSize: AppTheme.fontSizeCaption)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _socialLinkTile(String label, IconData icon, VoidCallback onTap,
       {String? linkText}) {
     return Padding(

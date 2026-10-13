@@ -64,7 +64,7 @@ class OfficeContactButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = context.watch<ConfigProvider>().config;
-    final officePhone = (config?.contactPhone1 ?? '').trim();
+    final officePhone = (config?.officePhone ?? '').trim();
     final whatsApps = <String>{
       (config?.contactWhatsApp ?? '').trim(),
       (config?.whatsapp2 ?? '').trim(),

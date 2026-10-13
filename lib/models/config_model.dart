@@ -145,8 +145,21 @@ class ConfigModel {
   // القاعدة الآن: **كل الافتراضيات نصوص فارغة** — أي بند فارغ يختفي كلياً،
   // ومصدر القيم الوحيد هو app_config. (قرار المالك: «ما بدي شي افتراضي»)
 
-  /// رقم التواصل الأول — فارغ يخفيه من «عن التطبيق»
-  String get contactPhone1 => _getNested('txts.contactPhone1', '');
+  /// إعدادات المكتب العامة. كل قيمها قابلة للإدخال من الإدارة لاحقاً.
+  Map<String, dynamic> get office => _getNestedMap('office', {});
+
+  /// رقم المكتب الرسمي هو مصدر الاتصال العام. نحتفظ بتوافق قراءة مؤقت مع
+  /// contactPhone1 إلى أن تُحدَّث إعدادات جرمانا لأول مرة من شاشة الإدارة.
+  String get officePhone {
+    final phone = (office['phone'] ?? '').toString().trim();
+    return phone.isNotEmpty ? phone : _getNested('txts.contactPhone1', '');
+  }
+
+  /// دوام المكتب النصي، مثال: «يومياً 9 ص - 6 م». الفارغ يعني لا يُعرض.
+  String get officeHours => (office['hours'] ?? '').toString().trim();
+
+  /// رقم التواصل الأول — يبقى للتوافق مع مواضع الواجهة القديمة.
+  String get contactPhone1 => officePhone;
 
   /// رقم التواصل الثاني — فارغ يخفيه من «عن التطبيق»
   String get contactPhone2 => _getNested('txts.contactPhone2', '');
@@ -203,13 +216,18 @@ class ConfigModel {
   int legalPriceFor(int serviceType) =>
       serviceType == 1 ? legalOnsitePrice : legalPhonePrice;
 
-  /// 📍 عنوان المكتب للجلسات الحضورية (2026-08-20) — يُدخله المدير من شاشة
-  /// الإعدادات (قسم الاستشارة القانونية) ويظهر في كل مواضع الجلسة الحضورية:
-  /// منتقي المواعيد + بطاقة المستخدم + بطاقة المحامي + نصوص الإشعارات.
-  /// فارغ = يُخفى تلقائياً في كل المواضع.
-  /// العنوان العام للمكتب، مصدر مركزي لكل الخدمات والشرح داخل التطبيق.
-  String get officeAddress =>
-      (legalPrices['officeAddress'] ?? '').toString().trim();
+  /// عنوان المكتب العام. يُعرض فقط عندما يدخله المدير، ويُستخدم في الخدمات
+  /// الحضورية. القراءة القديمة من legalPrice تبقى كتوافق مؤقت لا كإعداد مستقل.
+  String get officeAddress {
+    final address = (office['address'] ?? '').toString().trim();
+    return address.isNotEmpty
+        ? address
+        : (legalPrices['officeAddress'] ?? '').toString().trim();
+  }
+
+  /// رابط قناة تلغرام الرسمية؛ لا يعني تفعيل بوت أو نشر تلقائي بحد ذاته.
+  String get telegramChannelUrl =>
+      _getNested('txts.telegramChannelUrl', '');
 
   /// توافق خلفي مع مواضع الجلسات القانونية القديمة.
   String get legalOfficeAddress => officeAddress;
@@ -224,13 +242,13 @@ class ConfigModel {
   /// 0 يعني الخدمة مجانية فيُخفى ذكر الأجر من شاشة المستخدم.
   int get photographyPrice => _getNested('photoPrice', 1000);
 
-  /// إعدادات النشر الحقيقي على Meta. التوكنات لا تحفظ هنا؛ تبقى Edge Secrets.
-  /// افتراضي true منذ 2026-07-13 — النشر التلقائي بعد الموافقة مباشرة.
+  /// إعدادات النشر على Meta. التوكنات لا تحفظ هنا؛ تبقى في مسار خادمي محمي.
+  /// النشر التلقائي متوقف افتراضياً إلى أن يضيف المدير حساب جرمانا ويتحقق منه.
   Map<String, dynamic> get socialPublishing =>
-      _getNestedMap('socialPublishing', {'autoPublish': true});
+      _getNestedMap('socialPublishing', {'autoPublish': false});
 
-  /// عند true تحاول Edge Function النشر مباشرة بعد قبول العرض.
-  bool get socialAutoPublish => socialPublishing['autoPublish'] != false;
+  /// عند true فقط يسمح السيرفر بالنشر بعد قبول العرض.
+  bool get socialAutoPublish => socialPublishing['autoPublish'] == true;
 
   T _getNested<T>(String path, T defaultValue) {
     dynamic value = data;

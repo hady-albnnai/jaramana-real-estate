@@ -86,13 +86,13 @@ class _PaymentChannelsEditorScreenState
     _controllers = {};
     _enabled = {};
 
-    // رقم المكتب: المصدر office.phone، وإن كان فارغاً نقرأ balance.number
-    final officeMap = Map<String, dynamic>.from(
-        (prov.config?.data['office'] as Map?) ?? <String, dynamic>{});
+    // رقم المكتب مصدر واحد للاتصال العام وتحويل الرصيد. إن لم يُدخل بعد
+    // نقرأ القيمة القديمة من balance لتسهيل الترحيل من دون اختراع رقم.
     final balanceMap = Map<String, dynamic>.from(
         (pay['balance'] as Map?) ?? <String, dynamic>{});
-    _officePhoneCtrl.text = (officeMap['phone'] ?? '').toString().trim().isNotEmpty
-        ? officeMap['phone'].toString()
+    final configuredOfficePhone = prov.config?.officePhone ?? '';
+    _officePhoneCtrl.text = configuredOfficePhone.isNotEmpty
+        ? configuredOfficePhone
         : (balanceMap['number'] ?? '').toString();
 
     for (final key in _editableChannels) {
@@ -210,6 +210,17 @@ class _PaymentChannelsEditorScreenState
     // يُكتب في office.phone وفي قناة «تحويل رصيد» (balance.number) معاً،
     // فلا ينحرف ما يراه المستخدم عمّا سجّلته الإدارة.
     final sections = <String, dynamic>{'payChannels': payChannels};
+    final existingOffice = Map<String, dynamic>.from(
+        (prov.config?.data['office'] as Map?) ?? <String, dynamic>{});
+    existingOffice['phone'] = officePhone;
+    sections['office'] = existingOffice;
+
+    // مزامنة رقم الاتصال العام مع رقم المكتب حتى لا يختلف زر الاتصال عن
+    // وجهة تحويل الرصيد. لا نضيف أي رقم افتراضي عندما تكون الخانة فارغة.
+    final texts = Map<String, dynamic>.from(prov.config?.texts ?? {});
+    texts['contactPhone1'] = officePhone;
+    sections['txts'] = texts;
+
     if (officePhone.isNotEmpty) {
       final balance = Map<String, dynamic>.from(payChannels['balance'] as Map);
       balance['number'] = officePhone;
@@ -218,7 +229,6 @@ class _PaymentChannelsEditorScreenState
             'حوّل رصيد الجوال إلى رقم المكتب: $officePhone ثم أدخل رقم العملية وارفع صورة الإشعار.';
       }
       payChannels['balance'] = balance;
-      sections['office'] = {'phone': officePhone};
     }
 
     bool ok = false;
@@ -382,7 +392,7 @@ class _PaymentChannelsEditorScreenState
               style: const TextStyle(color: AppTheme.textWhite),
               decoration: const InputDecoration(
                 labelText: 'رقم المكتب (09xxxxxxxx)',
-                hintText: '0958750199',
+                hintText: '09xxxxxxxx',
                 filled: true,
                 fillColor: AppTheme.scaffoldBackground,
                 prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),

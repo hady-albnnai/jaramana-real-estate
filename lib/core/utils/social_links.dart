@@ -192,13 +192,13 @@ class SocialLinks {
     final s = (raw ?? '').trim();
     if (s.isEmpty) return null; // فارغ = البند مخفي
     if (!isValidPhone(s)) {
-      return 'رقم غير صالح — مثال: 0933123456 أو +963933123456';
+      return 'رقم غير صالح — استخدم صيغة 09xxxxxxxx أو +9639xxxxxxxx';
     }
     return null;
   }
 
   /// تحويل رقم محلي إلى صيغة wa.me الدولية بلا رمز `+`.
-  /// `0958750199` ⇒ `963958750199`. يُرجع نصاً فارغاً إن كان الرقم غير صالح.
+  /// `09xxxxxxxx` ⇒ `9639xxxxxxxx`. يُرجع نصاً فارغاً إن كان الرقم غير صالح.
   static String toWhatsAppNumber(String raw) {
     var s = raw.trim().replaceAll(RegExp(r'[\s()+-]'), '');
     if (s.isEmpty) return '';

@@ -42,6 +42,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   // ── صفحات التواصل الاجتماعي (قابلة للتوسعة) ──
   final _facebookCtrl = TextEditingController();
   final _instagramCtrl = TextEditingController();
+  final _telegramChannelCtrl = TextEditingController();
 
   // ── 📞 أرقام التواصل ونصوص «عن التطبيق» (2026-08-14) ──
   // كانت تُسمّى «رقم المطور / المطور الثاني» — تسمية خاطئة توحي بأنها أرقام
@@ -49,6 +50,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   // تفريغ الحقل. الآن: أرقام تواصل، افتراضها فارغ، والفارغ يُخفي البند.
   final _contactPhone1Ctrl = TextEditingController();
   final _contactPhone2Ctrl = TextEditingController();
+  final _officeHoursCtrl = TextEditingController();
   final _contactWhatsAppCtrl = TextEditingController();
   final _whatsapp2Ctrl = TextEditingController();
   final _aboutUsCtrl = TextEditingController();
@@ -65,7 +67,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
   final _legalDurationCtrl = TextEditingController();
   // 📍 عنوان المكتب للجلسات الحضورية (2026-08-20)
   final _legalAddressCtrl = TextEditingController();
-  bool _socialAutoPublish = true; // مفعّل افتراضياً منذ 2026-07-13
+  bool _socialAutoPublish = false; // لا نشر قبل إعداد حساب جرمانا والتحقق منه
   // للصفحات الإضافية: نستخدم قائمة بسيطة (key: label, value: url)
   final List<Map<String, TextEditingController>> _extraSocialCtrls = [];
 
@@ -100,8 +102,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
         // Social pages
         _facebookCtrl.text = c.facebookPage;
         _instagramCtrl.text = c.instagramPage;
-        _contactPhone1Ctrl.text = c.contactPhone1;
+        _telegramChannelCtrl.text = c.telegramChannelUrl;
+        _contactPhone1Ctrl.text = c.officePhone;
         _contactPhone2Ctrl.text = c.contactPhone2;
+        _officeHoursCtrl.text = c.officeHours;
         _contactWhatsAppCtrl.text = c.contactWhatsApp;
         _whatsapp2Ctrl.text = c.whatsapp2;
         _aboutUsCtrl.text = c.aboutUsText;
@@ -148,8 +152,10 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
       _appVerCtrl,
       _facebookCtrl,
       _instagramCtrl,
+      _telegramChannelCtrl,
       _contactPhone1Ctrl,
       _contactPhone2Ctrl,
+      _officeHoursCtrl,
       _contactWhatsAppCtrl,
       _whatsapp2Ctrl,
       _aboutUsCtrl,
@@ -239,7 +245,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
                           labelText: 'رقم الواتساب المخصص لطلبات الفيديو (09xxxxxxxx أو +963...)',
-                          hintText: '0933123456',
+                          hintText: '09xxxxxxxx',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.phone, color: AppTheme.primaryGold),
@@ -369,6 +375,19 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         ),
                       ),
                       AppTheme.gapHeightMedium,
+                      TextFormField(
+                        controller: _telegramChannelCtrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        textDirection: TextDirection.ltr,
+                        validator: SocialLinks.validateOptionalUrl,
+                        decoration: const InputDecoration(
+                          labelText: 'رابط قناة تلغرام الرسمية',
+                          hintText: 'https://t.me/YourChannel',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.send_outlined, color: AppTheme.primaryGold),
+                        ),
+                      ),
                       AppTheme.gapHeightMedium,
                       // 📸 أجر خدمة التصوير العقاري — يظهر للمستخدم بشاشة الخدمة
                       TextFormField(
@@ -567,12 +586,24 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         validator: SocialLinks.validateOptionalPhone,
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
-                          labelText: 'رقم التواصل الأول',
-                          hintText: '0933123456 — اتركه فارغاً لإخفائه',
+                          labelText: 'رقم المكتب الرسمي',
+                          hintText: '09xxxxxxxx — اتركه فارغاً لإخفائه',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon:
                               Icon(Icons.phone, color: AppTheme.primaryGold),
+                        ),
+                      ),
+                      AppTheme.gapHeightMedium,
+                      TextFormField(
+                        controller: _officeHoursCtrl,
+                        style: const TextStyle(color: AppTheme.textWhite),
+                        decoration: const InputDecoration(
+                          labelText: 'ساعات دوام المكتب (اختياري)',
+                          hintText: 'مثال: يومياً 9 ص - 6 م',
+                          filled: true,
+                          fillColor: AppTheme.surfaceBlack,
+                          prefixIcon: Icon(Icons.schedule, color: AppTheme.primaryGold),
                         ),
                       ),
                       AppTheme.gapHeightMedium,
@@ -583,8 +614,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         validator: SocialLinks.validateOptionalPhone,
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
-                          labelText: 'رقم التواصل الثاني',
-                          hintText: '0938123456 — اتركه فارغاً لإخفائه',
+                          labelText: 'رقم تواصل ثانٍ (اختياري)',
+                          hintText: '09xxxxxxxx — اتركه فارغاً لإخفائه',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon:
@@ -599,8 +630,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         validator: SocialLinks.validateOptionalPhone,
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
-                          labelText: 'رقم واتساب التواصل',
-                          hintText: '0958750199 — يظهر كزر «راسلنا على واتساب»',
+                          labelText: 'رقم واتساب المكتب',
+                          hintText: '09xxxxxxxx — يظهر كزر «راسلنا على واتساب»',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.chat_bubble_outline,
@@ -614,8 +645,8 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         validator: SocialLinks.validateOptionalPhone,
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
-                          labelText: 'رقم واتساب ثاني (اختياري)',
-                          hintText: '0934222900 — يظهر بالمنشورات مع الرقم الأول',
+                          labelText: 'رقم واتساب ثانٍ (اختياري)',
+                          hintText: '09xxxxxxxx — يظهر عند تفعيله مع الرقم الأول',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.chat_bubble_outline,
@@ -718,7 +749,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                       _navTile(
                         icon: Icons.payments,
                         title: 'إدارة قنوات الدفع',
-                        subtitle: 'الهرم • شام كاش • تحويل رصيد • بنكي',
+                        subtitle: 'سيرياتل كاش • شام كاش • تحويل رصيد • بنكي',
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -919,6 +950,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     // ── حفظ صفحات التواصل الاجتماعي ──
     txts['facebook'] = _facebookCtrl.text.trim();
     txts['instagram'] = _instagramCtrl.text.trim();
+    txts['telegramChannelUrl'] = _telegramChannelCtrl.text.trim();
 
     // 📞 أرقام التواصل ونصوص «عن التطبيق» — الفارغ مسموح ويعني «أخفِ البند».
     // المفتاحان القديمان developerPhone/developerPhone2 يُمسحان صراحةً حتى لا
@@ -934,6 +966,14 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
     txts['referralBaseUrl'] = _referralBaseUrlCtrl.text.trim();
     txts.remove('developerPhone');
     txts.remove('developerPhone2');
+
+    // إعدادات المكتب العامة: رقم واحد للاتصال والتحويل، وعنوان/دوام قابلان
+    // للتعبئة لاحقاً من الإدارة بلا إعادة بناء.
+    final office = Map<String, dynamic>.from(current['office'] ?? {});
+    office['phone'] = _contactPhone1Ctrl.text.trim();
+    office['hours'] = _officeHoursCtrl.text.trim();
+    office['address'] = _legalAddressCtrl.text.trim();
+    current['office'] = office;
 
     // صفحات إضافية — المفتاح يُوحَّد عبر SocialLinks حتى تُشتقّ الأيقونة
     // والاسم العربي تلقائياً، فلا تظهر كلها بأيقونة رابط رمادية واحدة.
@@ -986,6 +1026,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
           'qta': qta,
           'txts': txts,
           'socialPublishing': socialPublishing,
+          'office': office,
           'photoPrice': photoPrice,
           'legalPrice': legalPrice,
         },
