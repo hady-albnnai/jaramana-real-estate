@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 // ⚠️ 2026-08-14: كان المساران `../../core/...` و`../../models/...` — وهما
 // يخرجان من `lib/widgets/` إلى **جذر الريبو** حيث لا وجود لـ`core/` ولا
 // `models/`. الملف مستورَد فعلياً من `user_home_screen.dart` و`home_screen.dart`
