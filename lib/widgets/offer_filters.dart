@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 // ⇒ خطأ بناء مؤكَّد. الصحيح مستوىً واحد: `lib/widgets/` ← `lib/`.
 import '../core/theme/app_theme.dart';
 import '../models/offer_model.dart';
+import '../core/constants/jaramana_locations.dart';
 
 /// 🎛️ الفلاتر المتقدمة — ودجت مشترك بين شاشة الزائر وشاشة المستخدم (2026-07-27)
 /// نفس معايير مطابقة الطلبات حرفياً، بلا أي تكرار كود بين الشاشتين.
@@ -308,7 +309,7 @@ class _OfferFiltersBody extends StatelessWidget {
           DropdownButtonFormField<String>(
             value: f.city,
             decoration: _fDeco('الموقع'),
-            items: ['السويداء', 'صلخد', 'شهبا', 'المزرعة', 'الكفر', 'قنوات']
+            items: JaramanaLocations.all
                 .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                 .toList(),
             onChanged: (v) => sheetSet(() => f.city = v),

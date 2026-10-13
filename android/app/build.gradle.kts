@@ -5,8 +5,7 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android Gradle plugin.
     id("dev.flutter.flutter-gradle-plugin")
-    // Firebase (FCM)
-    id("com.google.gms.google-services")
+    // Firebase سيُفعّل بعد إضافة إعدادات جرمانا المستقلة.
 }
 
 // ── تحميل إعدادات التوقيع من key.properties (إن وُجد) ──
@@ -23,7 +22,7 @@ if (hasReleaseSigning) {
 }
 
 android {
-    namespace = "com.sweeda.realestate"
+    namespace = "com.hadyalbnnai.jaramanarealestate"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
@@ -39,7 +38,7 @@ android {
 
     defaultConfig {
         // معرّف التطبيق للإنتاج
-        applicationId = "com.sweeda.realestate"
+        applicationId = "com.hadyalbnnai.jaramanarealestate"
         minSdk = 24
         targetSdk = 36
         versionCode = flutter.versionCode

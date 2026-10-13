@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/guide/guide_models.dart';
-import 'package:sweeda_real_estate/core/guide/guide_storage.dart';
+import 'package:jaramana_real_estate/core/guide/guide_models.dart';
+import 'package:jaramana_real_estate/core/guide/guide_storage.dart';
 
 void main() {
   final storage = GuideStorage();

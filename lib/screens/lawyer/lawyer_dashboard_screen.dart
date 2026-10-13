@@ -2690,7 +2690,7 @@ class _LawyerDashboardScreenState extends State<LawyerDashboardScreen> {
           decoration: const InputDecoration(labelText: 'رقم العقار', hintText: '12345'))),
         AppTheme.gapHeightMedium,
         E2E(id: 'e2e_task_property_zone', child: TextField(controller: _taskZoneCtrl, style: const TextStyle(color: AppTheme.textWhite),
-          decoration: const InputDecoration(labelText: 'المنطقة العقارية', hintText: 'السويداء'))),
+          decoration: const InputDecoration(labelText: 'المنطقة العقارية', hintText: 'جرمانا'))),
       ],
       if (_selectedItemType == 1)
         E2E(id: 'e2e_task_vehicle_number', child: TextField(controller: _taskPropertyCtrl, style: const TextStyle(color: AppTheme.textWhite),

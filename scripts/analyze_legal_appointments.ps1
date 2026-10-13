@@ -8,7 +8,7 @@
 # Runs 8 read-only queries and prints each result as [A-...] lines.
 # Usage (same style as deploy_supabase.ps1):
 #   powershell -ExecutionPolicy Bypass -File scripts\analyze_legal_appointments.ps1 ^
-#       -PAT "sbp_..." -REF "vsgkgnjtebjxyqwpuopz"
+#       -PAT "sbp_..." -REF "uiutmbujkfrpaipvfvij"
 # =============================================================================
 param(
     [string]$PAT = $env:SUPABASE_PAT,

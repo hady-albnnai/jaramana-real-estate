@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/guide/guide_copy.dart';
-import 'package:sweeda_real_estate/core/guide/guide_models.dart';
+import 'package:jaramana_real_estate/core/guide/guide_copy.dart';
+import 'package:jaramana_real_estate/core/guide/guide_models.dart';
 
 void main() {
   group('GuideScope and approved copy', () {

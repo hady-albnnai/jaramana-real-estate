@@ -85,7 +85,7 @@ async function sendFCM(
         priority: "HIGH",
         notification: {
           sound: "default",
-          channel_id: "sweeda_default",
+          channel_id: "jaramana_default",
         },
       },
       apns: {

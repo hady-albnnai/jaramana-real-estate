@@ -59,7 +59,7 @@ abstract final class GuideCopy {
   ];
 
   static const defaultOfficeAddress =
-      'السويداء — المجمع المقابل لدائرة المناهج والمعلوماتية — برج الكرمة FM — البرج الملاصق لمجمع المهندسين — الطابق الأول';
+      'جرمانا — أضف عنوان المكتب من الإعدادات';
 
   static List<String> visitorIntroSlides({String? officeAddress}) {
     final address = officeAddress?.trim().isNotEmpty == true

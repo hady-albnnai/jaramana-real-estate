@@ -1,65 +1,17 @@
-# المكتب العقاري الالكتروني
+# المكتب العقاري الالكتروني - جرمانا
 
-تطبيق Flutter + Supabase لإدارة مكتب عقاري إلكتروني. بدأ المشروع على بيانات عقارات السويداء، وتم تجهيز الاسم والبنية للتوسع لاحقاً.
+هذا المستودع هو نسخة التطوير المستقلة لتطبيق جرمانا.
 
-## الحالة الحالية
+- مشروع Supabase المستهدف: `uiutmbujkfrpaipvfvij`.
+- لا يحتوي المستودع على أسرار أو مفاتيح نشر.
+- لا يوجد نشر تلقائي إلى Supabase.
+- دوال السيرفر وMigrations الحالية محفوظة كمرجع فقط إلى أن تُراجع وتُنقل بملف جرمانا مستقل.
 
-راجع أولاً:
-
-```txt
-docs/CURRENT_STATUS.md
-```
-
-هذا الملف هو مرجع البداية لأي محادثة أو تطوير قادم.
-
-## أهم المسارات
-
-| القسم | المسار |
-|---|---|
-| الزائر | `/home` |
-| المستخدم | `/user/home` |
-| الوسيط | `/broker/dashboard` |
-| الإدارة | `/admin/dashboard` |
-| عمليات المكتب | `/admin/office-operations` |
-| إدارة الصلاحيات | `/admin/permissions` |
-| إدارة الوسائط | `/admin/media-review` |
-| إدارة مهام التصوير | `/admin/photography-management` |
-| مهام المصور | `/photographer/tasks` |
-| شاشة موظف المكتب | `/employee/home` |
-| مهام المنفذ | `/executor/tasks` |
-| تنفيذ مهمة | `/executor/execute/:id` |
-
-## الملفات المرجعية
-
-| الملف | الغرض |
-|---|---|
-| `docs/TEST_CHECKLIST.md` | قائمة الاختبار — **ابدأ من هنا** |
-| `docs/LOGIC_SPEC.md` | ميثاق المنطق (الدستور) |
-| `docs/PRIORITY_REMEDIATION_PLAN.md` | خطة الإصلاح ذات الأولوية بعد المراجعة الخارجية |
-| `docs/SOCIAL_AND_AUTH_SETUP.md` | تفعيل واتساب + فيسبوك + إنستغرام |
-| `DEVELOPMENT_GUIDELINES.md` | قواعد التطوير الإلزامية |
-| `supabase/FUNCTIONS_REFERENCE.md` | مرجع دوال السيرفر |
-| `BUILD_GUIDE.md` | البناء والنشر |
-
-## تشغيل المشروع
+## إعداد التطوير لاحقاً
+مرّر مفتاح Supabase العام لمشروع جرمانا وقت البناء فقط:
 
 ```bash
-flutter pub get
-flutter analyze
-flutter run
+flutter run --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_JARAMANA_PUBLISHABLE_KEY
 ```
 
-## ملاحظات مهمة
-
-- أي تعديل برمجي يجب أن يحدّث التوثيق المناسب.
-- أي تعديل قاعدة بيانات يجب أن يكون داخل `supabase/migrations/` وأن ينعكس في `supabase/setup.sql` إذا كان دائماً.
-- لا تترك `print` في الكود النهائي.
-- لا تخزن أسرار أو Tokens داخل المستودع.
-
-## المرحلة القادمة
-
-المرحلة القادمة هي الاختبار الفعلي وإصلاح ما يظهر. راجع:
-
-```txt
-docs/NEXT_DEVELOPMENT_ITEMS.md
-```
+لا تضف مفاتيح الخدمة أو أسرار النشر إلى المستودع.

@@ -1,4 +1,4 @@
-package com.sweeda.realestate
+package com.hadyalbnnai.jaramanarealestate
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/services/notification_router.dart';
-import 'package:sweeda_real_estate/models/user_model.dart';
+import 'package:jaramana_real_estate/core/services/notification_router.dart';
+import 'package:jaramana_real_estate/models/user_model.dart';
 
 /// اختبارات الموجّه الموحّد للإشعارات.
 ///

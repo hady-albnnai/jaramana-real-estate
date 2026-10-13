@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/guide/browse_tracker.dart';
+import 'package:jaramana_real_estate/core/guide/browse_tracker.dart';
 
 void main() {
   test('counts two distinct settled visible offers only once', () {

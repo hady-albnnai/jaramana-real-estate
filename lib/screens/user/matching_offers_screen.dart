@@ -11,6 +11,7 @@ import '../../providers/config_provider.dart';
 import '../../providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/book_appointment_sheet.dart';
+import '../../core/constants/jaramana_locations.dart';
 
 class MatchingOffersScreen extends StatefulWidget {
   final Map<String, dynamic> requestData;
@@ -458,7 +459,7 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
   }
 
   Widget _buildCityFilter() {
-    final cities = ['السويداء', 'صلخد', 'شهبا', 'المزرعة', 'الكفر', 'قنوات'];
+    final cities = JaramanaLocations.all;
     return DropdownButtonFormField<String>(
       value: _selectedCity,
       decoration: const InputDecoration(labelText: 'الموقع', border: OutlineInputBorder()),

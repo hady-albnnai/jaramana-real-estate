@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/guide/guide_models.dart';
-import 'package:sweeda_real_estate/core/guide/guide_target_registry.dart';
-import 'package:sweeda_real_estate/widgets/guide_anchor.dart';
+import 'package:jaramana_real_estate/core/guide/guide_models.dart';
+import 'package:jaramana_real_estate/core/guide/guide_target_registry.dart';
+import 'package:jaramana_real_estate/widgets/guide_anchor.dart';
 
 void main() {
   testWidgets('GuideAnchor registers and measures a real target', (tester) async {

@@ -5,26 +5,26 @@ class AppTheme {
   // ═══════════════════════════════════════════════════════════════
   // الألوان الأساسية - Core Colors
   // ═══════════════════════════════════════════════════════════════
-  static const Color primaryGold = Color(0xFFD4AF37);
-  static const Color deepBlack = Color(0xFF121212);
-  static const Color scaffoldBackground = Color(0xFFFFFBF2);
-  static const Color lightGold = Color(0xFFF9E4B7);
-  static const Color surfaceBlack = Color(0xFFFFFFFF);
+  static const Color primaryGold = Color(0xFFB5A287);
+  static const Color deepBlack = Color(0xFF09111B);
+  static const Color scaffoldBackground = Color(0xFF09111B);
+  static const Color lightGold = Color(0xFFEED9BB);
+  static const Color surfaceBlack = Color(0xFF121B26);
   static const Color errorRed = Color(0xFFB3261E);
-  static const Color textWhite = Color(0xFF17130A);
-  static const Color textGrey = Color(0xFF6F6656);
+  static const Color textWhite = Color(0xFFEED9BB);
+  static const Color textGrey = Color(0xFFB5A287);
 
   // ═══════════════════════════════════════════════════════════════
   // الألوان الدلالية - Semantic Colors
   // ═══════════════════════════════════════════════════════════════
   static const Color successGreen = Color(0xFF2E7D32);
   static const Color warningOrange = Color(0xFFED6C02);
-  static const Color infoBlue = Color(0xFF0288D1);
+  static const Color infoBlue = Color(0xFF62B6C1);
   static const Color pendingYellow = Color(0xFFFFB300);
   static const Color disabledGrey = Color(0xFFBDBDBD);
-  static const Color borderGrey = Color(0xFFE0E0E0);
-  static const Color cardBackground = Color(0xFFFFFFFF);
-  static const Color inputBackground = Color(0xFFF5F5F5);
+  static const Color borderGrey = Color(0xFF455A5C);
+  static const Color cardBackground = Color(0xFF121B26);
+  static const Color inputBackground = Color(0xFF182B36);
 
   // ═══════════════════════════════════════════════════════════════
   // أحجام الخطوط - Font Sizes

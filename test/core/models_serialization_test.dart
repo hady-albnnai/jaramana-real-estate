@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/models/user_model.dart';
-import 'package:sweeda_real_estate/models/offer_model.dart';
-import 'package:sweeda_real_estate/models/appointment_model.dart';
+import 'package:jaramana_real_estate/models/user_model.dart';
+import 'package:jaramana_real_estate/models/offer_model.dart';
+import 'package:jaramana_real_estate/models/appointment_model.dart';
 
 void main() {
   group('RLS Security Lockdown Resilience Test', () {
@@ -28,20 +28,20 @@ void main() {
         'usr_id': '00000000-0000-0000-0000-000000000001',
         'tp': 1,
         'cat': 1,
-        'ttl': 'شقة فاخرة في السويداء',
+        'ttl': 'شقة فاخرة في جرمانا',
         'prc': 50000,
         'cur': 1,
         'sts': 2,
-        'loc': {'region': 'السويداء'},
+        'loc': {'region': 'جرمانا'},
         'imgs': ['img1.jpg'],
         'ts_crt': '2026-07-04T12:00:00Z',
       };
 
       final offer = OfferModel.fromSupabase(publicOfferJson, '00000000-0000-0000-0000-000000000002');
       expect(offer.id, '00000000-0000-0000-0000-000000000002');
-      expect(offer.ttl, 'شقة فاخرة في السويداء');
+      expect(offer.ttl, 'شقة فاخرة في جرمانا');
       expect(offer.sts, 2);
-      expect(offer.loc['region'], 'السويداء');
+      expect(offer.loc['region'], 'جرمانا');
       expect(offer.imgs.length, 1);
     });
 

@@ -27,13 +27,13 @@ class _LocationPickerState extends State<LocationPicker> {
   final _mapController = MapController();
   bool _locating = false;
 
-  // الموقع الافتراضي: مركز السويداء، سوريا
-  static const LatLng _sweedaCenter = LatLng(32.7094, 36.5694);
+  // الموقع الافتراضي: مركز جرمانا، سوريا
+  static const LatLng _jaramanaCenter = LatLng(33.4880, 36.3650);
 
   @override
   void initState() {
     super.initState();
-    _picked = widget.initial ?? _sweedaCenter;
+    _picked = widget.initial ?? _jaramanaCenter;
   }
 
   /// ═══════════════════════════════════════════════════════════════════
@@ -161,7 +161,7 @@ class _LocationPickerState extends State<LocationPicker> {
                 TileLayer(
                   urlTemplate:
                       'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.sweeda.realestate',
+                  userAgentPackageName: 'com.hadyalbnnai.jaramanarealestate',
                 ),
                 MarkerLayer(markers: [
                   Marker(
@@ -277,7 +277,7 @@ class LocationViewer extends StatelessWidget {
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.sweeda.realestate',
+              userAgentPackageName: 'com.hadyalbnnai.jaramanarealestate',
             ),
             MarkerLayer(markers: [
               Marker(

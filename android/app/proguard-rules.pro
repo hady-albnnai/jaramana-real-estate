@@ -1,5 +1,5 @@
 # ════════════════════════════════════════════════════════
-# ProGuard / R8 rules — عقارات السويداء
+# ProGuard / R8 rules — المكتب العقاري الالكتروني - جرمانا
 # تُطبَّق مع isMinifyEnabled = true في buildTypes.release
 # ════════════════════════════════════════════════════════
 
@@ -30,7 +30,7 @@
 
 # ── الحفاظ على أسماء النماذج (تجنّب كسر JSON serialization اليدوي) ──
 # نماذجنا تستخدم Map يدوي وليست reflection، لكن نُبقيها احتياطاً:
--keep class com.sweeda.realestate.** { *; }
+-keep class com.hadyalbnnai.jaramanarealestate.** { *; }
 
 # ── عام: لا تحذّر من الفئات الناقصة لمكتبات الطرف الثالث ──
 -ignorewarnings

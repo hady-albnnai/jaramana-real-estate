@@ -11,7 +11,7 @@ import '../network/supabase_service.dart';
 /// ملاحظة: ليس معرّفاً صارماً (المستخدم يقدر يمسح التطبيق)؛ لكن يصعّب الاحتيال
 /// السطحي ويعمل كطبقة دفاع إضافية مع IP وrate-limit.
 class DeviceService {
-  static const _kDeviceIdKey = 'sweeda_device_id_v1';
+  static const _kDeviceIdKey = 'jaramana_device_id_v1';
   static DeviceService? _instance;
   DeviceService._();
   factory DeviceService() => _instance ??= DeviceService._();

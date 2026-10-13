@@ -63,7 +63,7 @@ maestro test maestro/flows/02_lawyer_create_expediting_task.yaml \
   -e LAWYER_PASSWORD="PUT_PASSWORD" \
   -e EXPEDITER_LABEL="9639xxxxxxx" \
   -e TASK_NUMBER="12345" \
-  -e TASK_ZONE="السويداء"
+  -e TASK_ZONE="جرمانا"
 ```
 
 ## 5) اختبار دخول المعقب ورؤية المهمة

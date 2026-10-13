@@ -57,7 +57,7 @@ def build():
     c0,c1,c2=h.rows[0].cells
     p=rtl(c0.paragraphs[0],True); p.add_run().add_picture(str(LOGO),width=Cm(1.9))
     p=rtl(c1.paragraphs[0],True); r=p.add_run('استمارة بيانات عقار للبيع'); r.bold=True; r.font.size=Pt(15); r.font.color.rgb=RGBColor.from_string(GOLD)
-    q=rtl(c1.add_paragraph('ورقة مبسطة لجمع المعلومات الأولية — المكتب العقاري الإلكتروني السويداء'),True); q.runs[0].font.size=Pt(7)
+    q=rtl(c1.add_paragraph('ورقة مبسطة لجمع المعلومات الأولية — المكتب العقاري الالكتروني - جرمانا'),True); q.runs[0].font.size=Pt(7)
     p=rtl(c2.paragraphs[0]); p.add_run('رقم: ................\nالتاريخ: .... / .... / 2026').font.size=Pt(7)
     for c in (c0,c1,c2): border(c,GOLD); c.vertical_alignment=WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
@@ -85,7 +85,7 @@ def build():
     lines(d,['الأيام أو الأوقات المناسبة للمعاينة'],1)
     p=rtl(d.add_paragraph()); r=p.add_run('☐ أقر بأن البيانات المكتوبة صحيحة بحسب علمي، وأوافق على تواصل المكتب معي للتحقق والتصوير وتجهيز الإعلان. هذه الورقة لجمع بيانات أولية وليست عقد بيع أو سند ملكية.'); r.font.size=Pt(6.8)
     lines(d,['الاسم والتوقيع','ملاحظات موظف المكتب'],2)
-    f=s.footer; p=rtl(f.paragraphs[0],True); r=p.add_run('المكتب العقاري الإلكتروني — السويداء   |   0958750199   |   بياناتك الخاصة لا تُنشر للعموم'); r.font.size=Pt(7); r.font.color.rgb=RGBColor.from_string(GOLD)
+    f=s.footer; p=rtl(f.paragraphs[0],True); r=p.add_run('المكتب العقاري الالكتروني - جرمانا   |   [رقم المكتب الرسمي]   |   بياناتك الخاصة لا تُنشر للعموم'); r.font.size=Pt(7); r.font.color.rgb=RGBColor.from_string(GOLD)
     d.save(OUT); print(OUT)
 
 if __name__=='__main__': build()

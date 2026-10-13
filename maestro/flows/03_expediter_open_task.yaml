@@ -1,4 +1,4 @@
-appId: com.sweeda.realestate
+appId: com.hadyalbnnai.jaramanarealestate
 ---
 - runFlow:
     file: 01_login_password.yaml

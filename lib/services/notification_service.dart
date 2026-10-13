@@ -34,7 +34,7 @@ class NotificationService {
   static Future<void> _showLocalNotif(String title, String body) async {
     try {
       const androidDetails = AndroidNotificationDetails(
-        'sweeda_channel', 'عقارات السويداء',
+        'jaramana_channel', 'المكتب العقاري الالكتروني - جرمانا',
         importance: Importance.high, priority: Priority.high,
         icon: '@mipmap/ic_launcher',
       );
@@ -52,7 +52,7 @@ class NotificationService {
     required String title, required String body, String? payload,
   }) async {
     const androidDetails = AndroidNotificationDetails(
-      'sweeda_channel', 'عقارات السويداء',
+      'jaramana_channel', 'المكتب العقاري الالكتروني - جرمانا',
       importance: Importance.high, priority: Priority.high,
     );
     await _localNotif.show(

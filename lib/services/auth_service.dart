@@ -183,7 +183,7 @@ class AuthService {
 
       await _auth.signInWithOtp(
         email: email,
-        emailRedirectTo: 'io.supabase.sweeda://login-callback',
+        emailRedirectTo: 'io.supabase.jaramana://login-callback',
       );
       return {'success': true, 'channel': 'email'};
     } catch (e) {

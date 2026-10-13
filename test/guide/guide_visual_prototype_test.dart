@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/guide/guide_visual_prototype.dart';
+import 'package:jaramana_real_estate/core/guide/guide_visual_prototype.dart';
 
 void main() {
   testWidgets('renders the responsive guide bubble and controls', (tester) async {

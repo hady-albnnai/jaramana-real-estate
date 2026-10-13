@@ -490,7 +490,7 @@ class BusinessService {
 
     // هاشتاغات
     buffer.writeln('');
-    buffer.write('#المكتب_العقاري_الالكتروني #السويداء ');
+    buffer.write('#المكتب_العقاري_الالكتروني #جرمانا ');
     buffer.write(isProperty ? '#عقارات #${offer.trx == 0 ? 'بيع' : 'إيجار'}' : '#سيارات #مركبات');
 
     return buffer.toString();

@@ -251,7 +251,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
                           labelText: 'رابط تحميل التطبيق (يُدرج بمنشورات التواصل عند تعبئته)',
-                          hintText: 'https://github.com/hady-albnnai/sweeda-app/releases/latest/download/app-release.apk',
+                          hintText: 'https://github.com/hady-albnnai/jaramana-real-estate/releases/latest/download/app-release.apk',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.download, color: AppTheme.primaryGold),
@@ -350,7 +350,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
                           labelText: 'رابط صفحة فيسبوك الرسمية',
-                          hintText: 'https://facebook.com/sweeda.realestate',
+                          hintText: 'https://facebook.com/jaramana.realestate',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.facebook, color: AppTheme.primaryGold),
@@ -362,7 +362,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                         style: const TextStyle(color: AppTheme.textWhite),
                         decoration: const InputDecoration(
                           labelText: 'رابط حساب إنستغرام الرسمي',
-                          hintText: 'https://instagram.com/sweeda.realestate',
+                          hintText: 'https://instagram.com/jaramana.realestate',
                           filled: true,
                           fillColor: AppTheme.surfaceBlack,
                           prefixIcon: Icon(Icons.camera_alt, color: AppTheme.primaryGold),
@@ -657,7 +657,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                       ),
                       AppTheme.gapHeightMedium,
                       // 🔗 أساس رابط الإحالة — كان نطاقاً وهمياً مطبوخاً بالكود
-                      // (`sweeda-realestate.com`) لا وجود له، فكل رابط دعوة
+                      // (`jaramana-realestate.example`) لا وجود له، فكل رابط دعوة
                       // يُشارَك ينتهي بخطأ 404. الفارغ الآن يعرض الكود وحده.
                       TextFormField(
                         controller: _referralBaseUrlCtrl,
@@ -706,7 +706,7 @@ class _ConfigEditorScreenState extends State<ConfigEditorScreen> {
                           style: const TextStyle(color: AppTheme.textWhite),
                           decoration: const InputDecoration(
                             labelText: '📍 عنوان المكتب الرئيسي',
-                            hintText: 'مثال: السويداء — المجمع المقابل لدائرة المناهج والمعلوماتية — الطابق الأول',
+                            hintText: 'مثال: جرمانا — أضف عنوان المكتب هنا',
                             filled: true,
                             fillColor: AppTheme.surfaceBlack,
                           ),

@@ -94,7 +94,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="io.supabase.sweeda" android:host="login-callback" />
+                <data android:scheme="io.supabase.jaramana" android:host="login-callback" />
             </intent-filter>
         </activity>
 
@@ -117,7 +117,7 @@
         <!-- القناة الافتراضية للإشعارات (Android 8+) -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="sweeda_default" />
+            android:value="jaramana_default" />
 
     </application>
 

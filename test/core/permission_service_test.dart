@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/services/permission_service.dart';
-import 'package:sweeda_real_estate/models/user_model.dart';
+import 'package:jaramana_real_estate/core/services/permission_service.dart';
+import 'package:jaramana_real_estate/models/user_model.dart';
 
 UserModel userWithRole(int role, {List<String>? perm, int brk = 0}) {
   return UserModel(

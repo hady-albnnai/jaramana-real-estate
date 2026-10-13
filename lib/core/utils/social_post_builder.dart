@@ -9,7 +9,7 @@ import '../../models/offer_model.dart';
 ///   وهاشتاغات اكتشاف أكثر (تعمل حتى خلف «المزيد»).
 ///
 /// 2026-08-31 (قرار المالك): الاسم الرسمي «المكتب العقاري الالكتروني»
-/// (لا «عقارات السويداء»)، وجملة التطبيق: «لمتابعة كل العروض وحجز
+/// (لا «المكتب العقاري الالكتروني - جرمانا»)، وجملة التطبيق: «لمتابعة كل العروض وحجز
 /// المواعيد والاستفادة من خدماتنا»، والهاشتاغ الأول #المكتب_العقاري_الالكتروني.
 ///
 /// يُولَّد وقت النسخ من بيانات العرض نفسها — لا يعتمد على `soc_txt`
@@ -135,7 +135,7 @@ class SocialPostBuilder {
 
   static String _hashtags(OfferModel o, {required bool long}) {
     final city = o.loc['city']?.toString().trim() ?? '';
-    final cityTag = city.isEmpty ? '#السويداء' : '#${city.replaceAll(' ', '_')}';
+    final cityTag = city.isEmpty ? '#جرمانا' : '#${city.replaceAll(' ', '_')}';
     final base = '$_brandHashtag $cityTag ${o.typ == 0 ? '#عقارات' : '#سيارات'}';
     if (!long) return base;
     return '$base #عقارات_سوريا #عقارات_للبيع ${o.typ == 0 ? '#شقق_للبيع' : '#سيارات_للبيع'}';

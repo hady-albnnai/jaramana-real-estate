@@ -132,6 +132,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _initializeApp() async {
     try {
+      if (!isSupabaseConfigured) {
+        throw StateError('JARAMANA_BACKEND_NOT_CONFIGURED');
+      }
       await SupabaseService.initialize(
           url: supabaseUrl, publishableKey: supabasePublishableKey);
       await NotificationService.initialize();

@@ -134,7 +134,7 @@ class ConfigModel {
   String get instagramPage => _getNested('txts.instagram', '');
 
   /// صفحات تواصل إضافية (تكتوك، تويتر، إلخ) — map قابل للتوسعة
-  /// مثال: { "tiktok": "https://tiktok.com/@sweeda", "linkedin": "..." }
+  /// مثال: { "tiktok": "https://tiktok.com/@jaramana.realestate", "linkedin": "..." }
   Map<String, dynamic> get socialPages => _getNestedMap('txts.socialPages', {});
 
   // ── 📞 أرقام التواصل (2026-08-14) ──
@@ -168,7 +168,7 @@ class ConfigModel {
   String get termsUrl => _getNested('txts.termsUrl', '');
 
   /// أساس رابط الإحالة — فارغ ⇒ يُعرض الكود وحده بلا رابط مكسور.
-  /// كان `https://sweeda-realestate.com/invite?code=` مطبوخاً بالكود، وهو نطاق
+  /// كان `https://jaramana-realestate.example/invite?code=` مطبوخاً بالكود، وهو نطاق
   /// **غير موجود** ⇒ كل رابط دعوة يُشارَك ينتهي بخطأ 404.
   String get referralBaseUrl => _getNested('txts.referralBaseUrl', '');
 

@@ -43,7 +43,7 @@ class AppInfoService {
   /// رقم البناء (`versionCode`) — مثل `10`. فارغ إن لم يُهيَّأ.
   static String get buildNumber => _cached?.buildNumber ?? '';
 
-  /// اسم الحزمة — `com.sweeda.realestate`. يفيد الدعم الفني.
+  /// اسم الحزمة — `com.hadyalbnnai.jaramanarealestate`. يفيد الدعم الفني.
   static String get packageName => _cached?.packageName ?? '';
 
   /// اسم التطبيق كما سجّله نظام التشغيل.

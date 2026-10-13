@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:sweeda_real_estate/core/guide/guide_host.dart';
-import 'package:sweeda_real_estate/providers/config_provider.dart';
-import 'package:sweeda_real_estate/core/guide/visitor_guide_coordinator.dart';
+import 'package:jaramana_real_estate/core/guide/guide_host.dart';
+import 'package:jaramana_real_estate/providers/config_provider.dart';
+import 'package:jaramana_real_estate/core/guide/visitor_guide_coordinator.dart';
 
 void main() {
   testWidgets('starts the visitor question only when a GuideHost is present',

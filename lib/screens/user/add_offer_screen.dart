@@ -16,6 +16,7 @@ import '../../widgets/location_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/utils/error_utils.dart';
+import '../../core/constants/jaramana_locations.dart';
 
 class AddOfferScreen extends StatefulWidget {
   /// 📸 وضع طلب التصوير: يفتح شاشة إضافة العرض الكاملة مع تعديلات:
@@ -603,7 +604,11 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
     // watch وليس read: التصنيفات تصل من السيرفر بعد فتح الشاشة — بدون watch
     // تبقى القوائم فارغة حتى أول تفاعل من المستخدم
     final config = context.watch<ConfigProvider>().config;
-    final cityItems = (config?.locations ?? const []).map((e) => DropdownMenuItem<String>(value: e.toString(), child: Text(e.toString()))).toList();
+    final configuredLocations = config?.locations ?? const <dynamic>[];
+    final availableLocations = configuredLocations.isNotEmpty
+        ? configuredLocations
+        : JaramanaLocations.all;
+    final cityItems = availableLocations.map((e) => DropdownMenuItem<String>(value: e.toString(), child: Text(e.toString()))).toList();
     cityItems.add(const DropdownMenuItem(value: _customCityOption, child: Text('آخر (إدخال حر)')));
 
     final Map<String, dynamic> catsSource = _selectedType == 1 ? (config?.vehicleCategories ?? const {}) : (config?.propertyCategories ?? const {});
@@ -653,7 +658,7 @@ class _AddOfferScreenState extends State<AddOfferScreen> {
           ],
         ],
         if (_selectedType == 1) ...[
-          TextField(controller: _carPlateCtrl, decoration: const InputDecoration(labelText: 'رقم اللوحة والمحافظة (إلزامي)', hintText: 'مثال: 123456 - السويداء', border: OutlineInputBorder())),
+          TextField(controller: _carPlateCtrl, decoration: const InputDecoration(labelText: 'رقم اللوحة والمحافظة (إلزامي)', hintText: 'مثال: 123456 - ريف دمشق', border: OutlineInputBorder())),
           AppTheme.gapHeightSmall,
           TextField(controller: _carBrandCtrl, decoration: const InputDecoration(labelText: 'الماركة (إلزامي)', hintText: 'كيا، تويوتا، مرسيدس...', border: OutlineInputBorder())),
           AppTheme.gapHeightSmall,
@@ -1178,8 +1183,8 @@ ${desc.isNotEmpty ? desc : ''}
 
 📱 التواصل والمعاينة حصراً عبر واتساب المكتب العقاري الإلكتروني:
 ${wa.isNotEmpty ? wa : ''}
-${appLink.isNotEmpty ? '📲 لمتابعة كل العروض حمّل تطبيق «عقارات السويداء»:\n$appLink' : ''}
-#عقارات_السويداء #السويداء ${isProperty ? '#عقارات' : '#سيارات'}
+${appLink.isNotEmpty ? '📲 لمتابعة كل العروض حمّل تطبيق «المكتب العقاري الالكتروني - جرمانا»:\n$appLink' : ''}
+#المكتب_العقاري_الالكتروني #جرمانا ${isProperty ? '#عقارات' : '#سيارات'}
 '''.trim();
   }
 }

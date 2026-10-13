@@ -271,7 +271,7 @@ class _SplashScreenState extends State<SplashScreen>
                               color: Colors.white.withOpacity(0.03),
                             ),
                             child: Text(
-                              'وجهتك الموثوقة لعقارات وسيارات السويداء',
+                              'وجهتك الموثوقة لعقارات جرمانا',
                               style: GoogleFonts.cairo(
                                 color: AppTheme.textGrey.withOpacity(0.8),
                                 fontSize: AppTheme.fontSizeCaption,

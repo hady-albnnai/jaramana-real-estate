@@ -134,7 +134,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   /// 🔗 رابط الدعوة — يُبنى من `txts.referralBaseUrl` في app_config.
   ///
-  /// كان النطاق `https://sweeda-realestate.com/invite?code=` **مطبوخاً بالكود
+  /// كان النطاق `https://jaramana-realestate.example/invite?code=` **مطبوخاً بالكود
   /// وهو غير موجود أصلاً** ⇒ كل رابط دعوة يشاركه مستخدم ينتهي بخطأ 404 عند
   /// الطرف الآخر. الآن: إن كان الأساس فارغاً يُرجَع نص فارغ، وتُشارَك رسالة
   /// تحمل **الكود وحده** بلا رابط مكسور. (قرار المالك: صفر قيم افتراضية)

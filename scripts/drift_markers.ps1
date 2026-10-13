@@ -11,7 +11,7 @@
 #
 # Usage (same style as deploy_supabase.ps1):
 #   powershell -ExecutionPolicy Bypass -File scripts\drift_markers.ps1 ^
-#       -PAT "sbp_..." -REF "vsgkgnjtebjxyqwpuopz"
+#       -PAT "sbp_..." -REF "uiutmbujkfrpaipvfvij"
 # =============================================================================
 param(
     [string]$PAT = $env:SUPABASE_PAT,

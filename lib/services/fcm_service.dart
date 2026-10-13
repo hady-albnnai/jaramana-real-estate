@@ -93,8 +93,8 @@ class FCMService {
 
     // إنشاء قناة الإشعارات
     const channel = AndroidNotificationChannel(
-      'sweeda_default',
-      'إشعارات عقارات السويداء',
+      'jaramana_default',
+      'إشعارات المكتب العقاري الالكتروني - جرمانا',
       description: 'الإشعارات العامة',
       importance: Importance.high,
       enableVibration: true,
@@ -139,8 +139,8 @@ class FCMService {
         notification.body,
         NotificationDetails(
           android: AndroidNotificationDetails(
-            'sweeda_default',
-            'إشعارات عقارات السويداء',
+            'jaramana_default',
+            'إشعارات المكتب العقاري الالكتروني - جرمانا',
             channelDescription: 'الإشعارات العامة',
             importance: Importance.high,
             priority: Priority.high,

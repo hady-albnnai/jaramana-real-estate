@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/validation/input_validators.dart';
+import 'package:jaramana_real_estate/core/validation/input_validators.dart';
 
 void main() {
   group('InputValidators', () {

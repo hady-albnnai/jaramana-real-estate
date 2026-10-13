@@ -1,5 +1,5 @@
-name: sweeda_real_estate
-description: تطبيق عقارات السويداء — مكتب عقاري إلكتروني
+name: jaramana_real_estate
+description: تطبيق المكتب العقاري الالكتروني - جرمانا
 publish_to: 'none'
 # ⚠️ سياسة Google Play (2026-08-14):
 #   • ما قبل «+» = versionName — يراه المستخدم بالمتجر، نص حر بلا قيود.
@@ -8,7 +8,7 @@ publish_to: 'none'
 #   بدأنا من 10 (لا من 1) لترك مساحة للرفعات التجريبية.
 #   `android/app/build.gradle.kts` يقرأ الاثنين من هنا (flutter.versionCode/Name)،
 #   و`package_info_plus` يقرأهما وقت التشغيل من الـAPK نفسه ⇒ مصدر واحد للحقيقة.
-version: 1.1.0+11
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

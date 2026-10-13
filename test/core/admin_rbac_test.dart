@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sweeda_real_estate/core/services/permission_service.dart';
-import 'package:sweeda_real_estate/models/user_model.dart';
+import 'package:jaramana_real_estate/core/services/permission_service.dart';
+import 'package:jaramana_real_estate/models/user_model.dart';
 
 /// اختبارات RBAC لوحدة الإدارة — تثبيت ثوابت الدستور docs/LOGIC_SPEC.md §5.5.
 ///

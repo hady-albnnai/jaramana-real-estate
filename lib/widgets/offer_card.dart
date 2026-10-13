@@ -359,7 +359,7 @@ class _OfferCardState extends State<OfferCard> {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        _buildSpecItem(Icons.location_on_outlined, offer.loc['city'] ?? 'السويداء'),
+                        _buildSpecItem(Icons.location_on_outlined, offer.loc['city'] ?? 'جرمانا'),
                         const SizedBox(width: 15),
                         if (isProperty) ...[
                           if (offer.specs['area'] != null)
