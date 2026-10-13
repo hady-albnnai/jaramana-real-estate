@@ -40,6 +40,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
   bool _loading = true;
   bool _bulkPublishing = false;
   final _searchCtrl = TextEditingController(); // 🔍 بحث برقم العرض
+  String _reviewQueueFilter = 'all'; // all | pending | ready
 
   // كاش بيانات المرسلين: userId → UserModel
   final Map<String, UserModel> _ownersCache = {};
@@ -105,6 +106,10 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
       }
     }
 
+    // ترتيب ثابت: الأحدث أولاً مهما كان ترتيب رد الدالة الخادمية.
+    offers.sort((a, b) => b.tsCrt.compareTo(a.tsCrt));
+    socialQueue.sort((a, b) => b.tsCrt.compareTo(a.tsCrt));
+
     if (!mounted) return;
     setState(() {
       _offers = offers;
@@ -115,7 +120,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
 
   Future<void> _approve(OfferModel o) async {
     final config = context.read<ConfigProvider>().config;
-    final autoEnabled = config?.socialAutoPublish ?? true;
+    final autoEnabled = config?.socialAutoPublish ?? false;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -493,7 +498,7 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final config = context.watch<ConfigProvider>().config;
-    final autoEnabled = config?.socialAutoPublish ?? true;
+    final autoEnabled = config?.socialAutoPublish ?? false;
     return Scaffold(
       backgroundColor: AppTheme.scaffoldBackground,
       appBar: AppBar(
@@ -586,7 +591,35 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                         ),
                       ),
                       AppTheme.gapHeightSmall,
-                      if (_socialQueue.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final filter in const [
+                            ('all', 'الكل'),
+                            ('pending', 'بانتظار المراجعة'),
+                            ('ready', 'جاهزة للنشر'),
+                          ])
+                            ChoiceChip(
+                              label: Text(filter.$2),
+                              selected: _reviewQueueFilter == filter.$1,
+                              selectedColor: AppTheme.primaryGold,
+                              labelStyle: TextStyle(
+                                color: _reviewQueueFilter == filter.$1
+                                    ? AppTheme.deepBlack
+                                    : AppTheme.textWhite,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              backgroundColor: AppTheme.surfaceBlack,
+                              onSelected: (_) => setState(
+                                  () => _reviewQueueFilter = filter.$1),
+                            ),
+                        ],
+                      ),
+                      AppTheme.gapHeightMedium,
+                      if ((_reviewQueueFilter == 'all' ||
+                              _reviewQueueFilter == 'ready') &&
+                          _socialQueue.isNotEmpty) ...[
                         _listHeader(
                           '📣 جاهزة للنشر على فيسبوك + إنستغرام',
                           '${_socialQueue.length}',
@@ -607,7 +640,9 @@ class _OffersReviewScreenState extends State<OffersReviewScreen> {
                         ..._visibleSocialQueue.map((o) => _offerCard(o, socialOnly: true)),
                         AppTheme.gapHeightSmall,
                       ],
-                      if (_offers.isNotEmpty) ...[
+                      if ((_reviewQueueFilter == 'all' ||
+                              _reviewQueueFilter == 'pending') &&
+                          _offers.isNotEmpty) ...[
                         _listHeader(
                           '📝 بانتظار المراجعة',
                           '${_offers.length}',
