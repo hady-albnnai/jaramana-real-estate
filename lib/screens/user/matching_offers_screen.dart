@@ -10,7 +10,6 @@ import '../../providers/offer_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
-import '../../widgets/book_appointment_sheet.dart';
 import '../../core/constants/jaramana_locations.dart';
 
 class MatchingOffersScreen extends StatefulWidget {
@@ -606,51 +605,14 @@ class _MatchingOffersScreenState extends State<MatchingOffersScreen> {
               ],
             ),
             AppTheme.gapHeightMedium,
-            // 🔒 (2026-08-20): شبكة أمان إضافية — عروض المالك مستبعدة أصلاً من
-            // قائمة المطابقة (`_ownOfferIds`)، ولو ظهرت (فشل جلب القائمة) لا
-            // يظهر زر الحجز على عرضه إطلاقاً.
-            if (context.read<AuthProvider>().userModel?.uid == offer.usrId)
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        context.push('/offer/${offer.id}');
-                      },
-                      child: const Text('عرض التفاصيل'),
-                    ),
-                  ),
-                ],
-              )
-            else
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      context.push('/offer/${offer.id}');
-                    },
-                    child: const Text('عرض التفاصيل'),
-                  ),
-                ),
-                AppTheme.gapWidthSmall,
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (context) => BookAppointmentSheet(
-                          offer: offer,
-                          requestId: widget.requestData['id'],
-                        ),
-                      );
-                    },
-                    child: const Text('حجز موعد'),
-                  ),
-                ),
-              ],
+            // التواصل مع المكتب هو مسار العميل؛ إنشاء المعاينة داخلي لموظف
+            // المكتب ولا يظهر ضمن نتائج المطابقة أو الواجهة العامة.
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => context.push('/offer/${offer.id}'),
+                child: const Text('عرض التفاصيل والتواصل مع المكتب'),
+              ),
             ),
             AppTheme.gapHeightSmall,
             // ☎💬 التواصل مع المكتب (2026-09-22)

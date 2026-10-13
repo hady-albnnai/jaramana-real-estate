@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/request_provider.dart';
-import '../../providers/appointment_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/config_provider.dart';
 import '../../models/request_model.dart';
@@ -10,7 +9,6 @@ import '../../models/offer_model.dart';
 import '../../core/services/business_service.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../../widgets/book_appointment_sheet.dart';
 import '../../widgets/office_logo_placeholder.dart';
 
 /// شاشة تفاصيل طلب البحث + العروض المطابقة
@@ -722,19 +720,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 children: [
                   const Icon(Icons.arrow_forward_ios, color: AppTheme.primaryGold, size: 14),
                   AppTheme.gapHeightSmall,
-                  // 🔒 2026-08-20: صاحب العرض لا يرى شارة الحجز على عرضه (طلب
-                  // مطابق لعرض يملكه هو نفسه — السيرفر يرفض CANNOT_BOOK_OWN_OFFER).
-                  if (context.read<AuthProvider>().userModel?.uid != o.usrId)
-                  GestureDetector(
-                    onTap: () => _bookOnOffer(o),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGold.withOpacity(0.15),
-                        borderRadius: AppTheme.radiusSmall,
-                        border: Border.all(color: AppTheme.primaryGold.withOpacity(0.4)),
-                      ),
-                      child: const Text('📅 حجز', style: TextStyle(color: AppTheme.primaryGold, fontSize: AppTheme.fontSizeCaption, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'تواصل',
+                    style: TextStyle(
+                      color: AppTheme.primaryGold,
+                      fontSize: AppTheme.fontSizeCaption,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
@@ -743,44 +734,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  void _bookOnOffer(OfferModel offer) {
-    // 🔒 2026-08-20: حارس إضافي — لا نفتح ورقة الحجز على عرض المستخدم نفسه
-    // (السيرفر يرفض أصلاً بـ CANNOT_BOOK_OWN_OFFER).
-    final myUid = context.read<AuthProvider>().userModel?.uid ?? '';
-    if (myUid.isNotEmpty && myUid == offer.usrId) {
-      AppTheme.showSnackBar(context,
-          const SnackBar(content: Text('لا يمكنك حجز موعد على العرض الخاص بك')));
-      return;
-    }
-
-    if (offer.avl.isEmpty) {
-      AppTheme.showSnackBar(context,
-          const SnackBar(content: Text('هذا العرض لا يحتوي مواعيد متاحة حالياً')));
-      return;
-    }
-
-    // ✅ فحص مسبق: هل لدى المستخدم موعد نشط على هذا العرض؟
-    final existingAppts = context.read<AppointmentProvider>().myAppointments;
-    final hasActive = existingAppts.any((a) =>
-        a.offId == offer.id && (a.sts == 0 || a.sts == 1));
-    if (hasActive) {
-      AppTheme.showSnackBar(context,
-        const SnackBar(
-          content: Text('لديك موعد نشط مسبقاً على هذا العرض. لا يمكنك حجز موعد آخر إلا بعد إلغائه أو رفضه.'),
-          duration: Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => BookAppointmentSheet(offer: offer, requestId: widget.requestId),
     );
   }
 

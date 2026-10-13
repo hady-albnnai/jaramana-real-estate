@@ -16,7 +16,6 @@ import '../../core/services/business_service.dart';
 import '../../core/services/local_cache_service.dart';
 import '../../core/network/supabase_service.dart';
 import '../../core/constants/db_constants.dart';
-import '../../widgets/book_appointment_sheet.dart';
 import '../../widgets/video_player_widget.dart';
 import '../../widgets/location_picker.dart';
 
@@ -1184,7 +1183,7 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
                           ]),
                           AppTheme.gapHeightSmall,
                           const Text(
-                            'يمكنك طلب مشاهدة الفيديو الخاص بهذا العرض بعد حجز موعد معاينة عليه. يتم إرسال الطلب تلقائياً إلى فريق المكتب بعد نجاح الحجز.',
+                            'يمكنك طلب مشاهدة الفيديو الخاص بهذا العرض بالتواصل مع المكتب. يتابع موظف المكتب طلبك ويرتب المعاينة عند الحاجة.',
                             style: TextStyle(color: AppTheme.textWhite, fontSize: AppTheme.fontSizeBody, height: 1.5),
                           ),
                           AppTheme.gapHeightSmall,
@@ -1695,36 +1694,17 @@ class _OfferDetailScreenState extends State<OfferDetailScreen> {
 
                   if (isOwner || auth.isAdmin) AppTheme.gapHeightMedium,
 
-                  // زر الحجز — مخفي عن المالك والإدارة
-                  if (!isOwner && !auth.isAdmin)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: offer.avl.isEmpty
-                          ? null // تعطيل إذا لا مواعيد
-                          : () => showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Colors.transparent,
-                              builder: (context) =>
-                                  BookAppointmentSheet(offer: offer)),
-                      style: offer.avl.isEmpty
-                          ? ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.surfaceBlack,
-                              disabledForegroundColor: AppTheme.textGrey,
-                            )
-                          : null,
-                      child: Text(
-                        offer.avl.isEmpty
-                            ? 'لا توجد مواعيد متاحة حالياً'
-                            : 'حجز موعد للمعاينة',
-                      ),
+                  // ☎💬 التواصل هو المسار العام للزائر. المعاينة لا تُحجز
+                  // من الجمهور؛ موظف المكتب يسجلها داخلياً بعد التواصل.
+                  if (!isOwner) ...[
+                    const SizedBox(height: 10),
+                    const Text(
+                      'لترتيب المعاينة تواصل مع المكتب مباشرة',
+                      style: TextStyle(color: AppTheme.textGrey),
                     ),
-                  ),
-                  // ☎💬 التواصل مع المكتب (2026-09-22)
-                  const SizedBox(height: 10),
-                  OfficeContactButtons(offerNumber: offer.offerNumber),
+                    AppTheme.gapHeightSmall,
+                    OfficeContactButtons(offerNumber: offer.offerNumber),
+                  ],
                   // ⭐ تم إزالة زر التقييم من صفحة العرض — التقييم متاح فقط
                   // من شاشة المواعيد/الصفقات المكتملة حيث يكون هناك تعامل فعلي
                   // بين الطرفين (check_rating_valid trigger يمنع التقييم بدون صفقة)

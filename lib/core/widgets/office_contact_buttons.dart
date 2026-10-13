@@ -6,16 +6,23 @@ import '../../providers/config_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/social_links.dart';
 
-/// أزرار التواصل الرسمية للمكتب. الأرقام تأتي حصراً من إعدادات جرمانا.
+/// قنوات التواصل الرسمية للمكتب.
+///
+/// لا يحمل هذا الودجت أي رقم مطبوخ بالكود: الاتصال وواتساب كلاهما يأتيان
+/// من إعدادات جرمانا التي يعدلها المدير. الزائر يتواصل مع المكتب أولاً؛
+/// المعاينة تسجل لاحقاً من المسار الداخلي لموظف المكتب.
 class OfficeContactButtons extends StatelessWidget {
   const OfficeContactButtons({super.key, this.offerNumber});
 
   final int? offerNumber;
 
   Future<void> _call(String phone) async {
-    if (phone.isEmpty) return;
+    if (!SocialLinks.isValidPhone(phone)) return;
     try {
-      await launchUrl(Uri.parse('tel:$phone'), mode: LaunchMode.externalApplication);
+      await launchUrl(
+        Uri.parse('tel:$phone'),
+        mode: LaunchMode.externalApplication,
+      );
     } catch (_) {}
   }
 
@@ -28,8 +35,10 @@ class OfficeContactButtons extends StatelessWidget {
           : 'مرحباً، أريد الاستفسار عن العرض رقم #$offerNumber في تطبيق المكتب العقاري الالكتروني - جرمانا',
     );
     try {
-      await launchUrl(Uri.parse('https://wa.me/$number?text=$text'),
-          mode: LaunchMode.externalApplication);
+      await launchUrl(
+        Uri.parse('https://wa.me/$number?text=$text'),
+        mode: LaunchMode.externalApplication,
+      );
     } catch (_) {}
   }
 
@@ -41,8 +50,12 @@ class OfficeContactButtons extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('واتساب'),
-              Text(phone, maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 9)),
+              Text(
+                phone,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 9),
+              ),
             ],
           ),
         ),
@@ -51,28 +64,37 @@ class OfficeContactButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final config = context.watch<ConfigProvider>().config;
-    final contacts = <String>{
+    final officePhone = (config?.contactPhone1 ?? '').trim();
+    final whatsApps = <String>{
       (config?.contactWhatsApp ?? '').trim(),
       (config?.whatsapp2 ?? '').trim(),
-    }.where((phone) => phone.isNotEmpty).toList();
+    }.where(SocialLinks.isValidPhone).toList();
 
-    if (contacts.isEmpty) return const SizedBox.shrink();
+    if (!SocialLinks.isValidPhone(officePhone) && whatsApps.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
-    return Row(
-      children: [
+    final actions = <Widget>[];
+    void addAction(Widget action) {
+      if (actions.isNotEmpty) actions.add(AppTheme.gapWidthSmall);
+      actions.add(action);
+    }
+
+    if (SocialLinks.isValidPhone(officePhone)) {
+      addAction(
         Expanded(
           child: OutlinedButton.icon(
-            onPressed: () => _call(contacts.first),
+            onPressed: () => _call(officePhone),
             icon: const Icon(Icons.call, size: 18),
-            label: const Text('اتصال'),
+            label: const Text('اتصال بالمكتب'),
           ),
         ),
-        AppTheme.gapWidthSmall,
-        ...contacts.expand((phone) => <Widget>[
-              _waButton(phone),
-              if (phone != contacts.last) AppTheme.gapWidthSmall,
-            ]),
-      ],
-    );
+      );
+    }
+    for (final phone in whatsApps) {
+      addAction(_waButton(phone));
+    }
+
+    return Row(children: actions);
   }
 }
