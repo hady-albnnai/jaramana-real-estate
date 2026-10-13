@@ -52,6 +52,7 @@ coverage/
 
 # Supabase
 supabase/.env
+supabase/.temp/
 
 # =======================
 # Android signing (حساس — لا يُرفع أبداً)
